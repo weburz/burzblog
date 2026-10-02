@@ -1,0 +1,87 @@
+# BurzBlog
+
+A lightweight, file-first Markdown CMS in development. Your files remain the
+source of truth. **This repository currently implements the Phase 1 content
+library and local CLI, not a deployable browser CMS.**
+
+```text
+Today:  Local CLI / Python API → ordinary Markdown files ←→ external editor / Git
+Later:  Browser → authenticated application → same files ←→ optional Git remote
+```
+
+If BurzBlog disappears, nothing needs exporting: keep using your Markdown files
+and ordinary Git repository.
+
+## Development
+
+Prerequisites: Python 3.12+, [uv](https://docs.astral.sh/uv/), Make, and a local
+POSIX filesystem (Linux is the initial CI target). No Docker, database, Node,
+credentials or external services are required.
+
+```sh
+make setup
+make dev
+make check
+```
+
+`uv.lock` locks dependencies. `make check` runs formatting, lint, strict typing,
+unit/integration/CLI tests, and package build. Browser E2E tests are deferred
+because there is no browser interface. CI runs the same check on Python 3.12
+and 3.14. The build backend is pinned in `pyproject.toml`.
+
+## Try the file contract
+
+```sh
+mkdir -p demo-content/posts demo-content/.archive
+printf '# Hello\n\nOrdinary Markdown.\n' | uv run burzblog --root demo-content create posts/hello.md --title Hello --slug hello
+cat demo-content/posts/hello.md
+printf '\nEdited outside BurzBlog.\n' >> demo-content/posts/hello.md
+uv run burzblog --root demo-content read posts/hello.md
+uv run burzblog --root demo-content list
+```
+
+`read` returns JSON containing complete Markdown and a revision token. `save`
+accepts a complete Markdown document on stdin and requires `--revision TOKEN`.
+`rename SOURCE DESTINATION --revision TOKEN` moves without changing frontmatter;
+changing a slug is a separate metadata edit. `archive PATH --revision TOKEN`
+moves to `.archive/` and prints the recovery path. Restore with ordinary tools
+after checking the destination. No hard-delete command exists.
+
+```python
+from burzblog import ContentStore, Document
+
+store = ContentStore("demo-content")
+store.create("posts/example.md", Document.new("Example", "example", "# Example\n"))
+snapshot = store.read("posts/example.md")
+snapshot.document.body += "\nMore text.\n"
+store.save("posts/example.md", snapshot.document, snapshot.revision)
+```
+
+All reads consult disk. No-op saves preserve bytes and modification time.
+Unknown supported YAML fields remain intact. Paths, ownership, links, file sizes
+and revisions are checked. These checks have explicit limits: see
+[security](SECURITY.md), [architecture](docs/architecture/foundation.md), and
+[frontmatter](docs/frontmatter.md). Do not edit the same file concurrently through
+independent tools. Metadata edits can normalize YAML formatting.
+
+## Scope and operation
+
+No authentication, HTTP API, rendered preview, visual editor, file watcher,
+Git commands or credential storage yet. Use existing Git tooling separately.
+The core neither executes Markdown nor fetches embedded URLs. Runtime makes no
+network calls; setup/build download dependencies. Telemetry, analytics and
+tracking are absent.
+
+Back up the entire content directory, including `.archive` and `.git` if used.
+No startup migration runs. No database backup is needed in this phase.
+Local CLI use is the only supported installation; do not expose it through an
+unauthenticated network wrapper. See [self-hosting](docs/self-hosting.md).
+
+## Contributing and license
+
+See [CONTRIBUTING.md](CONTRIBUTING.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md),
+and [dependency review](docs/dependencies.md).
+
+**License pending maintainer decision. No open-source license has been granted
+yet.** This is intended to become an open-source project; public visibility is
+not itself a license. No code from the previous BurzBlog was imported.
