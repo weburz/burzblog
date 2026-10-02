@@ -43,6 +43,18 @@ limits, sanitized preview, remote URL policies and credential storage explicitly
 
 ## Privacy
 
-No runtime network calls, telemetry, analytics, external fonts, tracking or
-remote crash reporting. Installation contacts package registries. Future Git
-network operations must be opt-in. Keep credentials outside the content root.
+No telemetry, analytics, external fonts, tracking or remote crash reporting.
+Installation contacts package registries. Git fetch/push contacts only explicitly
+operator-selected endpoints; inspection never contacts remotes. Keep credentials
+outside the content root. Private Git credential management is not implemented.
+
+## Git operations
+
+Read ADR-006/007 and `docs/git.md`. Hooks/filters/config includes are refused or
+disabled. Local bare remotes with active receiver hooks are refused before Git
+runs, because those hooks would execute in the application's OS account. HTTPS
+endpoints must be operator-approved; do not accept arbitrary URLs from browsers.
+Branch transitions apply only scoped Markdown through the recovery-aware store.
+Unfinished transitions leave a persistent marker and block further Git writes.
+Concurrent hostile changes to `.git` or local remote metadata are outside the
+OS trust boundary; coordinate other Git clients during mutations.

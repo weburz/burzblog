@@ -121,7 +121,7 @@ class GitRepository:
             return parent
         return None
 
-    def _checked_root(self) -> Path:
+    def checked_root(self) -> Path:
         """Reject executable/indirect local configuration before any status inspection."""
         root = self.discover()
         if root is None:
@@ -187,7 +187,7 @@ class GitRepository:
         """Read state without network access, index refresh writes or URL disclosure."""
         if self.discover() is None:
             return None
-        root = self._checked_root()
+        root = self.checked_root()
         changes = parse_changes(
             run_git(
                 root,
@@ -198,6 +198,18 @@ class GitRepository:
                     "--untracked-files=all",
                     "--ignore-submodules=all",
                 ],
+            )
+        )
+        scope = self.content_root.relative_to(root)
+        changes = tuple(
+            change
+            for change in changes
+            if not (
+                change.index == "?"
+                and any(
+                    Path(change.path).is_relative_to(scope / hidden)
+                    for hidden in (".burzblog-recovery", ".archive")
+                )
             )
         )
         branch = (
@@ -236,6 +248,7 @@ class GitRepository:
         )
         operation = None
         for marker, label in (
+            ("burzblog-transition.json", "recovery"),
             ("MERGE_HEAD", "merge"),
             ("rebase-merge", "rebase"),
             ("rebase-apply", "rebase"),
