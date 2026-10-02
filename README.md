@@ -71,11 +71,11 @@ review; they are never automatically merged. Metadata edits can normalize YAML f
 ## Scope and operation
 
 No authentication, HTTP API, rendered preview, visual editor, file watcher,
-Git mutations or credential storage yet. [Read-only Git inspection](docs/git.md)
-is available through `uv run burzblog --root demo-content git-status`.
-Use existing Git tooling for commits and synchronization.
-The core neither executes Markdown nor fetches embedded URLs. Runtime makes no
-network calls; setup/build download dependencies. Telemetry, analytics and
+private remote credential storage yet. [Git inspection and explicit operations](docs/git.md)
+support scoped commits, branches, fetch, recovery-aware fast-forward updates and
+non-forced push. Ordinary Git remains available. No browser interface exists yet.
+The core neither executes Markdown nor fetches embedded URLs. Explicit Git
+fetch/push may contact an operator-selected remote; setup/build download dependencies. Telemetry, analytics and
 tracking are absent.
 
 Back up the entire content directory, including `.archive` and `.git` if used.

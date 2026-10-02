@@ -3,6 +3,7 @@
 import os
 import selectors
 import shutil
+import signal
 import subprocess
 import time
 from pathlib import Path
@@ -20,6 +21,8 @@ def run_git(
     timeout: float = 10,
     limit: int = 4 * 1024 * 1024,
     accepted: tuple[int, ...] = (0,),
+    protocol: str | None = None,
+    git_directory: Path | None = None,
 ) -> bytes:
     """Execute a fixed Git command, bounding stdout, duration and inherited state."""
     executable = shutil.which("git")
@@ -39,7 +42,7 @@ def run_git(
     }
     command = [
         executable,
-        f"--git-dir={root / '.git'}",
+        f"--git-dir={git_directory or root / '.git'}",
         f"--work-tree={root}",
         "--no-pager",
         "--no-replace-objects",
@@ -60,10 +63,19 @@ def run_git(
         "diff.external=",
         "-c",
         "protocol.allow=never",
-        *arguments,
+        "-c",
+        "http.followRedirects=false",
+        "-c",
+        "http.sslVerify=true",
     ]
+    if protocol is not None:
+        if protocol not in {"file", "https"}:
+            raise GitError("Unsupported Git transport.")
+        command.extend(["-c", f"protocol.{protocol}.allow=always"])
+    command.extend(arguments)
     deadline = time.monotonic() + timeout
     output = bytearray()
+    completed = False
     with subprocess.Popen(  # noqa: S603 - argument arrays, trusted Git binary, isolated environment
         command,
         cwd=root,
@@ -71,6 +83,7 @@ def run_git(
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
+        start_new_session=True,
     ) as process:
         assert process.stdout is not None  # noqa: S101 - PIPE guarantees a stream
         try:
@@ -97,12 +110,16 @@ def run_git(
                 raise GitError(
                     "Git operation could not complete; inspect repository state."
                 )
+            completed = True
         except subprocess.TimeoutExpired:
             raise GitError(
                 "Git operation timed out; inspect repository state."
             ) from None
         finally:
-            if process.poll() is None:
-                process.kill()
+            if not completed:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
             process.wait()
     return bytes(output)

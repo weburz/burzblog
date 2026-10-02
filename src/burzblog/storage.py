@@ -45,6 +45,11 @@ def _revision(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def validate_content_path(path: str) -> None:
+    """Validate a caller's content-relative filename without touching disk."""
+    _parts(path)
+
+
 class ContentStore:
     """Read fresh disk state and serialize application mutations with flock."""
 

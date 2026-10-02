@@ -8,6 +8,7 @@ from dataclasses import asdict
 from burzblog.document import MAX_BYTES, Document, parse, serialize
 from burzblog.errors import ContentError
 from burzblog.git_domain import GitRepository
+from burzblog.git_mutations import GitChanges, Remote
 from burzblog.storage import ContentStore
 
 
@@ -35,6 +36,23 @@ def main() -> int:
     commands.add_parser(
         "git-status", help="Inspect Git without changing files or contacting remotes"
     )
+    for command in ("git-create-branch", "git-switch", "git-update", "git-push"):
+        git_command = commands.add_parser(command)
+        git_command.add_argument("branch")
+        if command in ("git-update", "git-push"):
+            git_command.add_argument("--remote", default="origin")
+        if command == "git-push":
+            git_command.add_argument(
+                "--url",
+                required=True,
+                help="Operator-approved remote endpoint; no embedded credentials",
+            )
+    fetch = commands.add_parser("git-fetch")
+    fetch.add_argument("--remote", default="origin")
+    fetch.add_argument("--url", required=True)
+    commit = commands.add_parser("git-commit")
+    commit.add_argument("paths", nargs="+")
+    commit.add_argument("--message", required=True)
     for command in ("read", "create", "save", "rename", "archive"):
         sub = commands.add_parser(command)
         sub.add_argument("path")
@@ -47,6 +65,7 @@ def main() -> int:
             sub.add_argument("destination")
     args = parser.parse_args()
     store = ContentStore(args.root)
+    git_changes = GitChanges(args.root)
     try:
         if args.command == "list":
             print(json.dumps(store.discover()))
@@ -71,6 +90,18 @@ def main() -> int:
                     }
                 )
             )
+        elif args.command == "git-create-branch":
+            git_changes.create_branch(args.branch)
+        elif args.command == "git-switch":
+            git_changes.switch(args.branch)
+        elif args.command == "git-commit":
+            print(git_changes.commit(args.paths, args.message))
+        elif args.command == "git-fetch":
+            git_changes.fetch(Remote(args.remote, args.url))
+        elif args.command == "git-update":
+            git_changes.update(args.remote, args.branch)
+        elif args.command == "git-push":
+            git_changes.push(Remote(args.remote, args.url), args.branch)
         elif args.command == "create":
             print(
                 store.create(args.path, Document.new(args.title, args.slug, _stdin()))
