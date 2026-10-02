@@ -30,7 +30,7 @@ No server fetches occur. The original source remains untouched.
 
 The runtime gains maintained HTTP, password-hashing and sanitization dependencies,
 but no separate database service, worker or queue. There is no password-reset
-endpoint, multi-user authorization model, OAuth or public registration. Backups
+endpoint (later: a terminal-only `reset-admin` command, #17), multi-user authorization model, OAuth or public registration. Backups
 now include private operational state separately from portable content.
 
 Requests are bounded before JSON parsing. Errors omit private paths, credentials

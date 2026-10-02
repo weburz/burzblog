@@ -21,7 +21,11 @@ uv run --frozen burzblog-server serve
 
 Initialization asks for a password twice, without command-line arguments or
 environment variables. Use at least 12 characters. Re-initialization refuses to
-replace credentials. There is no password-reset workflow yet. The server refuses
+replace credentials. To replace a forgotten password, run
+`uv run --frozen burzblog-server reset-admin` with the same environment (the
+server may keep running): it asks
+twice, replaces the hash, signs out every session and clears the login-attempt
+window. There is deliberately no web or email reset. The server refuses
 startup without an initialized administrator. It binds `127.0.0.1:8000` by
 default; `--port` changes the port. `--host 0.0.0.0` is only for containers whose
 published port is bound to host loopback (see [containers](containers.md)). Do not

@@ -48,8 +48,11 @@ Global persistent login throttling is complemented by one concurrent Argon2
 verification per process. A deterministic concurrency test checks the bound.
 Built-in development and production commands bind loopback.
 
+Terminal-only `reset-admin` (#17) replaces the hash, revokes every session and
+clears the attempt window in one transaction; it has no HTTP surface.
+
 Not guaranteed: distributed/multi-worker rate limits, protection from temporary
-login denial, a password reset workflow, multi-user roles, every slow-client or
+login denial, a web/email password reset, multi-user roles, every slow-client or
 resource-exhaustion attack. The public proxy must impose timeouts and connection
 limits. No external deployment or TLS termination was tested in this environment.
 

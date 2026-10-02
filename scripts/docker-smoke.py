@@ -414,6 +414,29 @@ def main() -> None:
         expect("External host edit." in on_disk.read_text())
         passed("container replacement preserves auth database, sessions and content")
 
+        replaced = PASSWORD[::-1]
+        run(
+            *compose,
+            "run",
+            "--rm",
+            "-T",
+            "burzblog",
+            "reset-admin",
+            stdin=f"{replaced}\n{replaced}\n",
+        )
+        expect(browser.request("GET", "/api/posts")[0] == 401, "old session revoked")
+        status, _, _ = Browser(origin).request(
+            "POST", "/api/login", {"password": PASSWORD}
+        )
+        expect(status == 401, "old password refused")
+        renewed = Browser(origin)
+        renewed.csrf = renewed.json("POST", "/api/login", {"password": replaced})[
+            "csrf"
+        ]
+        expect(renewed.json("GET", "/api/posts")["total"] == 2)
+        expect(oct(database.stat().st_mode & 0o777) == "0o600", "state mode kept")
+        passed("reset-admin replaces the password and revokes sessions")
+
         listing = run(
             *compose,
             "run",
