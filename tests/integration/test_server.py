@@ -16,6 +16,10 @@ def test_operator_setup_and_loopback_server(tmp_path, monkeypatch):
     monkeypatch.setattr("getpass.getpass", lambda _: "fixture password only")
     assert server.main() == 0
     assert server.main() == 1
+    monkeypatch.setattr("sys.argv", ["burzblog-server", "reset-admin"])
+    monkeypatch.setattr("getpass.getpass", lambda _: "replacement fixture password")
+    assert server.main() == 0
+    Authentication(state).login("replacement fixture password")
     received = {}
     monkeypatch.setattr("sys.argv", ["burzblog-server", "serve"])
     monkeypatch.setattr("uvicorn.run", lambda app, **kwargs: received.update(kwargs))

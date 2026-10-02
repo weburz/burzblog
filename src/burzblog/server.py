@@ -1,4 +1,4 @@
-"""Operator-only setup and loopback server command, never a web setup wizard."""
+"""Operator-only setup/reset and loopback server command, never a web setup wizard."""
 
 import argparse
 import getpass
@@ -15,7 +15,7 @@ from burzblog.settings import Settings
 def main() -> int:
     """Initialize credentials through a terminal, or serve the configured API."""
     parser = argparse.ArgumentParser(description="BurzBlog authenticated API")
-    parser.add_argument("command", choices=["init-admin", "serve"])
+    parser.add_argument("command", choices=["init-admin", "reset-admin", "serve"])
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument(
         "--host",
@@ -26,12 +26,17 @@ def main() -> int:
     try:
         settings = Settings.from_environment()
         settings.validate()
-        if arguments.command == "init-admin":
+        if arguments.command in {"init-admin", "reset-admin"}:
             password = getpass.getpass("Administrator password: ")
             if password != getpass.getpass("Confirm password: "):
                 raise ContentError("Passwords did not match.")
-            Authentication(settings.state_directory).initialize(password)
-            print("Administrator initialized. Keep the state directory private.")
+            authentication = Authentication(settings.state_directory)
+            if arguments.command == "init-admin":
+                authentication.initialize(password)
+                print("Administrator initialized. Keep the state directory private.")
+            else:
+                authentication.reset(password)
+                print("Administrator password replaced; all sessions were signed out.")
         else:
             uvicorn.run(
                 create_app(settings),

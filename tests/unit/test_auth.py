@@ -90,3 +90,32 @@ def test_concurrent_logins_do_not_allocate_parallel_argon2_work(tmp_path, monkey
         finally:
             release.set()
         assert auth.verify(pending.result(timeout=5).token)
+
+
+def test_reset_replaces_password_revokes_sessions_and_clears_lockout(tmp_path):
+    auth = Authentication(tmp_path / "state")
+    with pytest.raises(ContentError, match="init-admin"):
+        auth.reset("replacement fixture password")
+    old = "original fixture password"
+    new = "replacement fixture password"
+    auth.initialize(old)
+    sessions = [auth.login(old) for _ in range(3)]
+    for _ in range(7):
+        with pytest.raises(AuthenticationError):
+            auth.login("wrong fixture password")
+    with pytest.raises(RateLimitError):
+        auth.login(old)
+    with pytest.raises(ContentError):
+        auth.reset("short")
+    auth.reset(new)
+    for session in sessions:
+        with pytest.raises(AuthenticationError):
+            auth.verify(session.token)
+    with pytest.raises(AuthenticationError):
+        auth.login(old)
+    assert auth.verify(auth.login(new).token)
+    assert new.encode() not in auth.database.read_bytes()
+    assert (
+        auth.database.stat().st_mode & 0o777,
+        auth.database.parent.stat().st_mode & 0o777,
+    ) == (0o600, 0o700)

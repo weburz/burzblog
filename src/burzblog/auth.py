@@ -112,6 +112,25 @@ class Authentication:
                 "Administrator already exists; no password was changed."
             ) from None
 
+    def reset(self, password: str) -> None:
+        """Replace the existing administrator password and revoke every session.
+
+        Operator terminal only; also clears the login-attempt window so a locked
+        out operator can sign in immediately with the new password.
+        """
+        if not 12 <= len(password) <= 1024:
+            raise ContentError("Use a password between 12 and 1024 characters.")
+        password_hash = self.hasher.hash(password)
+        with self.connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            changed = connection.execute(
+                "UPDATE administrator SET password_hash=? WHERE id=1", (password_hash,)
+            ).rowcount
+            if changed != 1:
+                raise ContentError("No administrator exists yet; run init-admin.")
+            connection.execute("DELETE FROM sessions")
+            connection.execute("DELETE FROM attempts")
+
     def login(self, password: str) -> Session:
         """Rate-limit globally before hashing; create a fresh expiring opaque session."""
         now = int(time.time())

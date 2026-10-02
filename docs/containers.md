@@ -164,6 +164,8 @@ backup if a future release notes a schema change.
 
 ## Troubleshooting
 
+- **Forgotten password:** `docker compose run --rm burzblog reset-admin`. It asks
+  twice, replaces the password, signs everyone out and clears login throttling.
 - **Login says to reload/verify:** `BURZBLOG_ORIGIN` must equal the browser's
   address bar origin exactly, and the proxy must preserve `Host`.
 - **"must be privately owned" / permission errors:** host owner must equal
