@@ -30,5 +30,8 @@ jobs:
           version: '0.12.21'
           python-version: ${{ matrix.python }}
           enable-cache: false
-      - run: make setup
-      - run: make check
+      - uses: go-task/setup-task@70f2430ad412f838533de8c0515c749ffb2b8bd3 # v1
+        with:
+          version: '3.54.0'
+      - run: task setup
+      - run: task check

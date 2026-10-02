@@ -14,7 +14,10 @@ dependencies = ["ruamel.yaml==0.18.16"]
 burzblog = "burzblog.cli:main"
 
 [dependency-groups]
-dev = ["pytest==8.4.2", "pytest-cov==6.3.0", "mypy==1.18.2", "ruff==0.13.3", "hatchling==1.27.0"]
+dev = [{include-group = "linters"}, {include-group = "tests"}, {include-group = "build"}]
+linters = ["mypy==2.3.0", "pyright==1.1.411", "ruff==0.16.3", "pre-commit==4.6.2", "pre-commit-hooks==6.0.0"]
+tests = ["pytest==8.4.2", "pytest-cov==6.3.0"]
+build = ["hatchling==1.27.0"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/burzblog"]
@@ -23,17 +26,25 @@ packages = ["src/burzblog"]
 target-version = "py312"
 
 [tool.ruff.lint]
-extend-select = ["I", "D"]
+extend-select = ["I", "D", "UP", "B", "S", "N"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["D"]
+"tests/**" = ["D", "S101"]
 
 [tool.mypy]
 strict = true
+python_version = "3.12"
 files = ["src"]
+
+[tool.pyright]
+typeCheckingMode = "strict"
+pythonVersion = "3.12"
+include = ["src"]
+venvPath = "."
+venv = ".venv"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

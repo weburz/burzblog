@@ -4,9 +4,10 @@ import copy
 import io
 import math
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Protocol, TextIO, cast
 
 from ruamel.yaml import YAML
 from ruamel.yaml.error import YAMLError
@@ -31,12 +32,21 @@ FIELDS = (
 )
 
 
-def _yaml() -> YAML:
+class _YamlParser(Protocol):
+    """Typed boundary for the third-party parser's unannotated methods."""
+
+    def scan(self, stream: str) -> Iterable[object]: ...
+    def parse(self, stream: str) -> Iterable[object]: ...
+    def load(self, stream: str) -> Any: ...
+    def dump(self, data: object, stream: TextIO) -> None: ...
+
+
+def _yaml() -> _YamlParser:
     """Create an isolated parser; no shared mutable parser state."""
     parser = YAML(typ="rt", pure=True)
     parser.preserve_quotes = True
     parser.allow_duplicate_keys = False
-    return parser
+    return cast(_YamlParser, parser)
 
 
 def _tree(value: Any, depth: int = 0) -> None:
@@ -44,12 +54,13 @@ def _tree(value: Any, depth: int = 0) -> None:
     if depth > 32:
         raise ContentError("Frontmatter nesting exceeds 32 levels.")
     if isinstance(value, dict):
-        for key, item in value.items():
+        for key, item in cast(dict[object, Any], value).items():
             if not isinstance(key, str):
                 raise ContentError("Frontmatter keys must be strings.")
             _tree(item, depth + 1)
     elif isinstance(value, list):
-        for item in value:
+        items = cast(list[object], value)
+        for item in items:
             _tree(item, depth + 1)
     elif isinstance(value, float):
         if not math.isfinite(value):
@@ -83,7 +94,7 @@ def validate(metadata: dict[str, Any]) -> None:
                 raise ContentError(f"{field} must be an ISO date or timestamp.")
             try:
                 if isinstance(value, str):
-                    datetime.fromisoformat(value.replace("Z", "+00:00"))
+                    datetime.fromisoformat(value)
             except ValueError:
                 raise ContentError(
                     f"{field} must be an ISO date or timestamp."
@@ -118,8 +129,9 @@ def _load(text: str) -> dict[str, Any]:
         return {}
     if not isinstance(value, dict):
         raise ContentError("Frontmatter must be a mapping.")
-    validate(value)
-    return value
+    metadata = cast(dict[str, Any], value)
+    validate(metadata)
+    return metadata
 
 
 @dataclass
@@ -156,12 +168,16 @@ def parse(source: str) -> Document:
 def _equivalent(left: Any, right: Any) -> bool:
     """Compare metadata without conflating YAML booleans, numbers or dates."""
     if isinstance(left, dict) and isinstance(right, dict):
-        return left.keys() == right.keys() and all(
-            _equivalent(left[key], right[key]) for key in left
+        left_map = cast(dict[str, Any], left)
+        right_map = cast(dict[str, Any], right)
+        return left_map.keys() == right_map.keys() and all(
+            _equivalent(left_map[key], right_map[key]) for key in left_map
         )
     if isinstance(left, list) and isinstance(right, list):
-        return len(left) == len(right) and all(
-            _equivalent(a, b) for a, b in zip(left, right, strict=True)
+        left_list = cast(list[object], left)
+        right_list = cast(list[object], right)
+        return len(left_list) == len(right_list) and all(
+            _equivalent(a, b) for a, b in zip(left_list, right_list, strict=True)
         )
     for scalar in (bool, str, int, float, datetime, date):
         if isinstance(left, scalar) or isinstance(right, scalar):

@@ -17,8 +17,11 @@ These explain capability and provenance, not a claim of absence of vulnerabiliti
 No independent security audit has been performed. Review advisories and lockfile
 changes before release; resource limits and restricted YAML reduce exposure.
 
-Development/build: Ruff (MIT), mypy (MIT), pytest (MIT), pytest-cov (MIT),
-Hatchling (MIT), and their locked transitive dependencies. No frontend bundle
+Development/build: Ruff (MIT), mypy (MIT), Pyright (MIT), pre-commit (MIT),
+pre-commit-hooks (MIT), pytest (MIT), pytest-cov (MIT), Hatchling (MIT),
+and their locked transitive dependencies. Pyright uses Node only for development.
+Task orchestrates commands; Crisp checks commit messages; Hadolint checks Dockerfiles.
+No frontend bundle
 or runtime web framework is installed. Redistribution must retain dependency
 license notices; the maintainer's eventual project license must be checked for
 compatibility. The lockfile records resolved versions and artifact hashes.

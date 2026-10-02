@@ -1,14 +1,17 @@
 # Contributing
 
-Read `AGENTS.md`, the architecture and ADRs first. Use `make setup`, `make dev`,
-and `make check`; use `make format` for formatting. Python functions have type
+Read `AGENTS.md`, the architecture and ADRs first. Use `task setup`, `task dev`,
+and `task check`; use `task format` for formatting. Python functions have type
 hints and Google-style docstrings. Prefer small, stateless domain functions and
 explicit filesystem failures. No unrelated frameworks or services.
 
 Use short-lived feature branches and Conventional Commit subjects validated
 with `crisp message 'feat(content): describe the change'`. Open a PR with exact
 verification results and limitations. Do not bypass required checks or reviews.
-CI uses only read permissions and no repository secrets. Review dependency
+Actions is intentionally disabled; record local verification before merging.
+The dormant check workflow uses read permissions and no repository secrets.
+The optional image publisher grants package write access only to its release job.
+Review dependency
 updates deliberately and regenerate `uv.lock` with uv; never hand-edit it.
 
 Tests under `tests/unit` use no filesystem; `tests/integration` use temporary

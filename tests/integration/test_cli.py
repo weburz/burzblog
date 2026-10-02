@@ -9,11 +9,12 @@ def test_cli_create_external_edit_read_save_rename_archive(tmp_path):
     executable = str(Path(os.sys.executable).with_name("burzblog"))
 
     def run(*args, body="", success=True):
-        result = subprocess.run(
+        result = subprocess.run(  # noqa: S603 - controlled fixture arguments
             [executable, "--root", str(tmp_path), *args],
             input=body,
             capture_output=True,
             text=True,
+            check=False,
         )
         assert result.returncode == (0 if success else 1), result.stderr
         return result

@@ -6,7 +6,7 @@ import os
 import re
 import stat
 import uuid
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -52,7 +52,7 @@ class ContentStore:
         self.root = Path(os.path.abspath(root))
 
     @contextmanager
-    def _root(self, write: bool = False) -> Iterator[int]:
+    def _root(self, write: bool = False) -> Generator[int, None, None]:
         """Open every absolute component without following symlinks."""
         fd = os.open("/", DIRECTORY_FLAGS)
         try:
@@ -72,7 +72,7 @@ class ContentStore:
             os.close(fd)
 
     @contextmanager
-    def _parent(self, root: int, parts: list[str]) -> Iterator[int]:
+    def _parent(self, root: int, parts: list[str]) -> Generator[int, None, None]:
         """Anchor traversal to open directories and reject unsafe parents."""
         fd = os.dup(root)
         try:
