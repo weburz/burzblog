@@ -40,3 +40,4 @@ def test_cli_create_external_edit_read_save_rename_archive(tmp_path):
     error = run("read", "absent.md", success=False)
     assert "Traceback" not in error.stderr
     assert "Filesystem operation failed" in error.stderr
+    assert json.loads(run("git-status").stdout) == {"repository": None}

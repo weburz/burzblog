@@ -3,9 +3,11 @@
 import argparse
 import json
 import sys
+from dataclasses import asdict
 
 from burzblog.document import MAX_BYTES, Document, parse, serialize
 from burzblog.errors import ContentError
+from burzblog.git_domain import GitRepository
 from burzblog.storage import ContentStore
 
 
@@ -30,6 +32,9 @@ def main() -> int:
     )
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("list", help="Discover content paths")
+    commands.add_parser(
+        "git-status", help="Inspect Git without changing files or contacting remotes"
+    )
     for command in ("read", "create", "save", "rename", "archive"):
         sub = commands.add_parser(command)
         sub.add_argument("path")
@@ -45,6 +50,17 @@ def main() -> int:
     try:
         if args.command == "list":
             print(json.dumps(store.discover()))
+        elif args.command == "git-status":
+            state = GitRepository(args.root).status()
+            print(
+                json.dumps(
+                    {
+                        "repository": asdict(state) | {"clean": state.clean}
+                        if state
+                        else None
+                    }
+                )
+            )
         elif args.command == "read":
             snapshot = store.read(args.path)
             print(

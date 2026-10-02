@@ -71,7 +71,9 @@ review; they are never automatically merged. Metadata edits can normalize YAML f
 ## Scope and operation
 
 No authentication, HTTP API, rendered preview, visual editor, file watcher,
-Git commands or credential storage yet. Use existing Git tooling separately.
+Git mutations or credential storage yet. [Read-only Git inspection](docs/git.md)
+is available through `uv run burzblog --root demo-content git-status`.
+Use existing Git tooling for commits and synchronization.
 The core neither executes Markdown nor fetches embedded URLs. Runtime makes no
 network calls; setup/build download dependencies. Telemetry, analytics and
 tracking are absent.
