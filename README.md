@@ -1,12 +1,13 @@
 # BurzBlog
 
 A lightweight, file-first Markdown CMS in development. Your files remain the
-source of truth. **This repository currently implements the Phase 1 content
-library, local CLI and authenticated API, not a deployable browser CMS.**
+source of truth. The early browser application supports source editing and
+explicit Git operations. It is not yet a reviewed production release.
 
 ```text
-Today:  Local CLI / Python API → ordinary Markdown files ←→ external editor / Git
-Later:  Browser → authenticated application → same files ←→ optional Git remote
+Browser / CLI → authenticated application → ordinary Markdown ←→ external editors
+                                                       ↕
+                                                  Git → remote
 ```
 
 If BurzBlog disappears, nothing needs exporting: keep using your Markdown files
@@ -15,7 +16,7 @@ and ordinary Git repository.
 ## Development
 
 Prerequisites: Python 3.12+, [uv](https://docs.astral.sh/uv/),
-[Task](https://taskfile.dev/), Node 24 LTS for Pyright, and a local POSIX
+[Task](https://taskfile.dev/), Node 24 LTS, pnpm 11, Git, and a local POSIX
 filesystem. Docker is optional; the Python runtime itself does not need Node,
 external services. The optional HTTP application uses local SQLite authentication
 state; the content library and CLI need no database or credentials.
@@ -27,8 +28,9 @@ task check
 ```
 
 `uv.lock` locks dependencies. `task check` runs formatting, lint, strict typing,
-unit/integration/CLI tests, and package build. Browser E2E tests are deferred
-because there is no browser interface. GitHub Actions is intentionally disabled;
+unit/integration/CLI tests, package build, frontend checks and browser E2E.
+See [browser setup and usage](docs/browser.md) to configure paths and initialize
+the administrator before `task dev`. GitHub Actions is intentionally disabled;
 the dormant workflow targets Python 3.12 and 3.14. Local checks gate merges.
 The build backend is pinned in `pyproject.toml`. See [tooling](docs/tooling.md)
 for UniBurz-aligned Ruff, mypy, Pyright, pre-commit and Crisp commands.
@@ -71,12 +73,12 @@ review; they are never automatically merged. Metadata edits can normalize YAML f
 
 ## Scope and operation
 
-The [authenticated API](docs/application.md) supports listing, revision-aware
-editing, archival, publication metadata and sanitized preview. No browser UI,
-visual editor, file watcher or private remote credentials yet.
+The [browser](docs/browser.md) and [authenticated API](docs/application.md) support
+listing, revision-aware source editing, archival, publication metadata and safe
+preview. No visual editor, file watcher or private remote credentials yet.
 [Git inspection and explicit operations](docs/git.md)
 support scoped commits, branches, fetch, recovery-aware fast-forward updates and
-non-forced push. Ordinary Git remains available. No browser interface exists yet.
+non-forced push. Ordinary Git remains available.
 The core neither executes Markdown nor fetches embedded URLs. Explicit Git
 fetch/push may contact an operator-selected remote; setup/build download dependencies. Telemetry, analytics and
 tracking are absent.

@@ -5,12 +5,15 @@ canonical; Git operations and the authenticated API are separate from storage.
 Read `docs/architecture/foundation.md` and `SECURITY.md` before storage changes.
 
 - `task setup`: install locked dependency groups using uv.
-- `task dev`: show the CLI help.
-- `task check`: Ruff, strict mypy/Pyright, tests, build and repository hygiene.
+- `task dev`: configured API and Nuxt development servers; see docs/application.md.
+- `task check`: backend gates plus frontend format/lint/types/tests/build/E2E.
+- `task backend:check`: independent Python checks; `task web:check`: browser gates.
+- Browser E2E uses disposable /tmp fixtures and ports 8000/3000; never reuse a
+  running real instance. Tests must not point at operator content.
 - `task format`: apply Ruff formatting. Make commands remain compatibility aliases.
 - `task hooks:install`: optional pre-commit and Crisp commit-message hooks.
 - Follow UniBurz tooling: uv, Ruff, mypy, Pyright, pre-commit and Crisp.
-  Future frontend tooling uses pnpm, Oxlint and Oxfmt; do not add Node tools yet.
+  Frontend in web/ uses pinned pnpm 11, Nuxt UI, Oxlint and Oxfmt.
 - Keep domain parsing independent of filesystem and application interfaces.
 - Preserve original bytes on no-op saves and Markdown bodies on metadata edits.
 - Never follow symlinks or overwrite a destination during create/rename.

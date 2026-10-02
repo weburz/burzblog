@@ -63,6 +63,9 @@ def test_api_file_git_remote_roundtrip_and_divergence(tmp_path):
             },
         )
         assert response.status_code == 200
+        assert client.get("/api/git").json()["repository"]["changed_markdown"] == [
+            "posts/hello.md"
+        ]
         action("commit", paths=["posts/hello.md"], message="browser commit")
         action("push", branch="main")
         assert git(remote, "show", "main:content/posts/hello.md") == "browser edit"
