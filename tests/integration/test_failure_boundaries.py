@@ -4,7 +4,7 @@ import stat
 import pytest
 
 from burzblog import ContentStore, Document
-from burzblog.errors import ConflictError, ContentError
+from burzblog.errors import ConflictError, RecoveryError
 
 
 def test_external_edit_during_staging_is_detected(tmp_path, monkeypatch):
@@ -37,18 +37,17 @@ def test_archive_interrupted_before_unlink_retains_complete_copies(
     original_unlink = os.unlink
 
     def fail_unlink(path, **kwargs):
-        if path == "a.md":
+        if path == "publish.md":
             raise OSError("interrupted")
         return original_unlink(path, **kwargs)
 
     monkeypatch.setattr(os, "unlink", fail_unlink)
-    with pytest.raises(OSError):
+    with pytest.raises(RecoveryError):
         store.archive("a.md", revision)
     copies = list((tmp_path / ".archive").iterdir())
     assert len(copies) == 1
-    assert copies[0].read_bytes() == (tmp_path / "a.md").read_bytes() == source
-    with pytest.raises(ContentError):
-        store.read("a.md")
+    original = next(tmp_path.glob(".burzblog-recovery/*/original.md"))
+    assert copies[0].read_bytes() == original.read_bytes() == source
 
 
 def test_symlink_swap_of_parent_during_open_cannot_escape(tmp_path, monkeypatch):

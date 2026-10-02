@@ -12,7 +12,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from burzblog.document import MAX_BYTES, Document, parse, serialize
-from burzblog.errors import ConflictError, ContentError
+from burzblog.errors import ConflictError, ContentError, RecoveryError
+from burzblog.recovery import capture, journal, write_file
 
 SEGMENT = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\Z")
 DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
@@ -164,7 +165,7 @@ class ContentStore:
         return self._write(path, document, None)
 
     def save(self, path: str, document: Document, revision: str) -> str:
-        """Replace a matching revision atomically; no-op saves do not touch disk."""
+        """Retain the prior inode before publishing; no-op saves do not touch disk."""
         return self._write(path, document, revision)
 
     def _write(self, path: str, document: Document, revision: str | None) -> str:
@@ -209,13 +210,24 @@ class ContentStore:
                             "Destination already exists; nothing was overwritten."
                         ) from None
                 else:
-                    current, _ = self._bytes(parent, parts[-1])
+                    current, info = self._bytes(parent, parts[-1])
                     if _revision(current) != revision:
                         raise ConflictError(
                             "File changed externally; nothing was overwritten."
                         )
-                    os.replace(
-                        temporary, parts[-1], src_dir_fd=parent, dst_dir_fd=parent
+                    self._publish(
+                        root,
+                        parent,
+                        parts[-1],
+                        parent,
+                        parts[-1],
+                        path,
+                        path,
+                        current,
+                        data,
+                        revision,
+                        info,
+                        mode,
                     )
                 os.fsync(parent)
             finally:
@@ -225,6 +237,58 @@ class ContentStore:
                     pass
             os.fsync(parent)
         return _revision(data)
+
+    def _publish(
+        self,
+        root: int,
+        source_fd: int,
+        source: str,
+        target_fd: int,
+        target: str,
+        source_path: str,
+        destination_path: str,
+        previous: bytes,
+        requested: bytes,
+        revision: str,
+        original_info: os.stat_result,
+        mode: int,
+    ) -> None:
+        """Capture the exact prior inode, then publish without replacing any entry."""
+        with journal(root, source_path, destination_path, requested) as recovery:
+            # A source recovery copy is also useful if the entry disappears externally.
+            write_file(recovery, "observed.md", previous)
+            write_file(recovery, "publish.md", requested, mode)
+            os.fsync(recovery)
+            try:
+                capture(source_fd, source, recovery)
+                actual, info = self._bytes(recovery, "original.md")
+                if _revision(actual) != revision or (info.st_dev, info.st_ino) != (
+                    original_info.st_dev,
+                    original_info.st_ino,
+                ):
+                    raise RecoveryError(
+                        "External change preserved in .burzblog-recovery; review before retrying."
+                    )
+                # No replace and no source unlink: a concurrent creator wins safely.
+                os.link(
+                    "publish.md",
+                    target,
+                    src_dir_fd=recovery,
+                    dst_dir_fd=target_fd,
+                    follow_symlinks=False,
+                )
+                os.fsync(target_fd)
+                os.unlink("publish.md", dir_fd=recovery)
+                write_file(
+                    recovery,
+                    "complete",
+                    b"Published; original.md retained for late external writes.\n",
+                )
+                os.fsync(recovery)
+            except (OSError, ContentError):
+                raise RecoveryError(
+                    "Operation needs recovery; inspect .burzblog-recovery before retrying. No captured version was deleted."
+                ) from None
 
     def rename(self, source: str, destination: str, revision: str) -> None:
         """Relocate a file without changing its metadata or overwriting a target."""
@@ -240,7 +304,7 @@ class ContentStore:
     def _move(
         self, source: str, destination: str, revision: str, archive: bool = False
     ) -> None:
-        """Use no-clobber link/unlink; interruption may leave both complete copies."""
+        """Retain the exact source inode before publishing an independent destination."""
         src = _parts(source)
         dst = _parts(destination, archive=archive)
         with (
@@ -248,23 +312,30 @@ class ContentStore:
             self._parent(root, src) as source_fd,
             self._parent(root, dst) as target_fd,
         ):
-            data, _ = self._bytes(source_fd, src[-1])
+            data, info = self._bytes(source_fd, src[-1])
             if _revision(data) != revision:
                 raise ConflictError(
                     "File changed externally; read it again before moving."
                 )
             try:
-                os.link(
-                    src[-1],
-                    dst[-1],
-                    src_dir_fd=source_fd,
-                    dst_dir_fd=target_fd,
-                    follow_symlinks=False,
-                )
-            except FileExistsError:
+                os.stat(dst[-1], dir_fd=target_fd, follow_symlinks=False)
+            except FileNotFoundError:
+                pass
+            else:
                 raise ConflictError(
                     "Destination already exists; nothing was overwritten."
-                ) from None
-            os.fsync(target_fd)
-            os.unlink(src[-1], dir_fd=source_fd)
-            os.fsync(source_fd)
+                )
+            self._publish(
+                root,
+                source_fd,
+                src[-1],
+                target_fd,
+                dst[-1],
+                source,
+                destination,
+                data,
+                data,
+                revision,
+                info,
+                stat.S_IMODE(info.st_mode),
+            )

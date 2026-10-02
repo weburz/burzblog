@@ -7,7 +7,7 @@ import pytest
 
 from burzblog import ContentStore, Document, parse
 from burzblog.document import MAX_BYTES
-from burzblog.errors import ConflictError, ContentError
+from burzblog.errors import ConflictError, ContentError, RecoveryError
 
 
 @pytest.fixture
@@ -197,11 +197,11 @@ def test_failure_before_publication_preserves_original_and_cleans_temp(
     def fail(*args, **kwargs):
         raise OSError("simulated disk failure")
 
-    monkeypatch.setattr(os, "replace", fail)
-    with pytest.raises(OSError):
+    monkeypatch.setattr(os, "rename", fail)
+    with pytest.raises(RecoveryError):
         store.save("a.md", Document.new("New", "new"), revision)
     assert (store.root / "a.md").read_bytes() == original
-    assert not list(store.root.glob(".burzblog-*"))
+    assert not list(store.root.glob(".burzblog-*.tmp"))
 
 
 def test_fsync_failure_before_publication_preserves_original(store, monkeypatch):

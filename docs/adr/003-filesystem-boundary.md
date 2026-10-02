@@ -5,6 +5,9 @@ not just string normalization. Refuse symlinks, hard-linked content, non-regular
 files and foreign-owned files. Require read revisions for every destructive
 source change. Serialize application writers with root-directory flock.
 
+Mutation publication is superseded by ADR-005 (capture before publish); the
+original link/unlink protocol below is retained as decision history only.
+
 Atomic file publication prevents truncated articles; create and relocation must
 not overwrite destinations. Delete means move to a pre-created `.archive`
 directory using the same no-clobber rules. Hard delete is not provided.

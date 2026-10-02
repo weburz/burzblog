@@ -46,24 +46,20 @@ The root and parents must not be concurrently renamed by an untrusted OS user.
 
 Application mutations serialize with an advisory flock on the root directory.
 Read revisions are SHA-256 hashes; stale saves fail before replacing anything.
-Writes stage a same-directory file, fsync it, then atomically publish and fsync
-the directory. New destinations use hard-link publication to avoid overwrite.
-Rename/archive use link-then-unlink: interruption may leave both complete copies;
-they are deliberately not claimed to be multi-file atomic transactions.
+Changing saves/moves retain the actual source inode in `.burzblog-recovery`
+before no-clobber publication. Recovery retains external replacements and late
+writes through already-open descriptors. No-op saves do not create journals.
+See ADR-005 and `docs/recovery.md`: this is a recoverable multi-step operation,
+not a transaction. An interrupted mutation can leave the normal source absent.
+Recovery artifacts are ordinary files, never automatically pruned or committed.
 
-POSIX has no general compare-and-replace primitive against an uncooperative
-external editor. An external save between the final revision check and replace
-can be lost. **Do not edit the same file concurrently through independent tools.**
-Normal sequential editor/Git workflows are supported. A browser release must
-revisit this boundary, with recovery copies or a stronger coordinated protocol.
-Likewise, directory descriptor confinement is not a sandbox against someone who
+Directory descriptor confinement is not a sandbox against someone who
 can rename the directory tree or change mounts. NFS/network filesystems and
 native Windows are outside the tested storage contract.
 
 ## Deferred milestones
 
-1. Review the foundation and concurrency/recovery policy.
-2. Read-only Git status and explicit conservative Git commands with fixture repos.
+1. Read-only Git status and explicit conservative Git commands with fixture repos.
 3. Authentication and sanitized preview, then a small Markdown web editor and
    Playwright acceptance tests. No visual editor until round-trip rules exist.
 
