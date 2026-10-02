@@ -1,0 +1,40 @@
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "burzblog"
+version = "0.1.0"
+description = "File-first Markdown content foundation"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = ["ruamel.yaml==0.18.16"]
+
+[project.scripts]
+burzblog = "burzblog.cli:main"
+
+[dependency-groups]
+dev = ["pytest==8.4.2", "pytest-cov==6.3.0", "mypy==1.18.2", "ruff==0.13.3", "hatchling==1.27.0"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/burzblog"]
+
+[tool.ruff]
+target-version = "py312"
+
+[tool.ruff.lint]
+extend-select = ["I", "D"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D"]
+
+[tool.mypy]
+strict = true
+files = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=burzblog --cov-report=term-missing --cov-fail-under=80"

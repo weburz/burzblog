@@ -1,0 +1,21 @@
+# Contributing
+
+Read `AGENTS.md`, the architecture and ADRs first. Use `make setup`, `make dev`,
+and `make check`; use `make format` for formatting. Python functions have type
+hints and Google-style docstrings. Prefer small, stateless domain functions and
+explicit filesystem failures. No unrelated frameworks or services.
+
+Use short-lived feature branches and Conventional Commit subjects validated
+with `crisp message 'feat(content): describe the change'`. Open a PR with exact
+verification results and limitations. Do not bypass required checks or reviews.
+CI uses only read permissions and no repository secrets. Review dependency
+updates deliberately and regenerate `uv.lock` with uv; never hand-edit it.
+
+Tests under `tests/unit` use no filesystem; `tests/integration` use temporary
+directories and real local files/processes. Add regression tests for failures
+and preservation, not just successful CRUD. Browser E2E will use Playwright
+when the browser application exists.
+
+No code should be copied from other projects without a provenance and license
+review. The project license and contribution licensing policy are pending;
+resolve those with maintainers before accepting outside contributions.
