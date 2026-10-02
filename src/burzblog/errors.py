@@ -7,3 +7,7 @@ class ContentError(ValueError):
 
 class ConflictError(ContentError):
     """Content changed since it was read, or a destination already exists."""
+
+
+class RecoveryError(ConflictError):
+    """An interrupted/conflicting mutation retained content in the recovery journal."""

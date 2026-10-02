@@ -20,17 +20,18 @@ not a sandbox against root, another process running as the same user, directory
 renames by an ancestor owner, bind mounts or hostile network filesystems.
 
 Application writers cooperate through flock on the root directory. Revisions
-detect already-completed external changes. There remains a check/replace race
-against external editors that do not acquire this lock: do not concurrently
-save the same file through different tools. Atomic replacement preserves a
-whole old/new file, not a multi-process compare-and-swap. Rename/archive can
-leave two hard links on interruption; inspect and remove the unwanted duplicate
-with ordinary tools before resuming. No automatic recovery deletes user files.
+detect already-completed external changes. Mutations capture the actual source
+inode into a private recovery journal before no-clobber publication. An external
+replacement is retained; a concurrent creator wins publication safely. Late
+writes through an external descriptor remain in the captured original, which
+is never automatically deleted. This provides recovery, not automatic merging.
+An interrupted save/move can leave the source absent; inspect the journal before
+retrying. See `docs/recovery.md` and ADR-005 for retention and recovery procedures.
 
 Files are fsynced before publication and parent directories after changes.
 Disk/fsync errors after publication mean the result may already be visible;
 inspect the file before retrying. Killed processes can leave hidden staging
-files containing private content. Backups are still necessary. Atomic replaces
+files containing private content. Backups are still necessary. Publications
 preserve ordinary mode bits, not ACLs, xattrs or special ownership metadata;
 do not use storage requiring those properties in this phase.
 

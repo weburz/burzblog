@@ -64,8 +64,9 @@ All reads consult disk. No-op saves preserve bytes and modification time.
 Unknown supported YAML fields remain intact. Paths, ownership, links, file sizes
 and revisions are checked. These checks have explicit limits: see
 [security](SECURITY.md), [architecture](docs/architecture/foundation.md), and
-[frontmatter](docs/frontmatter.md). Do not edit the same file concurrently through
-independent tools. Metadata edits can normalize YAML formatting.
+[frontmatter](docs/frontmatter.md). Saves and moves retain captured originals for
+[recovery](docs/recovery.md), including late external writes. Conflicts require
+review; they are never automatically merged. Metadata edits can normalize YAML formatting.
 
 ## Scope and operation
 

@@ -16,7 +16,9 @@ Read `docs/architecture/foundation.md` and `SECURITY.md` before storage changes.
 - Never follow symlinks or overwrite a destination during create/rename.
 - Test filesystem behavior in temporary directories, including failure paths.
 - Do not copy the previous implementation or select a project license.
-- Do not add runtime services or implement the remaining V1 ahead of the foundation.
+- Follow the authorized milestone order: recovery, Git, application/auth, then UI.
+- Every changing save/move retains its source inode under `.burzblog-recovery`.
+  Never prune journals automatically or include them in application Git commits.
 - Python uses normal `def` syntax; the global arrow-function rule applies to JS/TS.
 - Use a short-lived feature branch; no Plane issue exists for this bootstrap.
   Commit via Crisp when available. Never push directly to main.
