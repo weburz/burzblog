@@ -278,3 +278,36 @@ def test_https_origin_sets_secure_cookie(configured):
         )
         assert "Secure" in response.headers["set-cookie"]
         assert client.get("/api/posts").status_code == 200
+
+
+def test_external_replacement_after_save_does_not_report_false_success(
+    client, configured, monkeypatch
+):
+    from burzblog.storage import ContentStore
+
+    login(client)
+    article = create(client)
+    original = ContentStore.save
+
+    def replaced_after_publication(store, path, document, revision):
+        result = original(store, path, document, revision)
+        (store.root / path).write_text("external after publication\n")
+        return result
+
+    monkeypatch.setattr(ContentStore, "save", replaced_after_publication)
+    response = client.put(
+        "/api/post",
+        json={
+            "path": article["path"],
+            "revision": article["revision"],
+            "markdown": "browser requested\n",
+        },
+    )
+    assert response.status_code == 409
+    assert (
+        configured[0].content_root / article["path"]
+    ).read_text() == "external after publication\n"
+    assert any(
+        path.read_text() == "browser requested\n"
+        for path in configured[0].content_root.glob(".burzblog-recovery/*/requested.md")
+    )

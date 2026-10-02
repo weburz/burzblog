@@ -1,6 +1,6 @@
 # Application API and local authentication
 
-The API is implemented; a browser interface is the next milestone. It manages one
+The API powers the [browser interface](browser.md). It manages one
 operator-configured content root. Routes call content/Git services, never shell
 commands assembled from requests. Read operations consult disk; pagination limits
 parsed summaries to 200 per request. Discovery still traverses the content tree.

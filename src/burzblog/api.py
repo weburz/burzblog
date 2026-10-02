@@ -1,6 +1,7 @@
 """Authenticated single-project HTTP boundary; domain logic lives in services."""
 
 from dataclasses import asdict
+from pathlib import Path
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
@@ -235,6 +236,10 @@ def create_app(settings: Settings) -> FastAPI:
             return {"repository": None, "remote_configured": False}
         result = asdict(state)
         result.pop("root")
+        scope = settings.content_root.relative_to(Path(state.root))
+        result["changed_markdown"] = [
+            str(Path(path).relative_to(scope)) for path in state.changed_markdown
+        ]
         return {
             "repository": result | {"clean": state.clean},
             "remote_configured": settings.remote is not None,

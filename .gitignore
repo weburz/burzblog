@@ -14,3 +14,8 @@ dist/
 demo-content/
 content/
 .env
+web/node_modules/
+web/.nuxt/
+web/.output/
+web/test-results/
+web/playwright-report/

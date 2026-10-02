@@ -33,5 +33,31 @@ jobs:
       - uses: go-task/setup-task@70f2430ad412f838533de8c0515c749ffb2b8bd3 # v1
         with:
           version: '3.54.0'
-      - run: task setup
-      - run: task check
+      - run: uv sync --frozen
+      - run: task backend:check
+  browser:
+    # Dormant while repository Actions is disabled. Never deploys or publishes.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24.14.1'
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+        with:
+          version: '11.15.1'
+      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
+        with:
+          version: '0.12.21'
+          python-version: '3.12'
+          enable-cache: false
+      - run: uv sync --frozen
+      - run: pnpm install --frozen-lockfile
+        working-directory: web
+      - run: pnpm exec playwright install --with-deps chromium
+        working-directory: web
+      - run: pnpm check
+        working-directory: web

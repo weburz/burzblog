@@ -9,6 +9,9 @@ and [deployment boundaries](docs/application.md). Loopback is the only built-in
 server bind; production requires a same-origin HTTPS proxy with timeouts and
 connection limits. No browser/public-deployment security assurance is claimed.
 Preview disables raw HTML and sanitizes allowed tags/URLs; images are omitted.
+The browser adds an empty-sandbox iframe and deny-by-default preview CSP. Unsent
+writing exists in memory only. See [dependency review](docs/dependencies.md) for
+the known build-tool advisory and the enforced production-artifact boundary.
 
 This is a foundation under development, not a reviewed production web service.
 Supported code is the current main branch. A private reporting contact must be

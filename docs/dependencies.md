@@ -1,5 +1,30 @@
 # Dependency decisions
 
+## Browser application
+
+Nuxt 4/Vue 3/Nuxt UI 4/Tailwind 4 and Oxlint/Oxfmt follow the inspected UniBurz
+toolchain. Versions are exact in `web/package.json` and transitive packages locked
+with pnpm 11. No Pinia or rich-text editor dependency. Framework/tools are MIT;
+Playwright is Apache-2.0, bundled Sofia Sans/JetBrains Mono fonts are OFL-1.1 and
+Lucide icons are ISC. Assets remain package-managed, not copied from old products.
+Family palette values are adapted from UniBurz's design tokens, not business UI.
+
+The installed development/build tree is substantial (Nuxt UI's transitive tools),
+while deployment uses only `.output/`, not `node_modules/`. Font discovery and
+remote icon fetching are disabled; installed fonts/icons are bundled locally.
+
+Audit on 2026-10-02 found two transitive advisories. A narrow `fontless>esbuild`
+override uses 0.28.1 for [GHSA-g7r4-m6w7-qqqr](https://github.com/advisories/GHSA-g7r4-m6w7-qqqr).
+[GHSA-86w9-cpqp-85rv](https://github.com/advisories/GHSA-86w9-cpqp-85rv) affects
+node-forge <=1.4.0; no patched release was available from the registry (despite
+the audit client suggesting 1.4.1). It enters through listhen's development TLS
+tooling. BurzBlog does not use its RSA signature verification, serve development
+TLS, or ship node-forge/listhen in `.output`. The production build gate rejects
+these packages in deployable output. Production TLS belongs to the operator's
+reverse proxy. This is a bounded reachability assessment, **not a clean dependency
+audit or a claim that the upstream bug is fixed**. Keep the advisory visible and
+update when an upstream patch is available; do not add audit suppression.
+
 ## Authenticated application additions
 
 - FastAPI (MIT), Uvicorn (BSD-3-Clause): typed HTTP boundary and ASGI server,

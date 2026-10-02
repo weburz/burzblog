@@ -1,6 +1,6 @@
 # Foundation architecture
 
-Status: foundation with Git and authenticated API; not a complete browser CMS.
+Status: reusable content/Git foundation with an authenticated source-editing UI.
 
 ```text
 Local CLI → Markdown domain → descriptor-relative filesystem store
@@ -59,8 +59,9 @@ native Windows are outside the tested storage contract.
 
 ## Deferred milestones
 
-1. Nuxt UI Markdown editor and Playwright tests over the authenticated API.
-2. Private remote credential handling. No visual editor until round-trip rules exist.
+The Nuxt UI source editor and Playwright acceptance tests now exercise this core;
+see ADR-009. Private remote credential handling remains deferred. No visual editor
+until round-trip rules exist.
 
 ## Maintainer decisions
 

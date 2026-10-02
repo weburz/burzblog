@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 
 from burzblog.document import Document, parse, serialize
-from burzblog.errors import ContentError
+from burzblog.errors import ConflictError, ContentError
 from burzblog.storage import ContentStore
 
 
@@ -55,20 +55,29 @@ class ContentApplication:
         """Create a draft in the configured posts collection without overwriting."""
         document = Document.new(title, slug, body)
         path = f"posts/{slug}.md"
-        self.store.create(path, document)
-        return self.read(path)
+        revision = self.store.create(path, document)
+        return self._verified_read(path, revision)
 
     def save(self, path: str, markdown: str, revision: str) -> Article:
         """Save exact Markdown only against the caller's observed revision."""
-        self.store.save(path, parse(markdown), revision)
-        return self.read(path)
+        written = self.store.save(path, parse(markdown), revision)
+        return self._verified_read(path, written)
 
     def publish(self, path: str, revision: str) -> Article:
         """Publish portable metadata only; no implicit deployment or Git push."""
         snapshot = self.store.read(path)
         snapshot.document.metadata["status"] = "published"
-        self.store.save(path, snapshot.document, revision)
-        return self.read(path)
+        written = self.store.save(path, snapshot.document, revision)
+        return self._verified_read(path, written)
+
+    def _verified_read(self, path: str, revision: str) -> Article:
+        """Do not report another writer's immediate replacement as our saved result."""
+        article = self.read(path)
+        if article.revision != revision:
+            raise ConflictError(
+                "File changed again after publication; retain editor input."
+            )
+        return article
 
     def rename(self, path: str, destination: str, revision: str) -> Article:
         """Move without overwriting, preserving metadata as supplied in the file."""

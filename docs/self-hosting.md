@@ -1,7 +1,7 @@
 # Running the foundation locally
 
 The authenticated API has a separate [setup guide](application.md); a browser
-interface is not included yet. Container packaging still targets the CLI.
+interface has its own [running guide](browser.md). Container packaging still targets the CLI.
 
 For the local library/CLI, install the development
 prerequisites from README, then run `task setup` and `task dev`. Point `--root` at an

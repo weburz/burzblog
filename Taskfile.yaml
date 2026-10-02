@@ -5,11 +5,13 @@ tasks:
     desc: List available development commands
     cmd: task --list
   setup:
-    desc: Install locked dependencies with uv
-    cmd: uv sync --frozen
+    desc: Install locked uv/pnpm dependencies and the test browser
+    cmds:
+      - uv sync --frozen
+      - task: web:setup
   dev:
-    desc: Show the local CLI interface
-    cmd: uv run --frozen burzblog --help
+    desc: Run the configured API and browser development servers
+    cmd: task --parallel api:dev web:dev
   lint:
     desc: Check Python formatting and lint rules
     cmds:
@@ -29,11 +31,29 @@ tasks:
   check:
     desc: Run all local merge gates (Actions is intentionally disabled)
     cmds:
+      - task: backend:check
+      - task: web:check
+  backend:check:
+    desc: Check the independently usable Python backend
+    cmds:
       - task: lint
       - task: typecheck
       - task: test
       - task: build
       - task: hooks:check
+  web:setup:
+    dir: web
+    cmds:
+      - pnpm install --frozen-lockfile
+      - pnpm exec playwright install chromium
+  web:dev:
+    dir: web
+    cmd: pnpm dev
+  api:dev:
+    cmd: uv run --frozen burzblog-server serve
+  web:check:
+    dir: web
+    cmd: pnpm check
   format:
     desc: Format Python source
     cmd: uv run --frozen ruff format .
