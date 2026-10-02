@@ -131,7 +131,7 @@ def create_app(settings: Settings) -> FastAPI:
             return failure(
                 429,
                 "rate_limited",
-                "Too many login attempts. Try again in ten minutes.",
+                "Login is busy or temporarily limited. Please try again later.",
             )
         if isinstance(error, AuthenticationError):
             return failure(
@@ -147,7 +147,7 @@ def create_app(settings: Settings) -> FastAPI:
             return failure(
                 409,
                 "conflict",
-                "Content or repository state changed. Your input has not been accepted; review disk and repository state before retrying.",
+                "Content or repository state changed. Keep unsaved input and review disk and repository state before retrying.",
             )
         return failure(
             400,

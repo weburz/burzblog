@@ -1,5 +1,28 @@
 # Recovering an interrupted save or move
 
+## Ordinary Git workflows
+
+Before editing through BurzBlog and then using external `git add .`, explicitly
+exclude recovery journals from your repository. They contain historical and
+requested content, including text no longer present in the visible article.
+BurzBlog's own commits cannot select them; ordinary Git has no such restriction.
+
+For a repository whose content root is `content/`, add these lines to its existing
+`.gitignore` (or `.git/info/exclude` for local-only rules), adjusting the prefix:
+
+```gitignore
+/content/.burzblog-recovery/
+/content/.archive/
+```
+
+Do not overwrite existing ignore rules. Patterns do not untrack already committed
+files; inspect `git status` and `git ls-files` and handle existing history
+explicitly. BurzBlog never rewrites history to remove them. Back up the whole
+content directory separately, including ignored recovery/archive files. BurzBlog
+does not modify user Git configuration or ignore rules at startup.
+
+## Journal contents
+
 Every changing save, rename or archive keeps a journal in
 `CONTENT_ROOT/.burzblog-recovery/<unique-id>/`. No-op saves create none.
 

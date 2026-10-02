@@ -11,6 +11,7 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from threading import BoundedSemaphore
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerificationError
@@ -78,6 +79,7 @@ class Authentication:
                 "Authentication database must be a private regular file."
             )
         self.hasher = PasswordHasher()
+        self.hash_slot = BoundedSemaphore(1)
         with self.connection() as connection:
             connection.executescript("""
                 CREATE TABLE IF NOT EXISTS administrator (id INTEGER PRIMARY KEY CHECK (id = 1), password_hash TEXT NOT NULL);
@@ -131,10 +133,7 @@ class Authentication:
             ).fetchone()
         if row is None or not 1 <= len(password) <= 1024:
             raise AuthenticationError("Login failed.")
-        try:
-            self.hasher.verify(row[0], password)
-        except VerificationError:
-            raise AuthenticationError("Login failed.") from None
+        verified_hash = self._verified_hash(row[0], password)
         session = Session(secrets.token_urlsafe(32), secrets.token_urlsafe(32))
         with self.connection() as connection:
             connection.execute("DELETE FROM sessions WHERE expires <= ?", (now,))
@@ -146,12 +145,29 @@ class Authentication:
                 "INSERT INTO sessions VALUES (?, ?, ?)",
                 (digest(session.token), session.csrf, now + SESSION_SECONDS),
             )
-            if self.hasher.check_needs_rehash(row[0]):
+            if verified_hash != row[0]:
                 connection.execute(
                     "UPDATE administrator SET password_hash=? WHERE id=1",
-                    (self.hasher.hash(password),),
+                    (verified_hash,),
                 )
         return session
+
+    def _verified_hash(self, password_hash: str, password: str) -> str:
+        """Bound concurrent Argon2 memory use without weakening hash parameters."""
+        if not self.hash_slot.acquire(blocking=False):
+            raise RateLimitError("Another login is being verified. Try again shortly.")
+        try:
+            try:
+                self.hasher.verify(password_hash, password)
+            except VerificationError:
+                raise AuthenticationError("Login failed.") from None
+            return (
+                self.hasher.hash(password)
+                if self.hasher.check_needs_rehash(password_hash)
+                else password_hash
+            )
+        finally:
+            self.hash_slot.release()
 
     def verify(self, token: str | None) -> Session:
         """Validate an unexpired credential without returning the stored digest."""

@@ -1,3 +1,6 @@
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event
+
 import pytest
 
 from burzblog.auth import (
@@ -60,3 +63,30 @@ def test_unsafe_state_permissions_and_symlink_rejected(tmp_path):
     (state / "authentication.sqlite3").symlink_to(tmp_path / "outside")
     with pytest.raises(ContentError):
         Authentication(state)
+
+
+def test_concurrent_logins_do_not_allocate_parallel_argon2_work(tmp_path, monkeypatch):
+    from argon2 import PasswordHasher
+
+    auth = Authentication(tmp_path / "state")
+    password = "concurrency fixture password"  # noqa: S105 - temporary fixture
+    auth.initialize(password)
+    entered = Event()
+    release = Event()
+    original = PasswordHasher.verify
+
+    def held_verify(hasher, encoded, candidate):
+        entered.set()
+        assert release.wait(timeout=5)
+        return original(hasher, encoded, candidate)
+
+    monkeypatch.setattr(PasswordHasher, "verify", held_verify)
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        pending = executor.submit(auth.login, password)
+        try:
+            assert entered.wait(timeout=5)
+            with pytest.raises(RateLimitError):
+                auth.login(password)
+        finally:
+            release.set()
+        assert auth.verify(pending.result(timeout=5).token)

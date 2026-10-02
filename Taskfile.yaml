@@ -54,6 +54,9 @@ tasks:
   web:check:
     dir: web
     cmd: pnpm check
+  measure:
+    desc: Measure disposable local production fixtures (requires built web output)
+    cmd: uv run --frozen python scripts/measure.py
   format:
     desc: Format Python source
     cmd: uv run --frozen ruff format .

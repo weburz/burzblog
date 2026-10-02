@@ -29,6 +29,11 @@ Only run `init-admin` once. The origin must match the address used in the browse
 State must be outside content and the Git repository. Existing content roots need
 `posts/` for creation and `.archive/` for archive operations.
 
+Before using ordinary `git add .`, add recovery/archive exclusions as described in
+[recovery and Git](recovery.md#ordinary-git-workflows). BurzBlog's selected-file
+commits exclude these directories, but external Git does not know their purpose.
+BurzBlog does not silently rewrite your `.gitignore`.
+
 For a local production build, run `cd web && pnpm build`, then start the API and
 `HOST=127.0.0.1 PORT=3000 pnpm start` in separate supervised processes. For remote
 use, place an HTTPS reverse proxy in front of port 3000 and configure its exact

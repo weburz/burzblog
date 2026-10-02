@@ -1,8 +1,11 @@
-"""Measure local foundation operations; no server or idle-memory claim."""
+"""Measure local production processes against disposable ordinary Markdown files."""
 
+import gzip
 import json
+import math
+import os
 import platform
-import resource
+import socket
 import statistics
 import subprocess
 import sys
@@ -10,56 +13,186 @@ import tempfile
 import time
 from pathlib import Path
 
-from burzblog import ContentStore, Document
+import httpx
+
+from burzblog.auth import Authentication
+
+
+def available(port: int) -> None:
+    """Refuse to run alongside an existing real instance on the required ports."""
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", port))
+
+
+def git(root: Path, *arguments: str) -> None:
+    """Prepare only the newly created fixture repository."""
+    subprocess.run(  # noqa: S603 - explicit controlled fixture arguments
+        ["git", "-C", str(root), *arguments],  # noqa: S607 - developer Git
+        check=True,
+        capture_output=True,
+    )
+
+
+def ready(process: subprocess.Popen[bytes], url: str) -> float:
+    """Measure spawn-to-HTTP readiness, with a bounded deadline."""
+    start = time.perf_counter()
+    with httpx.Client(trust_env=False, timeout=1) as client:
+        while time.perf_counter() - start < 20:
+            if process.poll() is not None:
+                raise RuntimeError("Fixture process exited before readiness.")
+            try:
+                if client.get(url).status_code == 200:
+                    return round((time.perf_counter() - start) * 1000, 2)
+            except httpx.TransportError:
+                pass
+            time.sleep(0.01)
+    raise RuntimeError("Fixture startup deadline exceeded.")
+
+
+def resident(pid: int) -> float:
+    """Report Linux process RSS, not an invented cross-platform memory metric."""
+    for line in Path(f"/proc/{pid}/status").read_text().splitlines():
+        if line.startswith("VmRSS:"):
+            return round(int(line.split()[1]) / 1024, 2)
+    raise RuntimeError("Linux RSS is unavailable.")
 
 
 def main() -> None:
-    """Measure 100 files, 100 fresh reads, and 10 separate CLI startups."""
-    with tempfile.TemporaryDirectory(prefix="burzblog-measure-") as directory:
-        store = ContentStore(directory)
-        document = Document.new("Benchmark", "benchmark", "Paragraph.\n" * 100)
-        started = time.perf_counter()
-        for index in range(100):
-            store.create(f"post-{index}.md", document)
-        creation = time.perf_counter() - started
-        samples = []
-        for index in range(100):
-            started = time.perf_counter()
-            store.read(f"post-{index}.md")
-            samples.append((time.perf_counter() - started) * 1000)
-        started = time.perf_counter()
-        if len(store.discover()) != 100:
-            raise RuntimeError("Benchmark fixture has an unexpected file count.")
-        discovery = (time.perf_counter() - started) * 1000
-        startups = []
-        executable = Path(sys.executable).with_name("burzblog")
-        for _ in range(10):
-            started = time.perf_counter()
-            subprocess.run(  # noqa: S603 - fixed local executable and arguments
-                [str(executable), "--help"], check=True, stdout=subprocess.DEVNULL
+    """Print reproducible local measurements, not a deployment capacity promise."""
+    available(8000)
+    available(3000)
+    project = Path(__file__).resolve().parent.parent
+    output = project / "web/.output"
+    if not (output / "server/index.mjs").is_file():
+        raise RuntimeError("Build the frontend first with task web:check.")
+    with tempfile.TemporaryDirectory(prefix="burzblog-measure-") as temporary:
+        root = Path(temporary)
+        repository = root / "repo"
+        posts = repository / "content/posts"
+        posts.mkdir(parents=True)
+        (repository / "content/.archive").mkdir()
+        for index in range(1000):
+            (posts / f"post-{index:04}.md").write_text(
+                f"---\ntitle: Post {index}\nstatus: draft\n---\n" + "Paragraph.\n" * 40
             )
-            startups.append((time.perf_counter() - started) * 1000)
-        print(
-            json.dumps(
-                {
-                    "platform": platform.platform(),
-                    "python": platform.python_version(),
-                    "files": 100,
-                    "create_100_seconds": round(creation, 3),
-                    "read_median_ms": round(statistics.median(samples), 3),
-                    "discover_100_ms": round(discovery, 3),
-                    "cli_startup_median_ms": round(statistics.median(startups), 3),
-                    "benchmark_process_peak_rss_platform_units": resource.getrusage(
-                        resource.RUSAGE_SELF
-                    ).ru_maxrss,
-                    "artifacts_bytes": {
-                        path.name: path.stat().st_size
-                        for path in sorted(Path("dist").glob("burzblog-0.1.0*"))
-                    },
-                },
-                indent=2,
+        git(repository, "init", "--initial-branch=main")
+        git(repository, "config", "user.name", "Measurement fixture")
+        git(repository, "config", "user.email", "fixture@example.invalid")
+        git(repository, "add", "content/posts")
+        git(repository, "-c", "commit.gpgsign=false", "commit", "-m", "fixture")
+        Authentication(root / "state").initialize("measurement fixture password")
+        environment = {
+            key: value
+            for key, value in os.environ.items()
+            if not key.startswith("BURZBLOG_")
+        } | {
+            "BURZBLOG_CONTENT_ROOT": str(repository / "content"),
+            "BURZBLOG_STATE_DIR": str(root / "state"),
+            "BURZBLOG_ORIGIN": "http://127.0.0.1:3000",
+            "HOST": "127.0.0.1",
+            "PORT": "3000",
+        }
+        processes: list[subprocess.Popen[bytes]] = []
+        try:
+            api = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-c",
+                    "from burzblog.server import main; raise SystemExit(main())",
+                    "serve",
+                ],
+                env=environment,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
             )
-        )
+            processes.append(api)
+            api_start = ready(api, "http://127.0.0.1:8000/api/session")
+            frontend = subprocess.Popen(  # noqa: S603 - fixed built entrypoint
+                ["node", str(output / "server/index.mjs")],  # noqa: S607 - developer Node
+                env=environment,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            processes.append(frontend)
+            frontend_start = ready(frontend, "http://127.0.0.1:3000")
+            measurements: dict[str, object] = {
+                "platform": f"{platform.system()} {platform.machine()}",
+                "python": platform.python_version(),
+                "posts": 1000,
+                "samples_per_operation": 20,
+                "api_ready_ms": api_start,
+                "frontend_ready_ms": frontend_start,
+                "api_idle_rss_mib": resident(api.pid),
+                "frontend_idle_rss_mib": resident(frontend.pid),
+            }
+            with httpx.Client(
+                base_url="http://127.0.0.1:3000",
+                trust_env=False,
+                timeout=15,
+                headers={"Origin": "http://127.0.0.1:3000"},
+            ) as client:
+                response = client.post(
+                    "/api/login", json={"password": "measurement fixture password"}
+                )
+                response.raise_for_status()
+                client.headers["X-CSRF-Token"] = response.json()["csrf"]
+                article = client.get(
+                    "/api/post", params={"path": "posts/post-0000.md"}
+                ).json()
+                for operation in ("list_page_100", "save", "git_status"):
+                    samples: list[float] = []
+                    for iteration in range(21):
+                        started = time.perf_counter()
+                        if operation == "save":
+                            response = client.put(
+                                "/api/post",
+                                json={
+                                    "path": article["path"],
+                                    "revision": article["revision"],
+                                    "markdown": f"Measured write {iteration}\n",
+                                },
+                            )
+                        else:
+                            response = client.get(
+                                "/api/posts?limit=100"
+                                if operation == "list_page_100"
+                                else "/api/git"
+                            )
+                        response.raise_for_status()
+                        elapsed = (time.perf_counter() - started) * 1000
+                        if operation == "save":
+                            article = response.json()
+                        if iteration:
+                            samples.append(elapsed)
+                    measurements[operation] = {
+                        "median_ms": round(statistics.median(samples), 2),
+                        "p95_ms": round(
+                            sorted(samples)[math.ceil(len(samples) * 0.95) - 1], 2
+                        ),
+                    }
+            for extension in ("js", "css", "woff2"):
+                contents = [
+                    path.read_bytes()
+                    for path in (output / "public").rglob(f"*.{extension}")
+                ]
+                measurements[f"all_emitted_{extension}"] = {
+                    "bytes": sum(map(len, contents)),
+                    "gzip_bytes": sum(
+                        len(gzip.compress(data, mtime=0)) for data in contents
+                    ),
+                }
+            measurements["output_bytes"] = sum(
+                path.stat().st_size for path in output.rglob("*") if path.is_file()
+            )
+            print(json.dumps(measurements, indent=2, sort_keys=True))
+        finally:
+            for process in reversed(processes):
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
 
 
 if __name__ == "__main__":

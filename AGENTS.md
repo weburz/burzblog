@@ -8,6 +8,7 @@ Read `docs/architecture/foundation.md` and `SECURITY.md` before storage changes.
 - `task dev`: configured API and Nuxt development servers; see docs/application.md.
 - `task check`: backend gates plus frontend format/lint/types/tests/build/E2E.
 - `task backend:check`: independent Python checks; `task web:check`: browser gates.
+- `task measure`: disposable 1,000-file local performance fixture; not a capacity claim.
 - Browser E2E uses disposable /tmp fixtures and ports 8000/3000; never reuse a
   running real instance. Tests must not point at operator content.
 - `task format`: apply Ruff formatting. Make commands remain compatibility aliases.

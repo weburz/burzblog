@@ -71,7 +71,9 @@ Markdown is limited to 2 MiB; the entire JSON request to 3 MiB.
 
 One administrator; fixed 12-hour sessions; at most 20 retained sessions; ten login
 attempts per ten minutes globally, including successful attempts. This simple
-bound persists across restarts but permits temporary login denial by an attacker.
+window is complemented by one concurrent Argon2 verification per application
+instance, preserving hashing parameters while bounding parallel memory use. The
+attempt window persists across restarts but permits temporary login denial by an attacker.
 State is trusted operator material, not safe against another process running as
 the same OS user. Back up private state separately with restrictive permissions;
 never place it in Git. No database content migration or export is necessary.
