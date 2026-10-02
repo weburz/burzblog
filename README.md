@@ -83,6 +83,9 @@ The core neither executes Markdown nor fetches embedded URLs. Explicit Git
 fetch/push may contact an operator-selected remote; setup/build download dependencies. Telemetry, analytics and
 tracking are absent.
 
+See the [measured local baseline](docs/performance.md) and
+[focused security review](docs/security-review.md) for evidence and limitations.
+
 Back up the entire content directory, including `.archive` and `.git` if used.
 No content migration runs at startup. API installations must also back up private
 authentication state separately. Do not expose the CLI through an
