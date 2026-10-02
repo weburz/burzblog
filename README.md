@@ -90,9 +90,16 @@ See the [measured local baseline](docs/performance.md) and
 Back up the entire content directory, including `.archive` and `.git` if used.
 No content migration runs at startup. API installations must also back up private
 authentication state separately. Do not expose the CLI through an
-unauthenticated network wrapper. A [Docker packaging setup](docs/containers.md)
-includes local builds, persistent content mounts and a future image update path.
-No image has been published or runtime-tested yet. See [self-hosting](docs/self-hosting.md).
+unauthenticated network wrapper.
+
+## Deploy
+
+One non-root process serves the interface and API; content, login state and Git
+secrets stay in host directories. The [container guide](docs/containers.md) covers
+building the image, initialization, an HTTPS reverse proxy, private Git remotes,
+backups, upgrades and rollback; [self-hosting](docs/self-hosting.md) also covers a
+non-container setup. The image is verified locally by `task docker:check`; no image
+or release has been published.
 
 ## Contributing and license
 

@@ -67,11 +67,20 @@ tasks:
     desc: Run repository hygiene hooks and static checks on tracked files
     cmd: uv run --frozen pre-commit run --all-files
   docker:lint:
-    desc: Lint the Dockerfile (requires standalone Hadolint 2.15.1)
-    cmd: hadolint Dockerfile
+    desc: Lint the Dockerfile with Hadolint 2.15.1 (standalone, else its pinned image)
+    cmd: >-
+      if command -v hadolint >/dev/null; then hadolint Dockerfile;
+      else docker run --rm -i hadolint/hadolint:v2.15.1@sha256:32dac94127fd60b7b7e3fbfc65e1383b9b5e25c9bfd7b8536de7a539fe68a12d < Dockerfile;
+      fi
   docker:build:
-    desc: Build the local CLI image (requires Docker)
-    cmd: docker compose build
+    desc: Build the browser application image locally (requires Docker)
+    cmd: docker build --tag burzblog:local .
   docker:smoke:
-    desc: Prove container to file to external edit interoperability (requires Docker)
-    cmd: bash scripts/docker-smoke.sh
+    desc: Container acceptance test against disposable fixtures (requires Docker)
+    cmd: uv run --frozen python scripts/docker-smoke.py
+  docker:check:
+    desc: Lint, build and acceptance-test the image (requires Docker and Hadolint)
+    cmds:
+      - task: docker:lint
+      - task: docker:build
+      - task: docker:smoke

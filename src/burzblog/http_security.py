@@ -1,10 +1,19 @@
-"""Bound requests before parsing and apply conservative API response headers."""
+"""Bound requests before parsing and apply conservative response headers."""
 
 import json
 
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 MAX_REQUEST = 3 * 1024 * 1024
+# Applied unless a route sets its own (the browser shell sets cache and CSP).
+DEFAULT_HEADERS = (
+    (b"cache-control", b"no-store"),
+    (b"x-content-type-options", b"nosniff"),
+    (b"referrer-policy", b"no-referrer"),
+    (b"x-frame-options", b"DENY"),
+    (b"x-robots-tag", b"noindex"),
+    (b"content-security-policy", b"default-src 'none'; frame-ancestors 'none'"),
+)
 
 
 class RequestBoundary:
@@ -64,14 +73,10 @@ class RequestBoundary:
 
         async def secured_send(message: Message) -> None:
             if message["type"] == "http.response.start":
-                message["headers"] = list(message.get("headers", [])) + [
-                    (b"cache-control", b"no-store"),
-                    (b"x-content-type-options", b"nosniff"),
-                    (b"referrer-policy", b"no-referrer"),
-                    (
-                        b"content-security-policy",
-                        b"default-src 'none'; frame-ancestors 'none'",
-                    ),
+                headers = list(message.get("headers", []))
+                present = {name.lower() for name, _ in headers}
+                message["headers"] = headers + [
+                    header for header in DEFAULT_HEADERS if header[0] not in present
                 ]
             await send(message)
 

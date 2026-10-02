@@ -59,11 +59,10 @@ def resident(pid: int) -> float:
 
 def main() -> None:
     """Print reproducible local measurements, not a deployment capacity promise."""
-    available(8000)
     available(3000)
     project = Path(__file__).resolve().parent.parent
     output = project / "web/.output"
-    if not (output / "server/index.mjs").is_file():
+    if not (output / "public/index.html").is_file():
         raise RuntimeError("Build the frontend first with task web:check.")
     with tempfile.TemporaryDirectory(prefix="burzblog-measure-") as temporary:
         root = Path(temporary)
@@ -89,8 +88,7 @@ def main() -> None:
             "BURZBLOG_CONTENT_ROOT": str(repository / "content"),
             "BURZBLOG_STATE_DIR": str(root / "state"),
             "BURZBLOG_ORIGIN": "http://127.0.0.1:3000",
-            "HOST": "127.0.0.1",
-            "PORT": "3000",
+            "BURZBLOG_WEB_ROOT": str(output / "public"),
         }
         processes: list[subprocess.Popen[bytes]] = []
         try:
@@ -100,30 +98,21 @@ def main() -> None:
                     "-c",
                     "from burzblog.server import main; raise SystemExit(main())",
                     "serve",
+                    "--port",
+                    "3000",
                 ],
                 env=environment,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
             processes.append(api)
-            api_start = ready(api, "http://127.0.0.1:8000/api/session")
-            frontend = subprocess.Popen(  # noqa: S603 - fixed built entrypoint
-                ["node", str(output / "server/index.mjs")],  # noqa: S607 - developer Node
-                env=environment,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            processes.append(frontend)
-            frontend_start = ready(frontend, "http://127.0.0.1:3000")
             measurements: dict[str, object] = {
                 "platform": f"{platform.system()} {platform.machine()}",
                 "python": platform.python_version(),
                 "posts": 1000,
                 "samples_per_operation": 20,
-                "api_ready_ms": api_start,
-                "frontend_ready_ms": frontend_start,
-                "api_idle_rss_mib": resident(api.pid),
-                "frontend_idle_rss_mib": resident(frontend.pid),
+                "ready_ms": ready(api, "http://127.0.0.1:3000/"),
+                "idle_rss_mib": resident(api.pid),
             }
             with httpx.Client(
                 base_url="http://127.0.0.1:3000",

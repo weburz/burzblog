@@ -25,18 +25,11 @@ export default defineConfig({
       use: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true },
     },
   ],
-  webServer: [
-    {
-      command: "uv run --frozen python ../scripts/e2e-server.py",
-      env: { BURZBLOG_E2E_ROOT: fixtureRoot },
-      url: "http://127.0.0.1:8000/api/session",
-      reuseExistingServer: false,
-    },
-    {
-      command: "pnpm start",
-      env: { HOST: "127.0.0.1", PORT: "3000" },
-      url: "http://127.0.0.1:3000",
-      reuseExistingServer: false,
-    },
-  ],
+  // The production topology: one process serves the generated shell and the API.
+  webServer: {
+    command: "uv run --frozen python ../scripts/e2e-server.py",
+    env: { BURZBLOG_E2E_ROOT: fixtureRoot },
+    url: "http://127.0.0.1:3000/api/session",
+    reuseExistingServer: false,
+  },
 });

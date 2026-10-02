@@ -27,6 +27,7 @@ from burzblog.http_security import RequestBoundary
 from burzblog.preview import render_preview
 from burzblog.settings import Settings
 from burzblog.storage import ContentStore
+from burzblog.web_shell import FingerprintedAssets, WebShell
 
 COOKIE = "burzblog_session"
 
@@ -101,6 +102,7 @@ def create_app(settings: Settings) -> FastAPI:
             raise ContentError(
                 "Initialize the administrator before starting the server."
             )
+    shell = WebShell(settings.web_root) if settings.web_root else None
     content = ContentApplication(ContentStore(settings.content_root))
     git = GitChanges(settings.content_root)
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
@@ -305,5 +307,11 @@ def create_app(settings: Settings) -> FastAPI:
             methods=[method],
             dependencies=[Depends(authenticated)],
             status_code=201 if endpoint is create else 200,
+        )
+    if shell is not None:
+        # The public shell carries no data; every content read stays behind /api/.
+        app.add_api_route("/", shell.response, methods=["GET"])
+        app.mount(
+            "/_nuxt", FingerprintedAssets(directory=shell.root / "_nuxt"), "assets"
         )
     return app

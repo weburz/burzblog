@@ -7,7 +7,9 @@ with its Authorization header so tests can prove where credentials were sent.
 
 from __future__ import annotations
 
+import argparse
 import base64
+import ipaddress
 import os
 import ssl
 import subprocess
@@ -41,10 +43,17 @@ def basic(username: str, secret: str) -> str:
     return "Basic " + base64.b64encode(f"{username}:{secret}".encode()).decode()
 
 
-def certificate(directory: Path, prefix: str) -> tuple[Path, Path]:
-    """Create a short-lived self-signed loopback certificate with OpenSSL."""
+def certificate(
+    directory: Path, prefix: str, hostname: str = "127.0.0.1"
+) -> tuple[Path, Path]:
+    """Create a short-lived self-signed certificate for `hostname` with OpenSSL."""
     certificate_file = directory / f"{prefix}-ca.pem"
     key = directory / f"{prefix}-key.pem"
+    try:
+        ipaddress.ip_address(hostname)
+        alternative = f"IP:{hostname}"
+    except ValueError:
+        alternative = f"DNS:{hostname}"
     subprocess.run(  # noqa: S603 - fixed arguments for a disposable fixture
         [  # noqa: S607 - developer OpenSSL
             "openssl",
@@ -58,9 +67,9 @@ def certificate(directory: Path, prefix: str) -> tuple[Path, Path]:
             "-days",
             "1",
             "-subj",
-            "/CN=127.0.0.1",
+            f"/CN={hostname}",
             "-addext",
-            "subjectAltName=IP:127.0.0.1",
+            f"subjectAltName={alternative}",
             "-keyout",
             str(key),
             "-out",
@@ -94,6 +103,10 @@ def start(
     expected: str | None,
     redirect: str | None = None,
     name: str = "private.git",
+    bind: str = "127.0.0.1",
+    port: int = 0,
+    hostname: str = "127.0.0.1",
+    certificate_pair: tuple[Path, Path] | None = None,
 ) -> tuple[GitHttpsServer, ThreadingHTTPServer]:
     """Serve `directory/served/<name>` over HTTPS, requiring `expected` authorization."""
     served = directory / "served"
@@ -111,7 +124,7 @@ def start(
             ],
             check=True,
         )
-    certificate_file, key = certificate(directory, name)
+    certificate_file, key = certificate_pair or certificate(directory, name, hostname)
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.load_cert_chain(certificate_file, key)
     home = directory / "server-home"
@@ -186,12 +199,38 @@ def start(
                     headers.append((header, value.strip()))
             self._reply(status, headers, payload)
 
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server = ThreadingHTTPServer((bind, port), Handler)
     server.daemon_threads = True
     server.socket = context.wrap_socket(server.socket, server_side=True)
-    port = server.server_address[1]
     fixture = GitHttpsServer(
-        f"https://127.0.0.1:{port}/{name}", certificate_file, repository
+        f"https://{hostname}:{server.server_address[1]}/{name}",
+        certificate_file,
+        repository,
     )
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return fixture, server
+
+
+if __name__ == "__main__":
+    # Standalone mode for the container smoke test: certificates and the
+    # expected token are prepared by the caller and mounted read-only.
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--directory", type=Path, required=True)
+    parser.add_argument("--name", default="site.git")
+    parser.add_argument("--port", type=int, default=8443)
+    parser.add_argument("--hostname", required=True)
+    parser.add_argument("--username", required=True)
+    parser.add_argument("--token-file", type=Path, required=True)
+    parser.add_argument("--certificate", type=Path, required=True)
+    parser.add_argument("--key", type=Path, required=True)
+    options = parser.parse_args()
+    _, running = start(
+        options.directory,
+        basic(options.username, options.token_file.read_text().strip()),
+        name=options.name,
+        bind="0.0.0.0",  # noqa: S104 - isolated container network only
+        port=options.port,
+        hostname=options.hostname,
+        certificate_pair=(options.certificate, options.key),
+    )
+    threading.Event().wait()

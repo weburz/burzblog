@@ -4,8 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "nuxt dev --host 127.0.0.1",
-    "build": "nuxt build && node scripts/check-runtime.mjs",
-    "start": "HOST=127.0.0.1 node .output/server/index.mjs",
+    "build": "nuxt generate && node scripts/check-runtime.mjs",
     "postinstall": "nuxt prepare",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",

@@ -19,3 +19,4 @@ web/.nuxt/
 web/.output/
 web/test-results/
 web/playwright-report/
+web/dist

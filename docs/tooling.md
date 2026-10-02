@@ -28,8 +28,10 @@ commit-message hook. The stdin invocation also works in linked worktrees.
 
 Actions is intentionally disabled. Record exact `task check` results in each
 PR; do not report dormant workflows as executed. Docker checks are separate:
-`task docker:lint`, `task docker:build`, `task docker:smoke`. Hadolint 2.15.1 is
-the standalone Dockerfile linter; do not run Docker inside sandboxed agents.
+`task docker:check` runs `docker:lint`, `docker:build` and `docker:smoke`. Hadolint
+2.15.1 is the Dockerfile linter (standalone when installed, otherwise its
+digest-pinned image). Where no Docker
+daemon is available, report container runtime checks as unrun.
 
 When frontend code is introduced, use pnpm, Oxlint and Oxfmt as in UniBurz.
 Those tools are not installed for this Python-only foundation.

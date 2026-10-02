@@ -34,14 +34,12 @@ Before using ordinary `git add .`, add recovery/archive exclusions as described 
 commits exclude these directories, but external Git does not know their purpose.
 BurzBlog does not silently rewrite your `.gitignore`.
 
-For a local production build, run `cd web && pnpm build`, then start the API and
-`HOST=127.0.0.1 PORT=3000 pnpm start` in separate supervised processes. For remote
-use, place an HTTPS reverse proxy in front of port 3000 and configure its exact
-HTTPS origin in the API environment. Keep both upstream processes loopback-only.
-The Nuxt proxy uses the fixed API port 8000. Configure request timeouts and limits
-on the public proxy. This is an early self-hosted application, not a reviewed
-Internet deployment appliance. Docker web runtime packaging remains issue #5;
-existing Docker instructions still demonstrate the CLI only.
+`task dev` is development only: the Nuxt dev server on port 3000 proxies `/api/`
+to the API on port 8000. For production, `cd web && pnpm build` generates a static
+interface that the API process itself serves (`BURZBLOG_WEB_ROOT`), so there is
+one loopback process and no Node.js runtime. Use the [container](containers.md)
+or [self-hosting](self-hosting.md) guide, with an HTTPS reverse proxy in front.
+This is an early self-hosted application, not a reviewed Internet appliance.
 
 ## Everyday flow
 
@@ -82,9 +80,11 @@ publication-branch workflows are not implemented.
 ## Verification
 
 `task check` runs Python and browser gates. `task backend:check` and
-`task web:check` run them separately. E2E tests start real production frontend/API
-processes on ports 3000/8000 against new temporary fixtures, never your content.
-Do not run them alongside a real instance on those ports. GitHub Actions is
+`task web:check` run them separately. E2E tests start the real production process
+(API serving the generated interface) on port 3000 against new temporary
+fixtures, including an authenticated HTTPS Git remote, never your content. Do not
+run them alongside a real instance on that port. They also fail on any Content
+Security Policy violation in the browser console. GitHub Actions is
 disabled; the checked-in workflow is dormant and does not publish anything.
 
 Keyboard focus, labels, native controls, responsive overflow and the critical

@@ -12,6 +12,10 @@ test("browser commit and remote updates preserve ordinary Git workflows", async 
   // The fixture API pushes/fetches over authenticated HTTPS into this bare repository.
   const remote = join(root, "https/served/remote.git");
   const token = readFileSync(join(root, "secrets/token"), "utf8").trim();
+  const shell = await page.request.get("/");
+  expect(shell.headers()["content-security-policy"]).toContain(
+    "script-src 'self' 'sha256-",
+  );
   await page.goto("/");
   await page.getByLabel("Administrator password").fill("browser fixture password");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
