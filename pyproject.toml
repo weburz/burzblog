@@ -8,15 +8,27 @@ version = "0.1.0"
 description = "File-first Markdown content foundation"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = ["ruamel.yaml==0.18.16"]
+dependencies = [
+    "argon2-cffi==25.1.0",
+    "fastapi==0.141.1",
+    "markdown-it-py==4.0.0",
+    "nh3==0.3.6",
+    "ruamel.yaml==0.18.16",
+    "uvicorn==0.52.1",
+]
 
 [project.scripts]
 burzblog = "burzblog.cli:main"
+burzblog-server = "burzblog.server:main"
 
 [dependency-groups]
 dev = [{include-group = "linters"}, {include-group = "tests"}, {include-group = "build"}]
 linters = ["mypy==2.3.0", "pyright==1.1.411", "ruff==0.16.3", "pre-commit==4.6.2", "pre-commit-hooks==6.0.0"]
-tests = ["pytest==8.4.2", "pytest-cov==6.3.0"]
+tests = [
+    "httpx==0.28.1",
+    "pytest==8.4.2",
+    "pytest-cov==6.3.0",
+]
 build = ["hatchling==1.27.0"]
 
 [tool.hatch.build.targets.wheel]

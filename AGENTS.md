@@ -1,7 +1,7 @@
 # BurzBlog
 
 Phase 1 is a Python 3.12+ POSIX library and local CLI. Markdown files are
-canonical; Git inspection/mutations are separate from storage. No web server yet.
+canonical; Git operations and the authenticated API are separate from storage.
 Read `docs/architecture/foundation.md` and `SECURITY.md` before storage changes.
 
 - `task setup`: install locked dependency groups using uv.
@@ -24,6 +24,9 @@ Read `docs/architecture/foundation.md` and `SECURITY.md` before storage changes.
 - Git mutations live in `git_mutations.py`; read ADR-007. Never use Git checkout
   to overwrite content. A transition marker blocks further Git writes on failure.
 - Python uses normal `def` syntax; the global arrow-function rule applies to JS/TS.
+- API/auth: read ADR-008 and docs/application.md. SQLite stays outside content/Git.
+  Never add an unauthenticated content route. Async API tests may need unsandboxed
+  wakeup sockets; do not skip them at merge.
 - Use a short-lived feature branch; no Plane issue exists for this bootstrap.
   Commit via Crisp when available. Never push directly to main.
 - GitHub Actions is intentionally disabled by the maintainer. Do not enable it.
