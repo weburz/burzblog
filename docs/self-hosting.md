@@ -1,7 +1,7 @@
 # Running the foundation locally
 
-This phase is a local library/CLI, not a network CMS. Install Python 3.12+ and uv,
-clone the repository, then run `make setup` and `make dev`. Point `--root` at an
+This phase is a local library/CLI, not a network CMS. Install the development
+prerequisites from README, then run `task setup` and `task dev`. Point `--root` at an
 existing directory owned by the current effective user. Use a dedicated account;
 root and subdirectories must not be group/world writable. Content files must
 also have the account's effective group. Symlinked ancestors are rejected.

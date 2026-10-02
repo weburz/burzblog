@@ -1,0 +1,54 @@
+version: '3'
+
+tasks:
+  default:
+    desc: List available development commands
+    cmd: task --list
+  setup:
+    desc: Install locked dependencies with uv
+    cmd: uv sync --frozen
+  dev:
+    desc: Show the local CLI interface
+    cmd: uv run --frozen burzblog --help
+  lint:
+    desc: Check Python formatting and lint rules
+    cmds:
+      - uv run --frozen ruff format --check .
+      - uv run --frozen ruff check .
+  typecheck:
+    desc: Run strict mypy and Pyright
+    cmds:
+      - uv run --frozen mypy
+      - uv run --frozen pyright
+  test:
+    desc: Run unit and filesystem/CLI integration tests with coverage
+    cmd: uv run --frozen pytest
+  build:
+    desc: Build the wheel and source distribution using the locked backend
+    cmd: uv build --no-sources --no-build-isolation
+  check:
+    desc: Run all local merge gates (Actions is intentionally disabled)
+    cmds:
+      - task: lint
+      - task: typecheck
+      - task: test
+      - task: build
+      - task: hooks:check
+  format:
+    desc: Format Python source
+    cmd: uv run --frozen ruff format .
+  hooks:install:
+    desc: Install optional local pre-commit and Crisp commit-message hooks
+    cmd: uv run --frozen pre-commit install
+  hooks:check:
+    desc: Run repository hygiene hooks and static checks on tracked files
+    cmd: uv run --frozen pre-commit run --all-files
+  docker:lint:
+    desc: Lint the Dockerfile (requires standalone Hadolint 2.15.1)
+    cmd: hadolint Dockerfile
+  docker:build:
+    desc: Build the local CLI image (requires Docker)
+    cmd: docker compose build
+  docker:smoke:
+    desc: Prove container to file to external edit interoperability (requires Docker)
+    cmd: bash scripts/docker-smoke.sh

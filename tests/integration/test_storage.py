@@ -58,7 +58,7 @@ def test_save_preserves_mode_and_rejects_stale_revision(store):
     "path",
     [
         "../escape.md",
-        "/tmp/escape.md",
+        "/tmp/escape.md",  # noqa: S108 - rejected traversal fixture; never opened
         "posts/../../escape.md",
         "posts//a.md",
         "posts/./a.md",
@@ -243,8 +243,8 @@ def test_invalid_utf8_and_oversized_files_remain_untouched(store):
 
 def test_ordinary_git_remains_usable_and_noop_has_empty_diff(store):
     def git(*args):
-        return subprocess.run(
-            ["git", "-C", str(store.root), *args],
+        return subprocess.run(  # noqa: S603 - controlled test repository and arguments
+            ["git", "-C", str(store.root), *args],  # noqa: S607 - developer Git installation
             check=True,
             capture_output=True,
             text=True,

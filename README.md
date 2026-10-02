@@ -14,20 +14,23 @@ and ordinary Git repository.
 
 ## Development
 
-Prerequisites: Python 3.12+, [uv](https://docs.astral.sh/uv/), Make, and a local
-POSIX filesystem (Linux is the initial CI target). No Docker, database, Node,
-credentials or external services are required.
+Prerequisites: Python 3.12+, [uv](https://docs.astral.sh/uv/),
+[Task](https://taskfile.dev/), Node 24 LTS for Pyright, and a local POSIX
+filesystem. Docker is optional; the Python runtime itself does not need Node,
+a database, credentials or external services.
 
 ```sh
-make setup
-make dev
-make check
+task setup
+task dev
+task check
 ```
 
-`uv.lock` locks dependencies. `make check` runs formatting, lint, strict typing,
+`uv.lock` locks dependencies. `task check` runs formatting, lint, strict typing,
 unit/integration/CLI tests, and package build. Browser E2E tests are deferred
-because there is no browser interface. CI runs the same check on Python 3.12
-and 3.14. The build backend is pinned in `pyproject.toml`.
+because there is no browser interface. GitHub Actions is intentionally disabled;
+the dormant workflow targets Python 3.12 and 3.14. Local checks gate merges.
+The build backend is pinned in `pyproject.toml`. See [tooling](docs/tooling.md)
+for UniBurz-aligned Ruff, mypy, Pyright, pre-commit and Crisp commands.
 
 ## Try the file contract
 
@@ -74,8 +77,10 @@ tracking are absent.
 
 Back up the entire content directory, including `.archive` and `.git` if used.
 No startup migration runs. No database backup is needed in this phase.
-Local CLI use is the only supported installation; do not expose it through an
-unauthenticated network wrapper. See [self-hosting](docs/self-hosting.md).
+Local CLI use is the only supported interface; do not expose it through an
+unauthenticated network wrapper. A [Docker packaging setup](docs/containers.md)
+includes local builds, persistent content mounts and a future image update path.
+No image has been published or runtime-tested yet. See [self-hosting](docs/self-hosting.md).
 
 ## Contributing and license
 

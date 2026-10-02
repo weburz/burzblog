@@ -1,0 +1,16 @@
+# Standalone file: requires no source checkout after an image has been published.
+services:
+  burzblog:
+    image: ${BURZBLOG_IMAGE:?Set an explicitly published image digest or version}
+    user: "${BURZBLOG_UID:-1000}:${BURZBLOG_GID:-1000}"
+    read_only: true
+    network_mode: none
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    volumes:
+      - type: bind
+        source: ${BURZBLOG_CONTENT_DIR:-./content}
+        target: /content
+        bind:
+          create_host_path: false
+    command: [list]

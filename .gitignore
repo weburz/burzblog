@@ -11,3 +11,5 @@ dist/
 *.egg-info/
 .uv-cache/
 demo-content/
+content/
+.env

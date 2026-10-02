@@ -1,0 +1,54 @@
+default_install_hook_types: [pre-commit, commit-msg]
+
+# Use the uv lockfile for hooks too; no second dependency environment/version set.
+repos:
+  - repo: local
+    hooks:
+      - id: trailing-whitespace
+        name: Check trailing whitespace
+        entry: uv run --frozen trailing-whitespace-fixer
+        language: system
+        types: [text]
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+        name: Check final newline
+        entry: uv run --frozen end-of-file-fixer
+        language: system
+        types: [text]
+      - id: check-yaml
+        name: Check YAML syntax
+        entry: uv run --frozen check-yaml
+        language: system
+        types: [yaml]
+      - id: check-added-large-files
+        name: Check large files
+        entry: uv run --frozen check-added-large-files
+        language: system
+        args: [--maxkb=5000]
+      - id: ruff
+        name: Ruff lint
+        entry: uv run --frozen ruff check
+        language: system
+        types: [python]
+      - id: ruff-format
+        name: Ruff format
+        entry: uv run --frozen ruff format --check
+        language: system
+        types: [python]
+      - id: mypy
+        name: Strict mypy
+        entry: uv run --frozen mypy
+        language: system
+        types: [python]
+        pass_filenames: false
+      - id: pyright
+        name: Strict Pyright
+        entry: uv run --frozen pyright
+        language: system
+        types: [python]
+        pass_filenames: false
+      - id: crisp
+        name: Conventional commit message
+        entry: bash -c 'crisp message --stdin < "$1"' --
+        language: system
+        stages: [commit-msg]

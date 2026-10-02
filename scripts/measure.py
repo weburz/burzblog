@@ -28,13 +28,14 @@ def main() -> None:
             store.read(f"post-{index}.md")
             samples.append((time.perf_counter() - started) * 1000)
         started = time.perf_counter()
-        assert len(store.discover()) == 100
+        if len(store.discover()) != 100:
+            raise RuntimeError("Benchmark fixture has an unexpected file count.")
         discovery = (time.perf_counter() - started) * 1000
         startups = []
         executable = Path(sys.executable).with_name("burzblog")
         for _ in range(10):
             started = time.perf_counter()
-            subprocess.run(
+            subprocess.run(  # noqa: S603 - fixed local executable and arguments
                 [str(executable), "--help"], check=True, stdout=subprocess.DEVNULL
             )
             startups.append((time.perf_counter() - started) * 1000)
