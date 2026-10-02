@@ -27,14 +27,15 @@ Argument-array execution, bounded output/time, isolated configuration/environmen
 disabled hooks/signing/helpers, explicit endpoints and content-path selection are
 tested. Local bare receiver hooks are rejected. Branch/update changes use the
 recovery-aware content store, not an overwriting checkout. Divergent histories
-stop; force push/reset/clean/automatic merge/rebase are absent. Private credentials
-and arbitrary SSH transports are not implemented. No browser can select a new
+stop; force push/reset/clean/automatic merge/rebase are absent. Private HTTPS
+credentials (ADR-010) are operator file references sent only as a URL-scoped
+header through the Git child environment; SSH transports are not implemented. No browser can select a new
 filesystem root or remote URL. Operator-selected HTTPS endpoints are a trusted
 configuration boundary, not a public URL-fetch service.
 
 Not guaranteed: externally concurrent Git metadata writers, linked worktrees,
 arbitrary filters/configuration, non-Markdown branch transitions, real Internet
-remote reliability or private repository authentication. Use ordinary Git for
+remote reliability, SSH, proxies or secrets protected from the service OS user. Use ordinary Git for
 unsupported operations rather than weakening the validation whitelist.
 
 ## HTTP and authentication
@@ -76,4 +77,27 @@ by an enforced build check. The existing pytest Dependabot PR is unrelated and
 was not merged automatically. See [dependency details](dependencies.md).
 
 Docker runtime/web packaging remains #5. License/security/community contacts
-remain #3. Private Git credential support needs a separate threat-modeled design.
+remain #3.
+
+## Private remote credentials — 2026-10-02 (#13)
+
+Tests use a disposable TLS server running `git http-backend` with Basic
+authentication. Covered: authenticated fetch/push/update; wrong and revoked
+tokens (fixed message, remote unchanged); non-fast-forward over HTTPS; TLS
+refusal without a trusted CA before any request is sent; redirects not
+followed and credentials not forwarded; secret absent from argv (recorded
+`Popen` arguments), `.git`, content, state, API bodies, CLI output, logs and
+exception text; nine hostile repository settings (helpers, `http.*`,
+`insteadOf`, upload-pack, askPass, sshCommand, include) refused before contact
+with no command executed; ambient `~/.gitconfig`, `.git-credentials`, `.netrc`,
+askpass and `GIT_CONFIG_*` variables ignored; malformed, oversized, binary,
+symlinked, FIFO, directory, relative, group/world-readable and misplaced secret
+files refused; browser payloads with URL/username/path fields rejected (422)
+without contacting the remote; credential-free HTTPS and local bare remotes
+unchanged. Browser E2E pushes and fetches through the same authenticated TLS
+fixture and asserts the token never reaches the page.
+
+Residual risks: the service OS user can read the secret and its Git children's
+environment; an authenticated browser session can push committed content to the
+configured remote; Git/libcurl are trusted native code. Not covered: real
+provider endpoints, proxies, SSH, and Git older than 2.31 beyond a version check.

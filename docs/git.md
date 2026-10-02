@@ -47,10 +47,77 @@ cannot be selected. No `git add .`, force push, merge or rebase is used.
 Remote endpoints are operator configuration. HTTPS endpoints cannot contain
 credentials, query strings or fragments. Local bare directories are supported
 for private/local workflows and tests, but must be privately owned with no active
-hooks/custom configuration. Private HTTPS credentials and SSH are not implemented
-yet. Do not pass a browser-supplied URL to this library. HTTPS network behavior
-is unverified here; acceptance tests use actual local bare repositories.
-Network operations have a 30-second deadline.
+hooks/custom configuration. Do not pass a browser-supplied URL to this library.
+Network operations have a 30-second deadline. Redirects are not followed and TLS
+certificates are always verified.
+
+## Private HTTPS remotes
+
+BurzBlog can fetch and push one private HTTPS repository using a username and an
+access token (or password) read from a private file. It works with any host that
+accepts HTTP Basic authentication over HTTPS — GitHub, GitLab, Bitbucket,
+Gitea/Forgejo or your own `git http-backend` — without provider-specific code.
+SSH remotes are not supported by BurzBlog; keep using ordinary Git for SSH.
+See [ADR-010](adr/010-private-remote-credentials.md) for the threat model.
+
+1. At your Git host, create the narrowest token that can read and write this
+   one repository (for example a fine-grained or project access token with
+   repository contents read/write). Prefer an expiry date.
+2. Store it outside the content directory, its Git repository and the
+   authentication state directory, readable only by the service user:
+
+   ```sh
+   install -d -m 0700 /srv/burzblog/secrets
+   # Paste the token at the prompt; it never appears in shell history or argv.
+   (umask 077; IFS= read -rs token && printf '%s\n' "$token" > /srv/burzblog/secrets/git-token)
+   ```
+
+   The file must be a regular file (not a symlink), owned by the service user,
+   mode 0600 or 0400, one line, at most 4 KiB.
+3. Configure the server environment (never put the token itself in it):
+
+   ```sh
+   export BURZBLOG_REMOTE_URL=https://git.example.org/owner/site.git
+   export BURZBLOG_REMOTE_USERNAME=site-bot      # host-specific; see below
+   export BURZBLOG_REMOTE_TOKEN_FILE=/srv/burzblog/secrets/git-token
+   # Only for a privately signed server certificate:
+   # export BURZBLOG_REMOTE_CA_FILE=/srv/burzblog/trust/internal-ca.pem
+   ```
+
+Username conventions differ by host: your account name generally works with a
+personal token; GitLab project/group tokens accept any non-empty username (for
+example `oauth2`), Bitbucket repository tokens use `x-token-auth`. BurzBlog sends
+exactly what you configure. Usernames cannot contain `:` or spaces.
+
+Startup refuses missing, malformed, symlinked, group/world-readable or misplaced
+secret files with a specific message, and requires Git 2.31 or newer. The token
+is re-read for every fetch/push, so rotating it means replacing the file
+contents; no restart is needed. Revoke a token at the host to cut off access.
+Back up the secret separately from content (or simply re-issue it after a
+restore). Never commit it, never paste it into an issue, and never put it in a
+URL: BurzBlog refuses URLs with embedded credentials.
+
+The CLI accepts the same configuration explicitly:
+
+```sh
+uv run burzblog --root content git-push main --remote origin \
+  --url https://git.example.org/owner/site.git \
+  --username site-bot --token-file /srv/burzblog/secrets/git-token
+```
+
+The secret travels to Git only as a URL-scoped `Authorization` header inside the
+child process environment. It is not written to `.git/config`, not passed through
+argv, a credential helper or askpass program, and not returned by the API or
+printed in errors. Ambient `~/.gitconfig`, `~/.git-credentials`, `~/.netrc`,
+askpass and proxy variables are ignored; outbound HTTP proxies are therefore
+not supported yet.
+
+When the remote is unreachable, the certificate is untrusted, or the host rejects
+the credentials, BurzBlog reports one fixed message (API status 502, code
+`remote`) and changes no local content. Check the URL, network, token expiry and
+scopes using ordinary Git from the same host. A push the remote refuses because
+it contains newer commits or protects the branch is a separate conflict: fetch, review and reconcile
+with ordinary Git. BurzBlog never force-pushes.
 
 Switch/update require clean user changes and apply only scoped, regular Markdown
 differences. Other files, non-UTF-8/invalid Markdown, missing directories, or more

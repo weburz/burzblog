@@ -75,10 +75,11 @@ review; they are never automatically merged. Metadata edits can normalize YAML f
 
 The [browser](docs/browser.md) and [authenticated API](docs/application.md) support
 listing, revision-aware source editing, archival, publication metadata and safe
-preview. No visual editor, file watcher or private remote credentials yet.
+preview. No visual editor or file watcher yet.
 [Git inspection and explicit operations](docs/git.md)
 support scoped commits, branches, fetch, recovery-aware fast-forward updates and
-non-forced push. Ordinary Git remains available.
+non-forced push, including private HTTPS repositories authenticated with an
+operator-held token file. Ordinary Git remains available.
 The core neither executes Markdown nor fetches embedded URLs. Explicit Git
 fetch/push may contact an operator-selected remote; setup/build download dependencies. Telemetry, analytics and
 tracking are absent.

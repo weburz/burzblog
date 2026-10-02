@@ -36,9 +36,13 @@ def main() -> int:
                 access_log=False,
                 limit_concurrency=32,
             )
-    except (ContentError, OSError):
+    except ContentError as error:
+        # Messages are content- and secret-free by contract; show the specific cause.
+        print(f"Setup failed: {error}", file=sys.stderr)
+        return 1
+    except OSError as error:
         print(
-            "Setup failed. Check configuration, private directory permissions and administrator initialization.",
+            f"Setup failed: {error.strerror or 'filesystem error'}. Check configured paths and private directory permissions.",
             file=sys.stderr,
         )
         return 1

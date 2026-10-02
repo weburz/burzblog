@@ -16,11 +16,17 @@ from urllib.parse import urlsplit
 
 from burzblog.document import MAX_BYTES, Document, parse, serialize
 from burzblog.errors import ConflictError
+from burzblog.git_credentials import RemoteCredential, validate_certificate_authority
 from burzblog.git_domain import SAFE_KEYS, SAFE_SECTION, GitRepository, RepositoryState
-from burzblog.git_process import GitError, run_git
+from burzblog.git_process import GitError, RemoteError, run_git
 from burzblog.storage import ContentStore, validate_content_path
 
 BRANCH = re.compile(r"[A-Za-z0-9][A-Za-z0-9_/-]{0,127}\Z")
+REMOTE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}\Z")
+UNREACHABLE = (
+    "Could not reach the configured remote, or it refused the request or credentials. "
+    "Local content was not changed."
+)
 
 
 def serialized[Result, **Parameters](
@@ -60,18 +66,18 @@ class Remote:
 
     name: str
     url: str
+    credential: RemoteCredential | None = None
+    certificate_authority: Path | None = None
 
-    def protocol(self) -> str:
-        """Allow an explicit local fixture path or credential-free HTTPS endpoint."""
-        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}", self.name):
+    def transport(self) -> str:
+        """Validate the configured shape without touching the remote or secrets."""
+        if not REMOTE_NAME.fullmatch(self.name):
             raise GitError("Invalid remote name.")
         if Path(self.url).is_absolute():
-            path = Path(self.url)
-            if path.resolve() != path or not path.is_dir():
+            if self.credential or self.certificate_authority:
                 raise GitError(
-                    "Local remote must be an existing non-symlink directory."
+                    "Credentials and certificate authorities apply only to HTTPS remotes."
                 )
-            validate_local_remote(path)
             return "file"
         parsed = urlsplit(self.url)
         if (
@@ -81,12 +87,37 @@ class Remote:
             or parsed.password
             or parsed.query
             or parsed.fragment
-            or any(ord(char) < 33 for char in self.url)
+            or any(ord(char) < 33 or ord(char) == 127 for char in self.url)
         ):
             raise GitError(
                 "Remote must be an operator-approved HTTPS URL without embedded credentials."
             )
         return "https"
+
+    def protocol(self) -> str:
+        """Allow an explicit local fixture path or an HTTPS endpoint."""
+        transport = self.transport()
+        if transport == "file":
+            path = Path(self.url)
+            if path.resolve() != path or not path.is_dir():
+                raise GitError(
+                    "Local remote must be an existing non-symlink directory."
+                )
+            validate_local_remote(path)
+        return transport
+
+    def configuration(self) -> dict[str, str]:
+        """Per-command transport settings; carried by environment, never argv/config files."""
+        configuration: dict[str, str] = {}
+        if self.certificate_authority is not None:
+            validate_certificate_authority(self.certificate_authority)
+            configuration["http.sslCAInfo"] = str(self.certificate_authority)
+        if self.credential is not None:
+            # URL-scoped so the header is attached only to this exact endpoint.
+            configuration[f"http.{self.url}.extraHeader"] = (
+                self.credential.authorization()
+            )
+        return configuration
 
 
 def validate_local_remote(path: Path) -> None:
@@ -237,20 +268,25 @@ class GitChanges:
         """Fetch only branch tracking refs from an explicit operator endpoint."""
         root, _ = self._state()
         protocol = remote.protocol()
-        run_git(
-            root,
-            [
-                "fetch",
-                "--no-tags",
-                "--no-recurse-submodules",
-                "--no-write-fetch-head",
-                "--",
-                remote.url,
-                f"refs/heads/*:refs/remotes/{remote.name}/*",
-            ],
-            timeout=30,
-            protocol=protocol,
-        )
+        configuration = remote.configuration()
+        try:
+            run_git(
+                root,
+                [
+                    "fetch",
+                    "--no-tags",
+                    "--no-recurse-submodules",
+                    "--no-write-fetch-head",
+                    "--",
+                    remote.url,
+                    f"refs/heads/*:refs/remotes/{remote.name}/*",
+                ],
+                timeout=30,
+                protocol=protocol,
+                configuration=configuration,
+            )
+        except GitError:
+            raise RemoteError(UNREACHABLE) from None
 
     @serialized
     def push(self, remote: Remote, branch: str) -> None:
@@ -258,8 +294,9 @@ class GitChanges:
         root, _ = self._state()
         name = branch_name(branch)
         protocol = remote.protocol()
+        configuration = remote.configuration()
         try:
-            run_git(
+            output = run_git(
                 root,
                 [
                     "push",
@@ -270,12 +307,23 @@ class GitChanges:
                     f"refs/heads/{name}:refs/heads/{name}",
                 ],
                 timeout=30,
+                accepted=(0, 1),
                 protocol=protocol,
+                configuration=configuration,
             )
         except GitError:
+            raise RemoteError(UNREACHABLE) from None
+        # Porcelain prints one "<flag>\t<refspec>\t<summary>" line per reference:
+        # "!" rejected, " " fast-forwarded, "*" created, "=" already up to date.
+        flags = {
+            line.split(b"\t", 1)[0] for line in output.splitlines() if b"\t" in line
+        }
+        if b"!" in flags:
             raise ConflictError(
-                "Could not push; remote may contain newer work or be unavailable. Local content was not changed."
-            ) from None
+                "The remote refused this push: it has commits this branch lacks, or it protects the branch. Nothing was overwritten; fetch and review before pushing again."
+            )
+        if not flags & {b" ", b"*", b"="}:
+            raise RemoteError(UNREACHABLE)
 
     @serialized
     def switch(self, branch: str) -> None:
@@ -293,8 +341,8 @@ class GitChanges:
     def update(self, remote_name: str, branch: str) -> None:
         """Fast-forward to an already-fetched ref; never fetch, merge or rebase implicitly."""
         root, state = self._state(clean=True)
-        if state.branch != branch_name(branch) or not re.fullmatch(
-            r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}", remote_name
+        if state.branch != branch_name(branch) or not REMOTE_NAME.fullmatch(
+            remote_name
         ):
             raise ConflictError(
                 "Update the current named branch using a configured remote name."

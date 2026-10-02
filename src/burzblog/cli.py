@@ -4,9 +4,11 @@ import argparse
 import json
 import sys
 from dataclasses import asdict
+from pathlib import Path
 
 from burzblog.document import MAX_BYTES, Document, parse, serialize
 from burzblog.errors import ContentError
+from burzblog.git_credentials import RemoteCredential
 from burzblog.git_domain import GitRepository
 from burzblog.git_mutations import GitChanges, Remote
 from burzblog.storage import ContentStore
@@ -39,17 +41,11 @@ def main() -> int:
     for command in ("git-create-branch", "git-switch", "git-update", "git-push"):
         git_command = commands.add_parser(command)
         git_command.add_argument("branch")
-        if command in ("git-update", "git-push"):
+        if command == "git-update":
             git_command.add_argument("--remote", default="origin")
         if command == "git-push":
-            git_command.add_argument(
-                "--url",
-                required=True,
-                help="Operator-approved remote endpoint; no embedded credentials",
-            )
-    fetch = commands.add_parser("git-fetch")
-    fetch.add_argument("--remote", default="origin")
-    fetch.add_argument("--url", required=True)
+            _remote_arguments(git_command)
+    _remote_arguments(commands.add_parser("git-fetch"))
     commit = commands.add_parser("git-commit")
     commit.add_argument("paths", nargs="+")
     commit.add_argument("--message", required=True)
@@ -97,11 +93,11 @@ def main() -> int:
         elif args.command == "git-commit":
             print(git_changes.commit(args.paths, args.message))
         elif args.command == "git-fetch":
-            git_changes.fetch(Remote(args.remote, args.url))
+            git_changes.fetch(_remote(args))
         elif args.command == "git-update":
             git_changes.update(args.remote, args.branch)
         elif args.command == "git-push":
-            git_changes.push(Remote(args.remote, args.url), args.branch)
+            git_changes.push(_remote(args), args.branch)
         elif args.command == "create":
             print(
                 store.create(args.path, Document.new(args.title, args.slug, _stdin()))
@@ -122,3 +118,35 @@ def main() -> int:
         )
         return 1
     return 0
+
+
+def _remote(args: argparse.Namespace) -> Remote:
+    """Build an explicit remote; secrets are referenced by private file path only."""
+    if bool(args.username) != bool(args.token_file):
+        raise ContentError("Use --username and --token-file together.")
+    return Remote(
+        args.remote,
+        args.url,
+        RemoteCredential(args.username, Path(args.token_file).absolute())
+        if args.username and args.token_file
+        else None,
+        Path(args.ca_file).absolute() if args.ca_file else None,
+    )
+
+
+def _remote_arguments(command: argparse.ArgumentParser) -> None:
+    """Explicit endpoint options shared by fetch and push."""
+    command.add_argument("--remote", default="origin")
+    command.add_argument(
+        "--url",
+        required=True,
+        help="Operator-approved remote endpoint; no embedded credentials",
+    )
+    command.add_argument("--username", help="HTTPS username for --token-file")
+    command.add_argument(
+        "--token-file",
+        help="Private (0600) file holding an HTTPS token or password; never the secret itself",
+    )
+    command.add_argument(
+        "--ca-file", help="PEM certificate authority bundle for a private HTTPS remote"
+    )

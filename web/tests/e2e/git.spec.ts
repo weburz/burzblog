@@ -9,6 +9,9 @@ test("browser commit and remote updates preserve ordinary Git workflows", async 
   const root = info.config.metadata.fixtureRoot as string;
   const git = (directory: string, ...args: string[]) =>
     execFileSync("git", ["-C", directory, ...args], { encoding: "utf8" });
+  // The fixture API pushes/fetches over authenticated HTTPS into this bare repository.
+  const remote = join(root, "https/served/remote.git");
+  const token = readFileSync(join(root, "secrets/token"), "utf8").trim();
   await page.goto("/");
   await page.getByLabel("Administrator password").fill("browser fixture password");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
@@ -22,6 +25,9 @@ test("browser commit and remote updates preserve ordinary Git workflows", async 
   await expect(page.getByRole("status").filter({ hasText: "Saved ✓" })).toBeVisible();
   await page.getByRole("button", { name: "← Posts" }).click();
   await page.getByRole("button", { name: "Repository", exact: true }).click();
+  await expect(
+    page.getByText("Remote: origin · HTTPS with operator credentials"),
+  ).toBeVisible();
   await page.getByLabel("posts/git-flow.md", { exact: true }).check();
   await page.getByLabel("Commit message").fill("Browser commit");
   await page.getByRole("button", { name: "Commit selected files" }).click();
@@ -32,11 +38,11 @@ test("browser commit and remote updates preserve ordinary Git workflows", async 
   );
   await page.getByRole("button", { name: "Push commits" }).click();
   expect((await pushed).status()).toBe(200);
-  expect(git(join(root, "remote.git"), "show", "main:content/posts/git-flow.md")).toBe(
+  expect(git(remote, "show", "main:content/posts/git-flow.md")).toBe(
     "browser Git content\n",
   );
   const other = join(root, "other");
-  git(root, "clone", join(root, "remote.git"), other);
+  git(root, "clone", remote, other);
   git(other, "config", "user.name", "External fixture");
   git(other, "config", "user.email", "fixture@example.invalid");
   const external = join(other, "content/posts/git-flow.md");
@@ -82,7 +88,8 @@ test("browser commit and remote updates preserve ordinary Git workflows", async 
   expect(readFileSync(join(root, "repo/content/posts/git-flow.md"), "utf8")).toBe(
     "local divergent version\n",
   );
-  expect(git(join(root, "remote.git"), "show", "main:content/posts/git-flow.md")).toBe(
+  expect(await page.content()).not.toContain(token);
+  expect(git(remote, "show", "main:content/posts/git-flow.md")).toBe(
     "remote divergent version\n",
   );
 });

@@ -22,7 +22,9 @@ Back up content, archive and any `.git` directory with normal filesystem tools
 while writers are stopped. Restore with those same tools. There is no operational
 database for CLI-only use. API installations must separately back up the private
 SQLite authentication directory. Keep configuration/secrets outside
-content and back them up separately. Run upgrades explicitly; startup never
+content and back them up separately; a private Git token file
+([setup](git.md#private-https-remotes)) can instead be re-issued at the Git host
+after a restore. Run upgrades explicitly; startup never
 migrates Markdown. Review release notes before replacing the installed version.
 
 No server memory or request latency claims apply yet. Performance measurements

@@ -22,6 +22,7 @@ from burzblog.auth import (
 from burzblog.errors import ConflictError, ContentError, RecoveryError
 from burzblog.git_domain import GitRepository
 from burzblog.git_mutations import GitChanges
+from burzblog.git_process import RemoteError
 from burzblog.http_security import RequestBoundary
 from burzblog.preview import render_preview
 from burzblog.settings import Settings
@@ -137,6 +138,12 @@ def create_app(settings: Settings) -> FastAPI:
             return failure(
                 401, "authentication", "Log in or reload to verify this request."
             )
+        if isinstance(error, RemoteError):
+            return failure(
+                502,
+                "remote",
+                "The configured Git remote could not be reached or refused the request. Local content was not changed. Ask the operator to check the remote address, network and credentials.",
+            )
         if isinstance(error, RecoveryError):
             return failure(
                 409,
@@ -230,10 +237,20 @@ def create_app(settings: Settings) -> FastAPI:
     def render(payload: Preview) -> dict[str, str]:
         return {"html": render_preview(payload.markdown)}
 
+    remote = (
+        None
+        if settings.remote is None
+        else {
+            "name": settings.remote.name,
+            "transport": settings.remote.transport(),
+            "authenticated": settings.remote.credential is not None,
+        }
+    )
+
     def git_status() -> dict[str, object]:
         state = GitRepository(settings.content_root).status()
         if state is None:
-            return {"repository": None, "remote_configured": False}
+            return {"repository": None, "remote_configured": False, "remote": None}
         result = asdict(state)
         result.pop("root")
         scope = settings.content_root.relative_to(Path(state.root))
@@ -243,6 +260,7 @@ def create_app(settings: Settings) -> FastAPI:
         return {
             "repository": result | {"clean": state.clean},
             "remote_configured": settings.remote is not None,
+            "remote": remote,
         }
 
     def git_change(payload: GitAction) -> dict[str, object]:

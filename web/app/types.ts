@@ -30,7 +30,13 @@ export interface Repository {
   behind: number | null;
   operation: string | null;
 }
+export interface Remote {
+  name: string;
+  transport: "https" | "file";
+  authenticated: boolean;
+}
 export interface GitState {
   repository: Repository | null;
   remote_configured: boolean;
+  remote: Remote | null;
 }
