@@ -1,15 +1,21 @@
 """Start an isolated local fixture server for real browser acceptance tests."""
 
 import os
+import secrets
 import subprocess
+import sys
 from pathlib import Path
 
 import uvicorn
 
 from burzblog.api import create_app
 from burzblog.auth import Authentication
+from burzblog.git_credentials import RemoteCredential
 from burzblog.git_mutations import Remote
 from burzblog.settings import Settings
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tests"))
+from support.git_https import basic, start  # test-only fixture module
 
 
 def git(root: Path, *arguments: str) -> None:
@@ -41,10 +47,24 @@ def main() -> None:
         "-m",
         "fixture",
     )
-    remote = root / "remote.git"
-    git(root, "init", "--bare", "--initial-branch=main", str(remote))
+    # A private HTTPS remote: real TLS, Basic authentication and git http-backend.
+    token = "e2e-" + secrets.token_urlsafe(24)
+    secret_directory = root / "secrets"
+    secret_directory.mkdir(mode=0o700)
+    token_file = secret_directory / "token"
+    token_file.write_text(token + "\n")
+    token_file.chmod(0o600)
+    remote, _ = start(root / "https", basic("e2e", token), name="remote.git")
     settings = Settings(
-        content, root / "state", "http://127.0.0.1:3000", Remote("origin", str(remote))
+        content,
+        root / "state",
+        "http://127.0.0.1:3000",
+        Remote(
+            "origin",
+            remote.url,
+            RemoteCredential("e2e", token_file),
+            remote.certificate_authority,
+        ),
     )
     Authentication(settings.state_directory).initialize("browser fixture password")
     uvicorn.run(

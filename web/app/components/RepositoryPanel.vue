@@ -1,14 +1,25 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import type { GitState } from "../types";
-import { request, errorMessage } from "../utils/api";
+import { ApiError, request, errorMessage } from "../utils/api";
 
 const state = ref<GitState | null>(null);
 const error = ref("");
+const remoteFailure = ref(false);
 const busy = ref(false);
 const selected = ref<string[]>([]);
 const message = ref("");
 const branch = ref("");
+const remoteLabel = computed(() => {
+  const remote = state.value?.remote;
+  if (!remote) {
+    return "";
+  }
+  if (remote.transport === "file") {
+    return `${remote.name} · local repository`;
+  }
+  return `${remote.name} · HTTPS${remote.authenticated ? " with operator credentials" : ", no credentials"}`;
+});
 const refresh = async () => {
   try {
     state.value = await request<GitState>("/api/git");
@@ -20,6 +31,7 @@ const refresh = async () => {
 const action = async (name: string) => {
   busy.value = true;
   error.value = "";
+  remoteFailure.value = false;
   try {
     state.value = await request<GitState>("/api/git", "POST", {
       action: name,
@@ -33,6 +45,7 @@ const action = async (name: string) => {
     selected.value = [];
   } catch (cause) {
     error.value = errorMessage(cause);
+    remoteFailure.value = cause instanceof ApiError && cause.code === "remote";
     await refresh();
   } finally {
     busy.value = false;
@@ -53,9 +66,11 @@ onMounted(refresh);
       Optional Git controls. Saving a post always writes its Markdown file first.
     </p>
     <div v-if="error" class="error" role="alert">
-      <h2 class="font-semibold">Sync needs attention</h2>
+      <h2 class="font-semibold">
+        {{ remoteFailure ? "Remote unavailable" : "Sync needs attention" }}
+      </h2>
       <p>{{ error }}</p>
-      <p class="mt-2">
+      <p v-if="!remoteFailure" class="mt-2">
         No conflict is resolved automatically. Review both histories using ordinary Git
         before retrying.
       </p>
@@ -76,6 +91,9 @@ onMounted(refresh);
       <p class="font-mono text-sm muted mt-3">
         {{ state.repository.branch ?? "Detached HEAD" }} ·
         {{ state.repository.upstream ?? "No upstream configured" }}
+      </p>
+      <p v-if="remoteLabel" class="font-mono text-sm muted mt-2">
+        Remote: {{ remoteLabel }}
       </p>
       <p v-if="state.repository.ahead !== null" class="muted mt-2">
         {{ state.repository.ahead }} ahead · {{ state.repository.behind }} behind (last
@@ -107,7 +125,8 @@ onMounted(refresh);
       </div>
       <p v-if="!state.remote_configured" class="muted text-sm">
         No remote endpoint configured by the operator. Local branches and commits still
-        work.
+        work. Operators set <code>BURZBLOG_REMOTE_URL</code> (and, for private
+        repositories, a username and token file) before starting BurzBlog.
       </p>
       <form class="my-10 max-w-xl" @submit.prevent="action('commit')">
         <h2 class="text-xl font-semibold mb-4">Commit selected Markdown changes</h2>

@@ -52,14 +52,16 @@ YAML is bounded and rejects aliases, tags, duplicate keys and excessive nesting.
 Errors omit document text. CLI errors do not echo failed filenames or parse
 snippets. Preview renders and sanitizes Markdown without fetching URLs; the
 source remains unchanged. Authentication/session controls are described above.
-Private remote credential storage remains deferred.
+Private HTTPS remote tokens are read from an operator-owned 0600 file outside
+content, Git and state; see ADR-010.
 
 ## Privacy
 
 No telemetry, analytics, external fonts, tracking or remote crash reporting.
 Installation contacts package registries. Git fetch/push contacts only explicitly
 operator-selected endpoints; inspection never contacts remotes. Keep credentials
-outside the content root. Private Git credential management is not implemented.
+outside the content root, its repository and authentication state. BurzBlog never
+writes credentials into Git configuration, URLs, logs or API responses.
 
 ## Git operations
 
@@ -67,6 +69,9 @@ Read ADR-006/007 and `docs/git.md`. Hooks/filters/config includes are refused or
 disabled. Local bare remotes with active receiver hooks are refused before Git
 runs, because those hooks would execute in the application's OS account. HTTPS
 endpoints must be operator-approved; do not accept arbitrary URLs from browsers.
+Private HTTPS credentials follow ADR-010: one operator-configured remote, token
+file reference, URL-scoped header via the Git child environment, mandatory TLS,
+no redirects, no helpers or ambient credentials, and no SSH.
 Branch transitions apply only scoped Markdown through the recovery-aware store.
 Unfinished transitions leave a persistent marker and block further Git writes.
 Concurrent hostile changes to `.git` or local remote metadata are outside the

@@ -39,4 +39,5 @@ remain operator-facing. The reverse proxy must enforce timeouts and connection
 limits. This is not a hardened public multi-tenant hosting boundary.
 
 No browser interface, browser E2E assurance, private remote credentials or image
-publication is implied by this milestone.
+publication is implied by this milestone. (Later: ADR-009 adds the browser UI and
+ADR-010 operator-configured private HTTPS credentials.)

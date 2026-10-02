@@ -60,7 +60,7 @@ native Windows are outside the tested storage contract.
 ## Deferred milestones
 
 The Nuxt UI source editor and Playwright acceptance tests now exercise this core;
-see ADR-009. Private remote credential handling remains deferred. No visual editor
+see ADR-009. ADR-010 adds operator-configured private HTTPS credentials. No visual editor
 until round-trip rules exist.
 
 ## Maintainer decisions

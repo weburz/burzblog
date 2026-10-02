@@ -72,8 +72,12 @@ Repository is optional and separate from writing. Select individual Markdown
 files, supply a commit message, then explicitly push. Fetch checks the configured
 remote; Apply safe update performs only a safe fast-forward. Divergence produces
 persistent attention text and no automatic merge. Branch switching refuses dirty
-or unsupported transitions. See [Git boundaries](git.md). Private credential
-support and automatic publication-branch workflows are not implemented.
+or unsupported transitions. See [Git boundaries](git.md). The panel shows the
+configured remote's name and whether it uses operator credentials, never its
+address or secret. "Remote unavailable" means the remote could not be reached or
+refused the credentials; nothing local changed, so ask the operator to check the
+[private remote setup](git.md#private-https-remotes). Automatic
+publication-branch workflows are not implemented.
 
 ## Verification
 

@@ -60,4 +60,5 @@ venv = ".venv"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["tests"]
 addopts = "--cov=burzblog --cov-report=term-missing --cov-fail-under=80"

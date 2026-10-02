@@ -148,7 +148,7 @@ def test_local_remote_roundtrip_and_divergence(workspace, tmp_path):
     changes.fetch(remote)
     with pytest.raises(ConflictError, match="fast-forward"):
         changes.update("origin", "main")
-    with pytest.raises(ConflictError, match="Could not push"):
+    with pytest.raises(ConflictError, match="Nothing was overwritten"):
         changes.push(remote, "main")
     assert (content / "a.md").read_text() == "local divergence\n"
     assert (other / "content/a.md").read_text() == "remote divergence\n"

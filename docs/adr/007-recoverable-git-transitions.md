@@ -33,4 +33,6 @@ the same OS account, so local remotes with active hooks or custom config are
 refused. HTTPS server-side hooks belong to that remote server's operator.
 
 Private remote credentials/SSH and browser remote configuration are deferred;
-do not expose arbitrary endpoints to untrusted HTTP clients.
+do not expose arbitrary endpoints to untrusted HTTP clients. (Superseded in part:
+ADR-010 adds operator-configured private HTTPS credentials; SSH and browser
+remote configuration remain out of scope.)

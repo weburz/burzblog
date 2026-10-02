@@ -32,9 +32,17 @@ are not trusted. Never use a development HTTP origin for an Internet deployment.
 No CORS is enabled. API responses are private/no-store.
 
 Optional `BURZBLOG_REMOTE_URL` and `BURZBLOG_REMOTE_NAME` configure the explicit
-operator-approved Git endpoint. Browser requests cannot change it. See
-[Git restrictions](git.md); SSH/private credentials remain unsupported. Never
-embed credentials in a URL. No network requests occur except explicit Git sync.
+operator-approved Git endpoint. Browser requests cannot change it. A private HTTPS
+repository additionally uses `BURZBLOG_REMOTE_USERNAME` plus
+`BURZBLOG_REMOTE_TOKEN_FILE` (a private 0600 file outside content, Git and state)
+and, for privately signed certificates, `BURZBLOG_REMOTE_CA_FILE`. See
+[private HTTPS remotes](git.md#private-https-remotes); SSH remains unsupported.
+Never embed credentials in a URL or environment variable. No network requests
+occur except explicit Git sync.
+
+Startup validates the whole configuration and prints a specific, secret-free
+reason when something is wrong (for example a group-readable token file or a
+state directory inside the repository).
 
 ## API contract
 
@@ -56,14 +64,17 @@ local storage by this API.
   rewriting slug metadata; edit frontmatter separately when desired.
 - `POST /api/archive`: path, revision; reversible archive path returned.
 - `POST /api/preview`: markdown; sanitized HTML returned, images omitted.
-- `GET /api/git`: safe repository state without absolute root/remote URLs.
+- `GET /api/git`: safe repository state without absolute root/remote URLs;
+  `remote` is `null` or `{name, transport: "https"|"file", authenticated}`.
 - `POST /api/git`: action `create_branch`, `switch`, `commit`, `fetch`, `update`
   or `push`; branch, paths and message as relevant. Explicit content-relative
   paths only for commit. Existing Git safety restrictions apply.
 
 Errors have `{error: {code, message}}`. Status 409 means conflict/recovery or
 filesystem attention: preserve unsent input, do not automatically resubmit.
-Status 401 requires login/request verification; 429 is login throttling; 413/422
+Status 502 (`remote`) means the configured Git remote was unreachable, untrusted
+or refused the credentials; no local content changed and retrying cannot help
+until the operator fixes it. 401 requires login/request verification; 429 is login throttling; 413/422
 reject oversized/invalid requests. Validation responses never echo input values.
 Markdown is limited to 2 MiB; the entire JSON request to 3 MiB.
 
