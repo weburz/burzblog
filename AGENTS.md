@@ -1,7 +1,7 @@
 # BurzBlog
 
 Phase 1 is a Python 3.12+ POSIX library and local CLI. Markdown files are
-canonical; there is no database, web server, renderer, or Git integration yet.
+canonical; read-only Git inspection is separate from storage. No web server yet.
 Read `docs/architecture/foundation.md` and `SECURITY.md` before storage changes.
 
 - `task setup`: install locked dependency groups using uv.
@@ -19,6 +19,8 @@ Read `docs/architecture/foundation.md` and `SECURITY.md` before storage changes.
 - Follow the authorized milestone order: recovery, Git, application/auth, then UI.
 - Every changing save/move retains its source inode under `.burzblog-recovery`.
   Never prune journals automatically or include them in application Git commits.
+- Git lives in `git_domain.py`/`git_process.py`; read ADR-006 before changing it.
+  Never inherit arbitrary Git environment/configuration or expose raw stderr/URLs.
 - Python uses normal `def` syntax; the global arrow-function rule applies to JS/TS.
 - Use a short-lived feature branch; no Plane issue exists for this bootstrap.
   Commit via Crisp when available. Never push directly to main.
