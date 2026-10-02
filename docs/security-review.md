@@ -97,7 +97,29 @@ without contacting the remote; credential-free HTTPS and local bare remotes
 unchanged. Browser E2E pushes and fetches through the same authenticated TLS
 fixture and asserts the token never reaches the page.
 
-Residual risks: the service OS user can read the secret and its Git children's
+Residual risks (credentials): the service OS user can read the secret and its Git children's
 environment; an authenticated browser session can push committed content to the
 configured remote; Git/libcurl are trusted native code. Not covered: real
 provider endpoints, proxies, SSH, and Git older than 2.31 beyond a version check.
+
+## Production topology and container — 2026-10-02 (#5)
+
+One Python process serves the generated static interface and the API (ADR-011);
+no Node.js runs in production. The shell's CSP allows scripts only from `'self'`
+plus SHA-256 hashes of the two generated inline bootstrap scripts; styles allow
+inline because the sandboxed `srcdoc` preview inherits the policy. Tests cover
+the policy, immutable assets, symlink/traversal refusal under `/_nuxt/`, Host
+validation and unchanged API headers; browser E2E fails on any CSP violation.
+
+`scripts/docker-smoke.py` ran against a real Docker daemon (Docker Desktop
+29.6.2 on WSL2, linux/amd64): 19 acceptance checks covering non-root UID,
+read-only root, dropped capabilities, loopback-only publishing, bind-mounted
+site/state/secrets, host UID/GID on writes, external edits, authenticated
+private push/fetch, token absence from inspect/logs/API/.git/state, restart and
+replacement persistence, and runtime contents (no Node/uv/pip/compiler/curl/ssh
+or development packages). Hadolint 2.15.1 passes.
+
+Not verified: real reverse-proxy configurations (examples are documented,
+untested), native Linux Docker Engine (only Docker Desktop's WSL2 integration),
+rootless Docker or user-namespace remapping, ARM, and systemd unit hardening.
+The Debian `git` package (2.39.5) is trusted native code patched via image rebuilds.

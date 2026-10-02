@@ -5,9 +5,11 @@
 The optional API uses one Argon2id administrator, expiring opaque sessions,
 HttpOnly/SameSite cookies and exact-Origin plus session-token CSRF checks. State
 must be private and outside content/Git. See [ADR-008](docs/adr/008-authenticated-application.md)
-and [deployment boundaries](docs/application.md). Loopback is the only built-in
-server bind; production requires a same-origin HTTPS proxy with timeouts and
-connection limits. No browser/public-deployment security assurance is claimed.
+and [deployment boundaries](docs/application.md). Loopback is the default server
+bind (containers bind inside their namespace and publish to host loopback only);
+production requires a same-origin HTTPS proxy with timeouts and connection
+limits. The production process serves the static interface itself with a
+hash-based CSP and runs no Node.js (ADR-011). No browser/public-deployment security assurance is claimed.
 Preview disables raw HTML and sanitizes allowed tags/URLs; images are omitted.
 The browser adds an empty-sandbox iframe and deny-by-default preview CSP. Unsent
 writing exists in memory only. See [dependency review](docs/dependencies.md) for

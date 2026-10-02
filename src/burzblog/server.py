@@ -17,6 +17,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="BurzBlog authenticated API")
     parser.add_argument("command", choices=["init-admin", "serve"])
     parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Bind address. Keep the loopback default; use 0.0.0.0 only inside a container whose published port is itself private or proxied.",
+    )
     arguments = parser.parse_args()
     try:
         settings = Settings.from_environment()
@@ -30,7 +35,7 @@ def main() -> int:
         else:
             uvicorn.run(
                 create_app(settings),
-                host="127.0.0.1",
+                host=arguments.host,
                 port=arguments.port,
                 proxy_headers=False,
                 access_log=False,

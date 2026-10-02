@@ -9,8 +9,8 @@ Read `docs/architecture/foundation.md` and `SECURITY.md` before storage changes.
 - `task check`: backend gates plus frontend format/lint/types/tests/build/E2E.
 - `task backend:check`: independent Python checks; `task web:check`: browser gates.
 - `task measure`: disposable 1,000-file local performance fixture; not a capacity claim.
-- Browser E2E uses disposable /tmp fixtures and ports 8000/3000; never reuse a
-  running real instance. Tests must not point at operator content.
+- Browser E2E uses disposable /tmp fixtures and port 3000 (the production
+  single-process topology); never reuse a running real instance. Tests must not point at operator content.
 - `task format`: apply Ruff formatting. Make commands remain compatibility aliases.
 - `task hooks:install`: optional pre-commit and Crisp commit-message hooks.
 - Follow UniBurz tooling: uv, Ruff, mypy, Pyright, pre-commit and Crisp.
@@ -36,8 +36,9 @@ Read `docs/architecture/foundation.md` and `SECURITY.md` before storage changes.
 - GitHub Actions is intentionally disabled by the maintainer. Do not enable it.
   Run `task check` locally and record exact results in PRs before merging.
   Keep the dormant workflow reproducible for future use.
-- Docker: `task docker:lint` (Hadolint), `task docker:build`, `task docker:smoke`.
-  Docker runtime checks cannot run in the sandbox; report them as unrun.
-  Keep content outside images and preserve host UID/GID; see `docs/containers.md`.
+- Docker: `task docker:check` (Hadolint, build, `scripts/docker-smoke.py`). Run it
+  where a Docker daemon exists; otherwise report the runtime checks as unrun.
+  Keep content/state/secrets outside images and preserve host UID/GID; see
+  `docs/containers.md` and ADR-011.
 
 The pre-existing `admin-panel/` cache is unrelated and must not be incorporated.

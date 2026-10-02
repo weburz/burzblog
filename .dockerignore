@@ -7,3 +7,14 @@
 !src/**
 src/**/__pycache__/
 src/**/*.pyc
+!web/
+!web/**
+web/node_modules/
+web/.nuxt/
+web/.output/
+web/dist
+web/test-results/
+web/playwright-report/
+web/tests/
+**/.env
+**/.env.*

@@ -28,6 +28,7 @@ class Settings:
     state_directory: Path
     origin: str = "http://localhost:3000"
     remote: Remote | None = None
+    web_root: Path | None = None
 
     @property
     def secure_cookies(self) -> bool:
@@ -103,6 +104,7 @@ class Settings:
             Path(state).absolute(),
             os.environ.get("BURZBLOG_ORIGIN", "http://localhost:3000"),
             remote_from_environment(),
+            Path(web) if (web := os.environ.get("BURZBLOG_WEB_ROOT")) else None,
         )
 
 

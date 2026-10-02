@@ -22,11 +22,19 @@ uv run --frozen burzblog-server serve
 Initialization asks for a password twice, without command-line arguments or
 environment variables. Use at least 12 characters. Re-initialization refuses to
 replace credentials. There is no password-reset workflow yet. The server refuses
-startup without an initialized administrator. It binds only `127.0.0.1:8000`;
-`--port` changes the port. Do not expose an unauthenticated CLI wrapper.
+startup without an initialized administrator. It binds `127.0.0.1:8000` by
+default; `--port` changes the port. `--host 0.0.0.0` is only for containers whose
+published port is bound to host loopback (see [containers](containers.md)). Do not
+expose an unauthenticated CLI wrapper.
+
+With `BURZBLOG_WEB_ROOT` pointing at the generated interface (`web/.output/public`
+after `pnpm build`), the same process also serves the browser shell at `/` and
+its fingerprinted assets at `/_nuxt/`, with a hash-based Content-Security-Policy.
+Neither contains content or credentials. `GET /api/session` is the readiness probe:
+it needs no login and returns no content.
 
 For deployment, set the exact HTTPS browser origin and put a same-origin reverse
-proxy in front of the loopback service, routing `/api/` to port 8000. The proxy
+proxy in front of the loopback service, forwarding everything to it. The proxy
 must bound request duration/connections and preserve Host/Origin. Proxy headers
 are not trusted. Never use a development HTTP origin for an Internet deployment.
 No CORS is enabled. API responses are private/no-store.

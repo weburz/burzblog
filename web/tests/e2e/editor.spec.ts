@@ -8,6 +8,13 @@ test("browser and external editor share ordinary Markdown without silent loss", 
   request,
 }, info) => {
   const root = info.config.metadata.fixtureRoot as string;
+  // The production shell ships a strict CSP; any violation is a regression.
+  const violations: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error" && /Content Security Policy/i.test(message.text())) {
+      violations.push(message.text());
+    }
+  });
   const slug = `article-${info.project.name}`;
   const file = join(root, "repo/content/posts", `${slug}.md`);
   const outbound: string[] = [];
@@ -98,4 +105,5 @@ test("browser and external editor share ordinary Markdown without silent loss", 
   await page.getByRole("button", { name: "Archive post" }).click();
   await expect(page.getByRole("heading", { name: "Posts", exact: true })).toBeVisible();
   expect(outbound).toEqual([]);
+  expect(violations).toEqual([]);
 });

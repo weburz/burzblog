@@ -10,7 +10,9 @@ Lucide icons are ISC. Assets remain package-managed, not copied from old product
 Family palette values are adapted from UniBurz's design tokens, not business UI.
 
 The installed development/build tree is substantial (Nuxt UI's transitive tools),
-while deployment uses only `.output/`, not `node_modules/`. Font discovery and
+while deployment uses only the generated static files in `.output/public`, not
+`node_modules/` or any Node.js runtime: the Python process serves them (ADR-011)
+and the container image contains no Node.js at all. Font discovery and
 remote icon fetching are disabled; installed fonts/icons are bundled locally.
 
 Audit on 2026-10-02 found two transitive advisories. A narrow `fontless>esbuild`
@@ -19,7 +21,7 @@ override uses 0.28.1 for [GHSA-g7r4-m6w7-qqqr](https://github.com/advisories/GHS
 node-forge <=1.4.0; no patched release was available from the registry (despite
 the audit client suggesting 1.4.1). It enters through listhen's development TLS
 tooling. BurzBlog does not use its RSA signature verification, serve development
-TLS, or ship node-forge/listhen in `.output`. The production build gate rejects
+TLS, run Node.js in production, or ship node-forge/listhen in `.output`. The production build gate rejects
 these packages in deployable output. Production TLS belongs to the operator's
 reverse proxy. This is a bounded reachability assessment, **not a clean dependency
 audit or a claim that the upstream bug is fixed**. Keep the advisory visible and

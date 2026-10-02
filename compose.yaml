@@ -1,16 +1,47 @@
+# Local build of the BurzBlog browser application. compose.dist.yaml is the same
+# service for a published image; tests keep the two definitions in step.
+# All persistent data is bind-mounted from host directories you create first:
+# Compose refuses to invent root-owned replacements for missing paths.
 services:
   burzblog:
     image: burzblog:local
     build: .
-    user: "${BURZBLOG_UID:-1000}:${BURZBLOG_GID:-1000}"
+    user: "${BURZBLOG_UID:?Set BURZBLOG_UID to the numeric owner of your content}:${BURZBLOG_GID:?Set BURZBLOG_GID to the content group}"
     read_only: true
-    network_mode: none
     cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    restart: unless-stopped
+    # Published on host loopback only; put your HTTPS reverse proxy in front.
+    ports:
+      - "127.0.0.1:${BURZBLOG_PORT:-8080}:8080"
+    environment:
+      BURZBLOG_ORIGIN: "${BURZBLOG_ORIGIN:?Set BURZBLOG_ORIGIN to the exact browser origin}"
+      BURZBLOG_CONTENT_ROOT: /site/${BURZBLOG_CONTENT_SUBDIR:-}
+      BURZBLOG_STATE_DIR: /state
+      BURZBLOG_REMOTE_URL: ${BURZBLOG_REMOTE_URL:-}
+      BURZBLOG_REMOTE_NAME: ${BURZBLOG_REMOTE_NAME:-origin}
+      BURZBLOG_REMOTE_USERNAME: ${BURZBLOG_REMOTE_USERNAME:-}
+      BURZBLOG_REMOTE_TOKEN_FILE: ${BURZBLOG_REMOTE_TOKEN_FILE:-}
+      BURZBLOG_REMOTE_CA_FILE: ${BURZBLOG_REMOTE_CA_FILE:-}
     volumes:
+      # Markdown content and, when used, its .git repository.
       - type: bind
-        source: ${BURZBLOG_CONTENT_DIR:-./content}
-        target: /content
+        source: ${BURZBLOG_SITE_DIR:-./site}
+        target: /site
         bind:
           create_host_path: false
-    command: [list]
+      # Private 0700 authentication state (SQLite), never inside the site.
+      - type: bind
+        source: ${BURZBLOG_STATE_PATH:-./state}
+        target: /state
+        bind:
+          create_host_path: false
+      # Private 0700 directory for Git token/CA files; mounted read-only.
+      - type: bind
+        source: ${BURZBLOG_SECRETS_DIR:-./secrets}
+        target: /secrets
+        read_only: true
+        bind:
+          create_host_path: false
