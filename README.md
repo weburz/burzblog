@@ -2,7 +2,7 @@
 
 A lightweight, file-first Markdown CMS in development. Your files remain the
 source of truth. **This repository currently implements the Phase 1 content
-library and local CLI, not a deployable browser CMS.**
+library, local CLI and authenticated API, not a deployable browser CMS.**
 
 ```text
 Today:  Local CLI / Python API → ordinary Markdown files ←→ external editor / Git
@@ -17,7 +17,8 @@ and ordinary Git repository.
 Prerequisites: Python 3.12+, [uv](https://docs.astral.sh/uv/),
 [Task](https://taskfile.dev/), Node 24 LTS for Pyright, and a local POSIX
 filesystem. Docker is optional; the Python runtime itself does not need Node,
-a database, credentials or external services.
+external services. The optional HTTP application uses local SQLite authentication
+state; the content library and CLI need no database or credentials.
 
 ```sh
 task setup
@@ -70,8 +71,10 @@ review; they are never automatically merged. Metadata edits can normalize YAML f
 
 ## Scope and operation
 
-No authentication, HTTP API, rendered preview, visual editor, file watcher,
-private remote credential storage yet. [Git inspection and explicit operations](docs/git.md)
+The [authenticated API](docs/application.md) supports listing, revision-aware
+editing, archival, publication metadata and sanitized preview. No browser UI,
+visual editor, file watcher or private remote credentials yet.
+[Git inspection and explicit operations](docs/git.md)
 support scoped commits, branches, fetch, recovery-aware fast-forward updates and
 non-forced push. Ordinary Git remains available. No browser interface exists yet.
 The core neither executes Markdown nor fetches embedded URLs. Explicit Git
@@ -79,8 +82,8 @@ fetch/push may contact an operator-selected remote; setup/build download depende
 tracking are absent.
 
 Back up the entire content directory, including `.archive` and `.git` if used.
-No startup migration runs. No database backup is needed in this phase.
-Local CLI use is the only supported interface; do not expose it through an
+No content migration runs at startup. API installations must also back up private
+authentication state separately. Do not expose the CLI through an
 unauthenticated network wrapper. A [Docker packaging setup](docs/containers.md)
 includes local builds, persistent content mounts and a future image update path.
 No image has been published or runtime-tested yet. See [self-hosting](docs/self-hosting.md).

@@ -1,5 +1,25 @@
 # Dependency decisions
 
+## Authenticated application additions
+
+- FastAPI (MIT), Uvicorn (BSD-3-Clause): typed HTTP boundary and ASGI server,
+  avoiding a hand-built HTTP parser/router. No standard-extra bundle is required.
+- argon2-cffi (MIT): maintained Argon2id hashing instead of custom password crypto.
+- markdown-it-py (MIT), nh3 (MIT): rendering with raw HTML disabled plus a separate
+  sanitizer. Rendering alone is not considered sanitization.
+- httpx (BSD-3-Clause), development only: API tests through Starlette TestClient.
+  Current Starlette emits a deprecation warning recommending httpx2; the existing
+  client remains functional, and no migration is claimed here.
+
+Versions/transitive packages are locked by uv. These require ongoing advisory
+review, not a claim of absence of defects. References:
+[FastAPI](https://fastapi.tiangolo.com/),
+[argon2-cffi](https://argon2-cffi.readthedocs.io/),
+[Markdown security](https://markdown-it-py.readthedocs.io/en/latest/security.html),
+[nh3](https://github.com/messense/nh3).
+
+## Original foundation
+
 No previous implementation code is reused. Tooling references were inspected
 only for conventions (uv, Ruff, typing, pytest and Conventional Commits).
 

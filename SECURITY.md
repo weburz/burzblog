@@ -1,5 +1,15 @@
 # Security policy and current boundary
 
+## Authenticated application
+
+The optional API uses one Argon2id administrator, expiring opaque sessions,
+HttpOnly/SameSite cookies and exact-Origin plus session-token CSRF checks. State
+must be private and outside content/Git. See [ADR-008](docs/adr/008-authenticated-application.md)
+and [deployment boundaries](docs/application.md). Loopback is the only built-in
+server bind; production requires a same-origin HTTPS proxy with timeouts and
+connection limits. No browser/public-deployment security assurance is claimed.
+Preview disables raw HTML and sanitizes allowed tags/URLs; images are omitted.
+
 This is a foundation under development, not a reviewed production web service.
 Supported code is the current main branch. A private reporting contact must be
 chosen by the maintainers before public release. Until then, do not put secrets
@@ -37,9 +47,9 @@ do not use storage requiring those properties in this phase.
 
 YAML is bounded and rejects aliases, tags, duplicate keys and excessive nesting.
 Errors omit document text. CLI errors do not echo failed filenames or parse
-snippets. Markdown is never rendered or executed and URLs are never fetched.
-Before a web layer exists, design authentication, session/CSRF controls, rate
-limits, sanitized preview, remote URL policies and credential storage explicitly.
+snippets. Preview renders and sanitizes Markdown without fetching URLs; the
+source remains unchanged. Authentication/session controls are described above.
+Private remote credential storage remains deferred.
 
 ## Privacy
 

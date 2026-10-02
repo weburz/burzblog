@@ -1,6 +1,6 @@
 # Foundation architecture
 
-Status: accepted for Phase 1; not a complete CMS.
+Status: foundation with Git and authenticated API; not a complete browser CMS.
 
 ```text
 Local CLI → Markdown domain → descriptor-relative filesystem store
@@ -10,11 +10,12 @@ Local CLI → Markdown domain → descriptor-relative filesystem store
                               external editor / Git
 ```
 
-One Python package, one runtime dependency, no network listener or database.
+One Python package with independently usable content and Git domains.
 Python 3.12+ provides mature tooling and POSIX directory-relative operations.
 `ruamel.yaml` handles round-trip YAML; writing a YAML parser ourselves would be
 less defensible. The CLI exercises the public library without introducing an
-unauthenticated HTTP surface. This choice does not dictate the future web UI.
+unauthenticated HTTP surface. The optional FastAPI application adds local SQLite
+authentication and sanitized preview; see ADR-008 and `docs/application.md`.
 
 ## Boundaries
 
@@ -23,11 +24,10 @@ unauthenticated HTTP surface. This choice does not dictate the future web UI.
 - `storage.py`: configured root, recursive discovery, reads, versioned writes,
   no-clobber creation/relocation and reversible archival. No Git or UI imports.
 - `cli.py`: local operator interface; errors without private document dumps.
-- Future application/authentication, Git, preview and UI layers call this core.
+- Application/authentication, Git and preview layers call this core.
   Provider credentials never belong in this package's document model.
 
-No operational database is justified yet. Later SQLite may hold sessions and
-derived indexes, never canonical article bodies. Reads always consult disk;
+SQLite holds authentication state, never canonical article bodies. Reads consult disk;
 polling/watch-based browser updates wait until a browser interface exists.
 
 ## Storage contract
@@ -59,9 +59,8 @@ native Windows are outside the tested storage contract.
 
 ## Deferred milestones
 
-1. Read-only Git status and explicit conservative Git commands with fixture repos.
-3. Authentication and sanitized preview, then a small Markdown web editor and
-   Playwright acceptance tests. No visual editor until round-trip rules exist.
+1. Nuxt UI Markdown editor and Playwright tests over the authenticated API.
+2. Private remote credential handling. No visual editor until round-trip rules exist.
 
 ## Maintainer decisions
 
