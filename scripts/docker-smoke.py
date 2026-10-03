@@ -199,7 +199,7 @@ def wait_for_log(compose: list[str], text: str) -> None:
 
 
 def archive(source: Path, name: str, target: Path) -> None:
-    """Back up one directory exactly as docs/backup.md describes."""
+    """Back up one directory with the tar options docs/backup.md uses."""
     run(
         "tar",
         "--numeric-owner",
