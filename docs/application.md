@@ -25,7 +25,17 @@ replace credentials. To replace a forgotten password, run
 `uv run --frozen burzblog-server reset-admin` with the same environment (the
 server may keep running): it asks
 twice, replaces the hash, signs out every session and clears the login-attempt
-window. There is deliberately no web or email reset. The server refuses
+window. There is deliberately no web or email reset.
+
+`init-admin` and `reset-admin` read only `BURZBLOG_CONTENT_ROOT` and
+`BURZBLOG_STATE_DIR`. They deliberately ignore the Git remote, its token/CA files,
+Git network access, the origin and the web build, so a broken or missing Git
+secret never blocks recovery. They still refuse state inside the content or its
+repository, symlinked state, a state directory that is not owned by the service
+user with mode 0700, a database that is not a private single-link 0600 regular
+file, and a database that is corrupt or not structured as BurzBlog created it.
+`reset-admin` never creates state: a wrong path fails instead of starting empty.
+`serve` keeps validating the complete configuration, including the remote. The server refuses
 startup without an initialized administrator. It binds `127.0.0.1:8000` by
 default; `--port` changes the port. `--host 0.0.0.0` is only for containers whose
 published port is bound to host loopback (see [containers](containers.md)). Do not

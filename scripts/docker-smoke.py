@@ -265,6 +265,17 @@ def restore_drill(
     wait_for_log(compose, "file is missing or unreadable by the service user")
     run(*compose, "down")
     passed("restore without the Git secret fails closed with a specific message")
+    # Recovery must not depend on the Git secret that `serve` still requires.
+    run(
+        *compose,
+        "run",
+        "--rm",
+        "-T",
+        "burzblog",
+        "reset-admin",
+        stdin=f"{password}\n{password}\n",
+    )
+    passed("reset-admin works while the Git secret is missing and serve refuses")
 
     shutil.rmtree(fixture / "secrets")
     extract(private / "secrets.tar.gz", fixture)

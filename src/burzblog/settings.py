@@ -36,7 +36,7 @@ class Settings:
         return self.origin.startswith("https://")
 
     def validate(self) -> None:
-        """Refuse secrets inside the content/repository and unsupported origins."""
+        """Complete `serve` validation: origin, storage boundary and Git remote."""
         origin = urlsplit(self.origin)
         if (
             origin.scheme not in {"http", "https"}
@@ -54,6 +54,19 @@ class Settings:
             "::1",
         }:
             raise ContentError("Non-loopback deployments require an HTTPS origin.")
+        boundary = self.validate_storage()
+        if self.remote is not None:
+            self._validate_remote(
+                self.remote, boundary, self.state_directory.absolute()
+            )
+
+    def validate_storage(self) -> Path:
+        """Keep authentication state outside content and its Git repository.
+
+        This is all the terminal administrator commands need: they must locate
+        state safely, but never depend on Git credentials, network or serving
+        configuration. Returns the content/repository boundary.
+        """
         if (
             not self.content_root.is_dir()
             or self.content_root.resolve() != self.content_root.absolute()
@@ -67,8 +80,7 @@ class Settings:
             )
         if state.resolve() != state:
             raise ContentError("Operational state cannot use symlinked paths.")
-        if self.remote is not None:
-            self._validate_remote(self.remote, repository or self.content_root, state)
+        return repository or self.content_root
 
     @staticmethod
     def _validate_remote(remote: Remote, repository: Path, state: Path) -> None:
@@ -93,19 +105,28 @@ class Settings:
                 raise ContentError("Remote credentials require Git 2.31 or newer.")
 
     @classmethod
+    def for_administration(cls) -> Settings:
+        """Only the paths `init-admin`/`reset-admin` need; Git/serving settings ignored."""
+        return cls(*storage_paths())
+
+    @classmethod
     def from_environment(cls) -> Settings:
         """Load explicit server paths and optional operator-selected remote."""
-        root = os.environ.get("BURZBLOG_CONTENT_ROOT")
-        state = os.environ.get("BURZBLOG_STATE_DIR")
-        if not root or not state:
-            raise ContentError("Set BURZBLOG_CONTENT_ROOT and BURZBLOG_STATE_DIR.")
         return cls(
-            Path(root).absolute(),
-            Path(state).absolute(),
+            *storage_paths(),
             os.environ.get("BURZBLOG_ORIGIN", "http://localhost:3000"),
             remote_from_environment(),
             Path(web) if (web := os.environ.get("BURZBLOG_WEB_ROOT")) else None,
         )
+
+
+def storage_paths() -> tuple[Path, Path]:
+    """The configured content root and authentication state directory."""
+    root = os.environ.get("BURZBLOG_CONTENT_ROOT")
+    state = os.environ.get("BURZBLOG_STATE_DIR")
+    if not root or not state:
+        raise ContentError("Set BURZBLOG_CONTENT_ROOT and BURZBLOG_STATE_DIR.")
+    return Path(root).absolute(), Path(state).absolute()
 
 
 def remote_from_environment() -> Remote | None:
