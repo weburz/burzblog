@@ -80,6 +80,12 @@ test("normal workflows through the HTTPS proxy keep cookies, CSRF and CSP intact
   );
   await page.getByRole("button", { name: "Check for updates" }).click();
   expect((await fetched).status()).toBe(200);
+  const pushed = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/api/git") && response.request().method() === "POST",
+  );
+  await page.getByRole("button", { name: "Push commits" }).click();
+  expect((await pushed).status()).toBe(200);
 
   const forged = await page.evaluate(async () => {
     const response = await fetch("/api/posts", {
