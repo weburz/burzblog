@@ -57,6 +57,8 @@ site/
 
 ## Backups, upgrades, recovery
 
+The step-by-step procedure is in [backup and restore](backup.md).
+
 Back up the site (including `.archive`, `.burzblog-recovery` and `.git`) and the
 state directory with normal filesystem tools while writers are stopped; restore
 with the same tools. A private Git token ([setup](git.md#private-https-remotes))

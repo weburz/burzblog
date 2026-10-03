@@ -13,8 +13,10 @@ browser ──HTTPS──▶ your reverse proxy ──▶ 127.0.0.1:8080 ──�
                                                               └─ /secrets  ro  Git token / CA (0700)
 ```
 
-No image has been published yet; build it locally (below). Linux amd64 with
-Docker Engine and Compose v2 is the verified platform.
+No image has been published yet; build it locally (below). Verified on native
+Docker Engine 29.8.2 (Debian 12, kernel 6.1, amd64, rootful, AppArmor, cgroup v2)
+and Docker Desktop 29.6.2 (WSL2); see [security review](security-review.md).
+Rootless Docker, user-namespace remapping and ARM are not verified.
 
 ## 1. Prepare host directories
 
@@ -78,40 +80,54 @@ policy retries automatically.
 ## 4. Put HTTPS in front
 
 The port is published on host loopback only. Terminate TLS in a reverse proxy on
-the same host, forward to `127.0.0.1:8080`, **preserve the Host header**, and set
-timeouts, a body limit (≥ 4 MB) and connection limits. Proxy headers are not
-trusted by BurzBlog. Examples (adapt; not tested in this repository):
+the same host that forwards to `127.0.0.1:8080` and **preserves the Host header**.
+BurzBlog ignores `X-Forwarded-*`/`Forwarded` headers; its checks use the exact
+configured origin, the Host header, a session-bound CSRF token and
+`Secure; HttpOnly; SameSite=Strict` cookies, all of which work unchanged behind
+a proxy. Two complete, validated examples ship in [`deploy/`](../deploy):
 
-```caddyfile
-blog.example.org {
-	request_body {
-		max_size 4MB
-	}
-	header Strict-Transport-Security "max-age=31536000"
-	reverse_proxy 127.0.0.1:8080
-}
+- **[`deploy/Caddyfile`](../deploy/Caddyfile)** (simplest, recommended): automatic
+  certificates, HTTP→HTTPS redirect, Host preserved by default, HSTS, 4 MB body
+  limit and server timeouts. Install Caddy from its official package, copy the
+  file to `/etc/caddy/Caddyfile`, replace `blog.example.org`, then
+  `sudo systemctl reload caddy`. Caddy has no built-in per-client connection
+  limit; use a host firewall or nginx if you need one.
+- **[`deploy/nginx.conf`](../deploy/nginx.conf)**: for `/etc/nginx/conf.d/`, with
+  redirect, HSTS, body/time limits and a per-IP connection limit. Replace the
+  domain and certificate paths, then `sudo nginx -t && sudo systemctl reload nginx`.
+
+`task proxy:lint` validates both with pinned Caddy and nginx images. Do not
+publish port 8080 on a public address or change the Compose binding to `0.0.0.0`.
+BurzBlog has one administrator and is not a hardened multi-tenant Internet
+service; see [SECURITY.md](../SECURITY.md).
+
+## 5. Validate the deployment
+
+Before real content, run the acceptance scripts from a BurzBlog checkout on the
+deployment host against a **disposable** deployment (they create posts):
+
+```sh
+task docker:check                    # image, Compose and backup/restore drill
+BURZBLOG_PROXY_URL=https://blog.example.org \
+BURZBLOG_SMOKE_PASSWORD='the administrator password' \
+  uv run --frozen python scripts/proxy-smoke.py
+cd web && BURZBLOG_DEPLOY_URL=https://blog.example.org \
+  BURZBLOG_SMOKE_PASSWORD='the administrator password' \
+  BURZBLOG_DEPLOY_CONTENT_ROOT=$HOME/burzblog/site \
+  BURZBLOG_DEPLOY_TOKEN_FILE=$HOME/burzblog/secrets/git-token \
+  pnpm exec playwright test -c playwright.deploy.config.ts
 ```
 
-```nginx
-server {
-    listen 443 ssl;
-    server_name blog.example.org;
-    # ssl_certificate ... ;
-    client_max_body_size 4m;
-    client_body_timeout 30s;
-    limit_conn perip 20;   # with: limit_conn_zone $binary_remote_addr zone=perip:10m;
-    add_header Strict-Transport-Security "max-age=31536000" always;
-    location / {
-        proxy_pass http://127.0.0.1:8080;
-        proxy_set_header Host $host;
-        proxy_read_timeout 60s;
-    }
-}
-```
-
-Do not expose port 8080 publicly and do not change the Compose port binding to
-`0.0.0.0`. BurzBlog has one administrator and is not a hardened multi-tenant
-Internet service; see [SECURITY.md](../SECURITY.md).
+`proxy-smoke.py` checks certificate trust, the HTTP→HTTPS redirect, security
+headers and HSTS through the proxy, refusal of missing/foreign/downgraded and
+forwarded-header-spoofed origins, cookie attributes, CSRF enforcement, that the
+internal port is unreachable on the host's public address, and logout. The
+browser run signs in, creates/edits/saves, detects an external edit and a stale
+save, previews, fetches and pushes the private remote, checks that nothing is
+kept in browser storage and that the token never reaches the page, and fails on
+any Content-Security-Policy violation. For a test certificate from a private CA
+add `--ca root.crt` to the first and `BURZBLOG_DEPLOY_PRIVATE_CA=1` to the second.
+Afterwards stop, delete the disposable `site`/`state`, and start fresh.
 
 ## Private Git remote
 
@@ -140,10 +156,10 @@ docker compose run --rm --entrypoint burzblog burzblog --root /site list
 
 ## Backups
 
-Stop writers (`docker compose stop`), then back up `site` (including `.archive`,
-`.burzblog-recovery` and `.git`) and `state` with ordinary tools, preserving
-modes. Back up `secrets` separately with restrictive permissions, or re-issue the
-token after a restore. Restarting: `docker compose start`.
+See [backup and restore](backup.md): stop, archive `site`, `state`, `compose.yaml`
+and `.env` with preserved permissions, start again; treat `secrets` separately
+(re-issue the token, or keep an encrypted copy). `task docker:check` rehearses
+the full backup → destroy → restore cycle on disposable data.
 
 ## Upgrade and rollback
 
@@ -179,7 +195,7 @@ backup if a future release notes a schema change.
 
 ## Verification
 
-`task docker:check` lints the Dockerfile (Hadolint), builds the image and runs
+`task docker:check` lints the Dockerfile (Hadolint) and proxy examples, builds the image and runs
 `scripts/docker-smoke.py`, which uses `compose.dist.yaml` with disposable host
 directories and a disposable authenticated HTTPS Git server on the Compose
 network. It verifies HEALTHCHECK readiness, CSP-protected shell and assets,
@@ -188,8 +204,11 @@ external host edits and stale-save refusal, authenticated push/fetch, revoked
 token handling and rotation, non-root UID, read-only root/secrets with tmpfs
 `/tmp`, dropped capabilities, loopback-only port, token absence from
 inspect/logs/API/.git/state, persistence across restart and container
-replacement, CLI use, graceful stop, image size and the absence of Node, uv, pip,
-compilers, curl, ssh and development Python packages.
+replacement, administrator password reset, CLI use, a backup → destroy → restore
+drill (including fail-closed startup while the Git secret is missing), graceful
+stop within the 45-second stop grace period, image size and the absence of Node,
+uv, pip, compilers, curl, ssh and development Python packages — 23 checks, each
+printed as it passes. `task proxy:lint` validates the proxy examples.
 
 Static checks in `task check` keep `compose.yaml` and `compose.dist.yaml`
 identical apart from build/image and enforce the hardening and bind-mount rules.

@@ -28,7 +28,7 @@ commit-message hook. The stdin invocation also works in linked worktrees.
 
 Actions is intentionally disabled. Record exact `task check` results in each
 PR; do not report dormant workflows as executed. Docker checks are separate:
-`task docker:check` runs `docker:lint`, `docker:build` and `docker:smoke`. Hadolint
+`task docker:check` runs `docker:lint`, `proxy:lint`, `docker:build` and `docker:smoke`. Hadolint
 2.15.1 is the Dockerfile linter (standalone when installed, otherwise its
 digest-pinned image). Where no Docker
 daemon is available, report container runtime checks as unrun.
