@@ -33,6 +33,8 @@ def test_compose_hardening_and_persistence(name):
     assert burzblog["cap_drop"] == ["ALL"]
     assert burzblog["security_opt"] == ["no-new-privileges:true"]
     assert burzblog["restart"] == "unless-stopped"
+    # Longer than the 30 s Git network deadline (git_mutations.py) plus margin.
+    assert int(burzblog["stop_grace_period"].removesuffix("s")) > 30
     assert re.fullmatch(
         r"\$\{BURZBLOG_UID:\?[^}]+\}:\$\{BURZBLOG_GID:\?[^}]+\}", burzblog["user"]
     )
@@ -97,3 +99,21 @@ def test_environment_example_contains_no_secret_values():
     assert re.search(r"^# BURZBLOG_REMOTE_TOKEN_FILE=/secrets/", example, re.MULTILINE)
     for line in example.splitlines():
         assert not re.search(r"(ghp_|glpat-|github_pat_|xox[bp]-)", line)
+
+
+def test_reverse_proxy_examples_keep_the_trust_boundary():
+    caddy = (PROJECT / "deploy/Caddyfile").read_text()
+    nginx = (PROJECT / "deploy/nginx.conf").read_text()
+    # Both forward only to the loopback-published container port.
+    assert re.search(r"^\s*reverse_proxy 127\.0\.0\.1:8080$", caddy, re.MULTILINE)
+    assert "proxy_pass http://127.0.0.1:8080;" in nginx
+    # The application's Origin/Host checks need the original Host header.
+    assert "proxy_set_header Host $host;" in nginx
+    assert "header_up Host" not in caddy  # Caddy preserves Host by default.
+    # Request bodies must fit the application's 3 MiB limit plus JSON overhead.
+    assert "max_size 4MB" in caddy and "client_max_body_size 4m;" in nginx
+    for config in (caddy, nginx):
+        assert "Strict-Transport-Security" in config
+        assert "X-Forwarded" not in config.replace("X-Forwarded-*", "")
+    assert re.search(r"return 30[18] https://", nginx)
+    assert "limit_conn_zone" in nginx and "limit_conn burzblog_per_ip" in nginx

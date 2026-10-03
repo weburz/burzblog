@@ -115,14 +115,51 @@ the policy, immutable assets, symlink/traversal refusal under `/_nuxt/`, Host
 validation and unchanged API headers; browser E2E fails on any CSP violation.
 
 `scripts/docker-smoke.py` ran against a real Docker daemon (Docker Desktop
-29.6.2 on WSL2, linux/amd64): 19 acceptance checks covering non-root UID,
+29.6.2 on WSL2, linux/amd64): 19 acceptance checks at the time of #16 (20 after
+#19 added the password-reset check) covering non-root UID,
 read-only root, dropped capabilities, loopback-only publishing, bind-mounted
 site/state/secrets, host UID/GID on writes, external edits, authenticated
 private push/fetch, token absence from inspect/logs/API/.git/state, restart and
 replacement persistence, and runtime contents (no Node/uv/pip/compiler/curl/ssh
 or development packages). Hadolint 2.15.1 passes.
 
-Not verified: real reverse-proxy configurations (examples are documented,
-untested), native Linux Docker Engine (only Docker Desktop's WSL2 integration),
-rootless Docker or user-namespace remapping, ARM, and systemd unit hardening.
+Not verified at the time: real reverse-proxy configurations, native Linux
+Docker Engine, rootless Docker or user-namespace remapping, ARM, and systemd unit
+hardening. The first two are covered by the native validation below.
 The Debian `git` package (2.39.5) is trusted native code patched via image rebuilds.
+
+## Native Linux deployment validation — 2026-10-03
+
+Host: a disposable KVM guest on the maintainer workstation (not the intended
+production server) running stock Debian 12 (kernel 6.1.0-53-cloud-amd64),
+Docker Engine 29.8.2 / API 1.56 from download.docker.com (rootful, overlayfs,
+cgroup v2, AppArmor + seccomp), Compose v5.6.0, Caddy v2.11.7 from Caddy's apt
+repository. Deployment user UID 1501 / GID 1000 (deliberately non-default and
+unequal), member of the `docker` group; commit built from a git bundle on the host.
+
+- `task docker:check`: Hadolint and proxy examples valid; image built; 23/23
+  acceptance checks, including UID 1501 ownership, backup → destroy → restore
+  (fail-closed start without the Git secret) and a 45 s stop timeout.
+- Operator-style deployment from `docs/containers.md` behind the shipped
+  Caddyfile (only the domain and `local_certs` changed, no public DNS):
+  `scripts/proxy-smoke.py` 8/8; Playwright deploy spec 1/1 (no CSP violations,
+  Secure/HttpOnly/SameSite=Strict `/api` cookie, forged CSRF request refused,
+  empty browser storage, token absent); pushed commit present on the private
+  remote; token absent from `docker inspect`, logs, site and state. An echo
+  upstream confirmed Caddy forwards `Host: <domain>` unchanged and overwrites a
+  client-supplied `X-Forwarded-Host`.
+
+Review findings: Docker's default 10 s stop timeout could SIGKILL an in-flight
+Git fetch/push (30 s deadline) and leave lock files, so Compose now sets
+`stop_grace_period: 45s` (tested). The earlier nginx example referenced an
+undefined `limit_conn` zone and commented-out certificates, so it would fail
+`nginx -t`; it is replaced by the validated `deploy/nginx.conf`. Reviewed without
+change: CSP hashing and asset serving (`builds/latest.json` is cache-busted by
+Nuxt, so immutable caching is harmless), push porcelain parsing and fixed
+`RemoteError` text, credential file handling, proxy-header non-trust, mount
+modes, and `reset-admin` (one transaction; it shares `init-admin`'s full
+configuration validation, so a broken remote secret must be fixed or unset first).
+
+Still unverified: the maintainer's actual server, ACME certificate issuance,
+nginx at runtime (validated with `nginx -t` only), rootless Docker,
+user-namespace remapping, ARM, and the systemd guidance.

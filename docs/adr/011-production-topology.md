@@ -37,9 +37,12 @@ and Node's development-tool dependency chain (#11) near the deployment.
   site. Replacing the image cannot delete any of them.
 - The container runs as the operator-supplied numeric UID/GID of the content
   owner (required, no default), read-only root, tmpfs `/tmp`, all capabilities
-  dropped, `no-new-privileges`, `restart: unless-stopped`.
+  dropped, `no-new-privileges`, `restart: unless-stopped`, and a 45-second
+  stop grace period so in-flight Git network operations (30-second deadline)
+  finish before Docker escalates to SIGKILL.
 - Public TLS, HSTS, request timeouts and connection limits belong to an external
-  reverse proxy that preserves `Host` and forwards to `127.0.0.1:${BURZBLOG_PORT}`.
+  reverse proxy that preserves `Host` and forwards to `127.0.0.1:${BURZBLOG_PORT}`;
+  validated examples live in `deploy/` (Caddy recommended, nginx alternative).
 - Health: the image `HEALTHCHECK` requests the unauthenticated, content-free
   `/api/session`; startup itself refuses invalid configuration or an
   uninitialized administrator, so "healthy" implies configured and ready.

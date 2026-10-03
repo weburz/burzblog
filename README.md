@@ -96,10 +96,11 @@ unauthenticated network wrapper.
 
 One non-root process serves the interface and API; content, login state and Git
 secrets stay in host directories. The [container guide](docs/containers.md) covers
-building the image, initialization, an HTTPS reverse proxy, private Git remotes,
-backups, upgrades and rollback; [self-hosting](docs/self-hosting.md) also covers a
-non-container setup. The image is verified locally by `task docker:check`; no image
-or release has been published.
+building the image, initialization, an HTTPS reverse proxy (validated Caddy and
+nginx examples in `deploy/`), private Git remotes, [backups](docs/backup.md),
+upgrades and rollback; [self-hosting](docs/self-hosting.md) also covers a
+non-container setup. `task docker:check` verifies the image; it has passed on native
+Docker Engine (Debian 12) and Docker Desktop. No image or release has been published.
 
 ## Contributing and license
 

@@ -1,0 +1,25 @@
+# BurzBlog behind Caddy on the same host (the simplest supported setup).
+# Replace blog.example.org with your domain; Caddy obtains and renews its
+# certificate automatically. Caddy forwards the original Host header unchanged,
+# which BurzBlog's origin checks require. BurzBlog ignores X-Forwarded-* headers.
+{
+	servers {
+		timeouts {
+			read_header 10s
+			read_body 30s
+			write 60s
+			idle 2m
+		}
+	}
+}
+
+blog.example.org {
+	request_body {
+		max_size 4MB
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+	reverse_proxy 127.0.0.1:8080
+}

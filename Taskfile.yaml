@@ -78,9 +78,13 @@ tasks:
   docker:smoke:
     desc: Container acceptance test against disposable fixtures (requires Docker)
     cmd: uv run --frozen python scripts/docker-smoke.py
+  proxy:lint:
+    desc: Validate deploy/Caddyfile and deploy/nginx.conf in pinned images (requires Docker)
+    cmd: bash scripts/proxy-config-check.sh
   docker:check:
-    desc: Lint, build and acceptance-test the image (requires Docker and Hadolint)
+    desc: Lint, build and acceptance-test the image and proxy examples (requires Docker)
     cmds:
       - task: docker:lint
+      - task: proxy:lint
       - task: docker:build
       - task: docker:smoke

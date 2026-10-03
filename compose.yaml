@@ -13,6 +13,9 @@ services:
     tmpfs:
       - /tmp:size=16m,mode=1777
     restart: unless-stopped
+    # Let in-flight Git fetch/push (30 s deadline) finish before SIGKILL, so an
+    # upgrade or stop never interrupts them and leaves Git lock files behind.
+    stop_grace_period: 45s
     # Published on host loopback only; put your HTTPS reverse proxy in front.
     ports:
       - "127.0.0.1:${BURZBLOG_PORT:-8080}:8080"
