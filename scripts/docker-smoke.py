@@ -145,6 +145,7 @@ def prepare(fixture: Path, token: str, port: int) -> tuple[Path, list[str]]:
     git(site, "init", "--quiet", "--initial-branch=main")
     git(site, "config", "user.name", "Smoke")
     git(site, "config", "user.email", "smoke@example.invalid")
+    git(site, "remote", "add", "origin", "https://gitfixture:8443/site.git")
     git(site, "add", "content/posts/hello.md")
     git(site, "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "initial")
     for private in ("state", "secrets", "git"):
@@ -186,6 +187,132 @@ def prepare(fixture: Path, token: str, port: int) -> tuple[Path, list[str]]:
         "--env-file",
         str(environment),
     ]
+
+
+def wait_for_log(compose: list[str], text: str) -> None:
+    """Wait until the service logs contain an expected operator message."""
+    for _ in range(60):
+        if text in run(*compose, "logs", "--no-color", check=False):
+            return
+        time.sleep(1)
+    raise RuntimeError(f"Expected log message not seen: {text}")
+
+
+def archive(source: Path, name: str, target: Path) -> None:
+    """Back up one directory exactly as docs/backup.md describes."""
+    run(
+        "tar",
+        "--numeric-owner",
+        "--create",
+        "--preserve-permissions",
+        "--gzip",
+        "--file",
+        target / f"{name}.tar.gz",
+        "--directory",
+        source,
+        name,
+    )
+
+
+def extract(archive_file: Path, destination: Path) -> None:
+    """Restore one archive with its recorded permissions."""
+    run(
+        "tar",
+        "--extract",
+        "--preserve-permissions",
+        "--gzip",
+        "--file",
+        archive_file,
+        "--directory",
+        destination,
+    )
+
+
+def restore_drill(
+    fixture: Path,
+    site: Path,
+    compose: list[str],
+    container: str,
+    origin: str,
+    password: str,
+    token: str,
+) -> None:
+    """Back up, destroy, restore (secret last) and verify the deployment."""
+    before = Browser(origin)
+    before.csrf = before.json("POST", "/api/login", {"password": password})["csrf"]
+    article = before.json("GET", "/api/post?path=posts/hello.md")
+    history = git(site, "log", "--format=%H %s")
+    remotes = git(site, "remote", "--verbose")
+    tracking = git(site, "for-each-ref", "refs/remotes")
+    run(*compose, "stop")
+    backups = fixture / "backups"
+    backups.mkdir(mode=0o700)
+    for name in ("site", "state"):
+        archive(fixture, name, backups)
+    private = backups / "secrets"  # Kept apart: a real operator stores this elsewhere.
+    private.mkdir(mode=0o700)
+    archive(fixture, "secrets", private)
+    shutil.copy(fixture / "smoke.env", backups / "deployment.env")
+    passed("stopped backup of site (with .git), state, separate secrets and config")
+
+    run(*compose, "down")
+    for name in ("site", "state", "secrets"):
+        shutil.rmtree(fixture / name)
+    for name in ("site", "state"):
+        extract(backups / f"{name}.tar.gz", fixture)
+    (fixture / "secrets").mkdir(mode=0o700)  # Empty until the secret is restored.
+    run(*compose, "up", "--detach", "--no-build")
+    wait_for_log(compose, "file is missing or unreadable by the service user")
+    run(*compose, "down")
+    passed("restore without the Git secret fails closed with a specific message")
+
+    shutil.rmtree(fixture / "secrets")
+    extract(private / "secrets.tar.gz", fixture)
+    expect((fixture / "secrets/git-token").stat().st_mode & 0o777 == 0o600)
+    expect((fixture / "state").stat().st_mode & 0o777 == 0o700)
+    run(*compose, "up", "--detach", "--no-build")
+    wait_healthy(container)
+    after = Browser(origin)
+    after.csrf = after.json("POST", "/api/login", {"password": password})["csrf"]
+    restored = after.json("GET", "/api/post?path=posts/hello.md")
+    expect(restored == article, "content and revision identical after restore")
+    expect(git(site, "log", "--format=%H %s") == history, "Git history")
+    expect(git(site, "remote", "--verbose") == remotes, "Git remotes")
+    expect(git(site, "for-each-ref", "refs/remotes") == tracking, "tracking refs")
+    git(site, "fsck", "--strict", "--no-progress")
+    saved = after.json(
+        "PUT",
+        "/api/post",
+        {
+            "path": article["path"],
+            "revision": article["revision"],
+            "markdown": restored["markdown"] + "After restore.\n",
+        },
+    )
+    status, _, _ = after.request(
+        "PUT",
+        "/api/post",
+        {
+            "path": article["path"],
+            "revision": article["revision"],
+            "markdown": "stale\n",
+        },
+    )
+    expect(status == 409 and saved["revision"] != article["revision"], "revisions")
+    after.json(
+        "POST",
+        "/api/git",
+        {"action": "commit", "paths": [article["path"]], "message": "After restore"},
+    )
+    after.json("POST", "/api/git", {"action": "push", "branch": "main"})
+    after.json("POST", "/api/git", {"action": "fetch"})
+    served = fixture / "git/served/site.git"
+    expect("After restore." in git(served, "show", "main:content/posts/hello.md"))
+    expect(token not in "\n".join(after.bodies), "token in API bodies")
+    passed(
+        "restored deployment: login, content, revisions, Git history/remotes and "
+        "private push/fetch all intact"
+    )
 
 
 def main() -> None:
@@ -370,6 +497,7 @@ def main() -> None:
         expect(inspected["HostConfig"]["CapDrop"] == ["ALL"])
         expect("no-new-privileges:true" in inspected["HostConfig"]["SecurityOpt"])
         expect(inspected["HostConfig"]["RestartPolicy"]["Name"] == "unless-stopped")
+        expect(inspected["Config"]["StopTimeout"] == 45, "stop grace period")
         bindings = inspected["HostConfig"]["PortBindings"]["8080/tcp"]
         expect([binding["HostIp"] for binding in bindings] == ["127.0.0.1"])
         passed(
@@ -451,6 +579,8 @@ def main() -> None:
         )
         expect("posts/hello.md" in listing)
         passed("CLI remains usable through the same image")
+
+        restore_drill(fixture, site, compose, container, origin, replaced, token)
 
         run(*compose, "stop")
         exit_code = json.loads(run("docker", "inspect", container))[0]["State"][
