@@ -182,6 +182,8 @@ backup if a future release notes a schema change.
 
 - **Forgotten password:** `docker compose run --rm burzblog reset-admin`. It asks
   twice, replaces the password, signs everyone out and clears login throttling.
+  It works even while the Git token or CA file is missing or broken (which stops
+  `serve`), but still refuses unsafe or damaged state.
 - **Login says to reload/verify:** `BURZBLOG_ORIGIN` must equal the browser's
   address bar origin exactly, and the proxy must preserve `Host`.
 - **"must be privately owned" / permission errors:** host owner must equal
@@ -205,9 +207,10 @@ token handling and rotation, non-root UID, read-only root/secrets with tmpfs
 `/tmp`, dropped capabilities, loopback-only port, token absence from
 inspect/logs/API/.git/state, persistence across restart and container
 replacement, administrator password reset, CLI use, a backup → destroy → restore
-drill (including fail-closed startup while the Git secret is missing), graceful
+drill (including fail-closed startup while the Git secret is missing, and
+administrator recovery that still works in that state), graceful
 stop within the 45-second stop grace period, image size and the absence of Node,
-uv, pip, compilers, curl, ssh and development Python packages — 23 checks, each
+uv, pip, compilers, curl, ssh and development Python packages — 24 checks, each
 printed as it passes. `task proxy:lint` validates the proxy examples.
 
 Static checks in `task check` keep `compose.yaml` and `compose.dist.yaml`

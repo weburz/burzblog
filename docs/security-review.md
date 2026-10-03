@@ -49,7 +49,13 @@ verification per process. A deterministic concurrency test checks the bound.
 Built-in development and production commands bind loopback.
 
 Terminal-only `reset-admin` (#17) replaces the hash, revokes every session and
-clears the attempt window in one transaction; it has no HTTP surface.
+clears the attempt window in one transaction; it has no HTTP surface. Since
+2026-10-03 the administrator commands validate only the storage boundary and
+authentication state (`Settings.for_administration` + `validate_storage`), so
+Git credentials or connectivity cannot block recovery; `serve` still validates
+everything. Authentication state is also refused when its tables do not have
+exactly the expected columns, and SQLite errors are reported without a traceback.
+`reset-admin` refuses to create state in a missing or empty directory.
 
 Not guaranteed: distributed/multi-worker rate limits, protection from temporary
 login denial, a web/email password reset, multi-user roles, every slow-client or
@@ -157,8 +163,9 @@ undefined `limit_conn` zone and commented-out certificates, so it would fail
 change: CSP hashing and asset serving (`builds/latest.json` is cache-busted by
 Nuxt, so immutable caching is harmless), push porcelain parsing and fixed
 `RemoteError` text, credential file handling, proxy-header non-trust, mount
-modes, and `reset-admin` (one transaction; it shares `init-admin`'s full
-configuration validation, so a broken remote secret must be fixed or unset first).
+modes, and `reset-admin` (one transaction). One finding was fixed afterwards:
+the administrator commands shared `serve`'s full configuration validation, so a
+broken remote secret blocked password recovery (see the authentication section).
 
 Still unverified: the maintainer's actual server, ACME certificate issuance,
 nginx at runtime (validated with `nginx -t` only), rootless Docker,

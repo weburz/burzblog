@@ -2,6 +2,7 @@
 
 import argparse
 import getpass
+import sqlite3
 import sys
 
 import uvicorn
@@ -24,13 +25,17 @@ def main() -> int:
     )
     arguments = parser.parse_args()
     try:
-        settings = Settings.from_environment()
-        settings.validate()
         if arguments.command in {"init-admin", "reset-admin"}:
+            # Terminal recovery needs safe authentication state only, never the
+            # Git remote, its secrets, network access or serving configuration.
+            settings = Settings.for_administration()
+            settings.validate_storage()
+            authentication = Authentication(
+                settings.state_directory, create=arguments.command == "init-admin"
+            )
             password = getpass.getpass("Administrator password: ")
             if password != getpass.getpass("Confirm password: "):
                 raise ContentError("Passwords did not match.")
-            authentication = Authentication(settings.state_directory)
             if arguments.command == "init-admin":
                 authentication.initialize(password)
                 print("Administrator initialized. Keep the state directory private.")
@@ -38,6 +43,8 @@ def main() -> int:
                 authentication.reset(password)
                 print("Administrator password replaced; all sessions were signed out.")
         else:
+            settings = Settings.from_environment()
+            settings.validate()
             uvicorn.run(
                 create_app(settings),
                 host=arguments.host,
@@ -49,6 +56,12 @@ def main() -> int:
     except ContentError as error:
         # Messages are content- and secret-free by contract; show the specific cause.
         print(f"Setup failed: {error}", file=sys.stderr)
+        return 1
+    except sqlite3.Error:
+        print(
+            "Setup failed: Authentication state is unreadable or not a BurzBlog database; restore the state directory from backup.",
+            file=sys.stderr,
+        )
         return 1
     except OSError as error:
         print(

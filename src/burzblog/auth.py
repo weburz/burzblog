@@ -19,6 +19,11 @@ from argon2.exceptions import VerificationError
 from burzblog.errors import ContentError
 
 SESSION_SECONDS = 12 * 60 * 60
+SCHEMA = {
+    "administrator": ("id", "password_hash"),
+    "sessions": ("token_hash", "csrf", "expires"),
+    "attempts": ("id", "started", "count"),
+}
 
 
 class AuthenticationError(ContentError):
@@ -45,8 +50,16 @@ def digest(token: str) -> str:
 class Authentication:
     """Persist operational authentication state; never article content."""
 
-    def __init__(self, directory: Path) -> None:
-        """Require a private operator-owned state directory and regular SQLite file."""
+    def __init__(self, directory: Path, create: bool = True) -> None:
+        """Require a private operator-owned state directory and regular SQLite file.
+
+        With `create=False` (administrator recovery) nothing is created: a
+        mistyped or missing state path fails instead of starting empty state.
+        """
+        if not create and not os.path.lexists(directory / "authentication.sqlite3"):
+            raise ContentError(
+                "No authentication state exists in the configured state directory; run init-admin first."
+            )
         directory.mkdir(mode=0o700, exist_ok=True)
         info = directory.lstat()
         if (
@@ -86,6 +99,16 @@ class Authentication:
                 CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, csrf TEXT NOT NULL, expires INTEGER NOT NULL);
                 CREATE TABLE IF NOT EXISTS attempts (id INTEGER PRIMARY KEY CHECK (id = 1), started INTEGER NOT NULL, count INTEGER NOT NULL CHECK (count >= 0));
             """)
+            # CREATE ... IF NOT EXISTS never repairs an existing table: refuse
+            # state whose structure is not exactly what BurzBlog created.
+            for table, columns in SCHEMA.items():  # Constant table names only.
+                found = tuple(
+                    row[1] for row in connection.execute(f"PRAGMA table_info({table})")
+                )
+                if found != columns:
+                    raise ContentError(
+                        "Authentication database has an unexpected structure; restore the state directory from backup."
+                    )
 
     @contextmanager
     def connection(self) -> Generator[sqlite3.Connection, None, None]:
