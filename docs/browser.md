@@ -39,7 +39,8 @@ to the API on port 8000. For production, `cd web && pnpm build` generates a stat
 interface that the API process itself serves (`BURZBLOG_WEB_ROOT`), so there is
 one loopback process and no Node.js runtime. Use the [container](containers.md)
 or [self-hosting](self-hosting.md) guide, with an HTTPS reverse proxy in front.
-This is an early self-hosted application, not a reviewed Internet appliance.
+BurzBlog is a single-administrator self-hosted application; it is not a
+hardened multi-tenant Internet service.
 
 ## Everyday flow
 

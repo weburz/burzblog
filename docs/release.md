@@ -4,10 +4,9 @@ Maintainer procedure for cutting a BurzBlog release.
 
 ## Preconditions
 
-- Issue #3 is resolved: a license file is present and the `SECURITY.md` and
-  `CODE_OF_CONDUCT.md` contacts are filled in.
+- `LICENSE` (Apache-2.0) is present and `pyproject.toml` carries the release version.
 - `task check` and `task docker:check` pass on the release commit.
-- The production-host validation from [containers.md](containers.md) section 5
+- The production-host validation from [production-runbook.md](production-runbook.md)
   is recorded in issue #5.
 - `CHANGELOG.md` `[Unreleased]` is moved under the version heading with a date.
 - Action pins in `.github/workflows/*.yml` must be full commit SHAs (an annotated tag's object SHA does not resolve); verify with `gh api repos/<owner>/<repo>/commits/<sha>` after any bump.

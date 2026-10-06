@@ -4,9 +4,11 @@ build-backend = "hatchling.build"
 
 [project]
 name = "burzblog"
-version = "0.1.0"
+version = "1.0.0"
 description = "File-first Markdown content foundation"
 readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
 dependencies = [
     "argon2-cffi==25.1.0",

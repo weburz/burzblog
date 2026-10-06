@@ -65,6 +65,6 @@ until round-trip rules exist.
 
 ## Maintainer decisions
 
-Project license, security disclosure contact, supported deployment platforms,
-and eventual publishing semantics need maintainer sign-off. No license is
-selected and no public service is deployed by this foundation.
+Resolved 2026-10-06: the project license is Apache-2.0 (`LICENSE`); supported
+deployment platforms and publishing semantics are in `docs/containers.md` and
+`docs/release.md`.

@@ -85,8 +85,8 @@ development-TLS advisory remains tracked in #11, excluded from production output
 by an enforced build check. The existing pytest Dependabot PR is unrelated and
 was not merged automatically. See [dependency details](dependencies.md).
 
-Docker runtime/web packaging remains #5. License/security/community contacts
-remain #3.
+Docker runtime/web packaging remains #5. License: Apache-2.0, decided 2026-10-06;
+no separate reporting policy for v1 (see security.md).
 
 ## Private remote credentials — 2026-10-02 (#13)
 

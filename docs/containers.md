@@ -99,7 +99,7 @@ a proxy. Two complete, validated examples ship in [`deploy/`](../deploy):
 `task proxy:lint` validates both with pinned Caddy and nginx images. Do not
 publish port 8080 on a public address or change the Compose binding to `0.0.0.0`.
 BurzBlog has one administrator and is not a hardened multi-tenant Internet
-service; see [SECURITY.md](../SECURITY.md).
+service; see [security boundaries](security.md).
 
 ## 5. Validate the deployment
 
@@ -228,8 +228,7 @@ overwritten) using the short-lived GitHub token, and writes the resulting digest
 to the job summary; consumers pin that digest. ARM images are deferred until
 tested. See [release.md](release.md) for the full procedure.
 
-Before public distribution, resolve the project license and dependency notices
-(issue #3). A maintainer must also set GHCR package visibility if anonymous pulls
-are desired. Private packages require a pull credential in Docker's credential
+Before public distribution a maintainer sets GHCR package visibility if anonymous
+pulls are desired. Private packages require a pull credential in Docker's credential
 store, never the site directory. No publishing, package-visibility change or
 Actions re-enablement has been performed.

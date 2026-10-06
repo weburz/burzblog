@@ -1,25 +1,21 @@
-# Security policy and current boundary
+# Security boundaries
 
 ## Authenticated application
 
 The optional API uses one Argon2id administrator, expiring opaque sessions,
 HttpOnly/SameSite cookies and exact-Origin plus session-token CSRF checks. State
-must be private and outside content/Git. See [ADR-008](docs/adr/008-authenticated-application.md)
-and [deployment boundaries](docs/application.md). Loopback is the default server
+must be private and outside content/Git. See [ADR-008](adr/008-authenticated-application.md)
+and [deployment boundaries](application.md). Loopback is the default server
 bind (containers bind inside their namespace and publish to host loopback only);
 production requires a same-origin HTTPS proxy with timeouts and connection
 limits. The production process serves the static interface itself with a
 hash-based CSP and runs no Node.js (ADR-011). No browser/public-deployment security assurance is claimed.
 Preview disables raw HTML and sanitizes allowed tags/URLs; images are omitted.
 The browser adds an empty-sandbox iframe and deny-by-default preview CSP. Unsent
-writing exists in memory only. See [dependency review](docs/dependencies.md) for
+writing exists in memory only. See [dependency review](dependencies.md) for
 the known build-tool advisory and the enforced production-artifact boundary.
 
-This is a foundation under development, not a reviewed production web service.
-Supported code is the current main branch. A private reporting contact must be
-chosen by the maintainers before public release. Until then, do not put secrets
-or exploitable private installation details in public issues; request a private
-channel from a maintainer. No response-time promise has been established.
+BurzBlog is a single-administrator self-hosted application behind an operator-run HTTPS proxy, not a hardened multi-tenant Internet service; report suspected security defects as ordinary GitHub issues without including secrets or private installation details.
 
 ## Threat model
 
@@ -41,7 +37,7 @@ replacement is retained; a concurrent creator wins publication safely. Late
 writes through an external descriptor remain in the captured original, which
 is never automatically deleted. This provides recovery, not automatic merging.
 An interrupted save/move can leave the source absent; inspect the journal before
-retrying. See `docs/recovery.md` and ADR-005 for retention and recovery procedures.
+retrying. See `recovery.md` and ADR-005 for retention and recovery procedures.
 
 Files are fsynced before publication and parent directories after changes.
 Disk/fsync errors after publication mean the result may already be visible;
@@ -67,7 +63,7 @@ writes credentials into Git configuration, URLs, logs or API responses.
 
 ## Git operations
 
-Read ADR-006/007 and `docs/git.md`. Hooks/filters/config includes are refused or
+Read ADR-006/007 and `git.md`. Hooks/filters/config includes are refused or
 disabled. Local bare remotes with active receiver hooks are refused before Git
 runs, because those hooks would execute in the application's OS account. HTTPS
 endpoints must be operator-approved; do not accept arbitrary URLs from browsers.
