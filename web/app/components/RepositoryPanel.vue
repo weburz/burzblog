@@ -236,22 +236,36 @@ onMounted(() => {
         repositories, a username and token file) before starting BurzBlog.
       </p>
       <form class="mt-10 max-w-xl" @submit.prevent="action('commit')">
-        <div class="toolbar mb-2">
-          <h2 class="section-title">Commit</h2>
-          <UButton
-            v-if="changed.length > 1"
-            type="button"
-            color="neutral"
-            variant="ghost"
-            size="sm"
-            @click="toggleAll"
-            >{{ allSelected ? "Clear" : "Select all" }}</UButton
-          >
-        </div>
-        <div class="file-list">
-          <label v-for="path in changed" :key="path" class="file-row mono"
-            ><input v-model="selected" type="checkbox" :value="path" />{{ path }}</label
-          >
+        <h2 class="section-title mb-2">Commit</h2>
+        <div v-if="changed.length" class="file-panel">
+          <div class="file-panel-head">
+            <span class="meta">{{ plural(changed.length, "file") }}</span>
+            <div class="actions">
+              <UButton
+                type="button"
+                color="neutral"
+                variant="ghost"
+                size="sm"
+                :disabled="allSelected"
+                @click="toggleAll"
+                >Select all</UButton
+              >
+              <UButton
+                type="button"
+                color="neutral"
+                variant="ghost"
+                size="sm"
+                :disabled="!selected.length"
+                @click="selected = []"
+                >Clear</UButton
+              >
+            </div>
+          </div>
+          <div class="file-list">
+            <label v-for="path in changed" :key="path" class="file-row mono"
+              ><input v-model="selected" type="checkbox" :value="path" />{{ path }}</label
+            >
+          </div>
         </div>
         <p v-if="!changed.length" class="muted mb-4">No changed Markdown files.</p>
         <div v-if="changed.length" class="field mt-5">

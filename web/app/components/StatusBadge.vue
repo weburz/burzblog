@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { computed } from "vue";
 
-const props = defineProps<{ status: "draft" | "published" | "unavailable" }>();
+const props = withDefaults(
+  defineProps<{ status: "draft" | "published" | "unavailable"; pill?: boolean }>(),
+  { pill: false },
+);
 const label = computed(
   () =>
     ({ draft: "Draft", published: "Published", unavailable: "Needs attention" })[
@@ -11,7 +14,10 @@ const label = computed(
 </script>
 
 <template>
-  <span class="badge" :class="`badge-${status}`">
+  <span
+    class="badge"
+    :class="[`badge-${status}`, { 'badge-pill': pill || status === 'unavailable' }]"
+  >
     <UIcon v-if="status === 'published'" name="i-lucide-check" class="size-3" />
     <UIcon
       v-else-if="status === 'unavailable'"

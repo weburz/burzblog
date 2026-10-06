@@ -55,4 +55,26 @@ describe("posts list states", () => {
     expect(wrapper.text()).not.toContain("Nothing here yet");
     wrapper.unmount();
   });
+
+  it("shows filenames in rows and a live match count while filtering", async () => {
+    const wrapper = await mountView({
+      items: [
+        { path: "posts/a.md", title: "Alpha", status: "draft" },
+        { path: "posts/b.md", title: "Beta", status: "published" },
+      ],
+      total: 2,
+    });
+    expect(wrapper.get(".post-path").text()).toBe("a.md");
+    expect(wrapper.get('[role="status"]').text()).toBe("");
+    await wrapper.get("input").setValue("alp");
+    expect(wrapper.get('[role="status"]').text()).toBe("1 of 2 posts match");
+    wrapper.unmount();
+  });
+  it("previews the path a new post will create", async () => {
+    const wrapper = await mountView({ items: [], total: 0 });
+    expect(wrapper.text()).toContain("Creates posts/….md");
+    await wrapper.get("#new-title").setValue("Hello World");
+    expect(wrapper.text()).toContain("Creates posts/hello-world.md");
+    wrapper.unmount();
+  });
 });

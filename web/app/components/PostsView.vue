@@ -34,6 +34,11 @@ const filtered = computed(() =>
 );
 const rowStatus = (status: string) =>
   status === "published" || status === "draft" ? status : "unavailable";
+const basename = (path: string) => path.slice(path.lastIndexOf("/") + 1);
+const directory = (path: string) => path.slice(0, path.lastIndexOf("/") + 1);
+// Rows show the filename; the directory is added only outside posts/.
+const rowPath = (path: string) => (directory(path) === "posts/" ? basename(path) : path);
+const newPath = computed(() => `posts/${slug.value.trim() || "…"}.md`);
 const refresh = async (next = offset.value) => {
   busy.value = true;
   error.value = "";
@@ -117,7 +122,18 @@ onMounted(() => {
           icon="i-lucide-search"
           aria-label="Filter this page of posts"
           placeholder="Filter titles…"
-        />
+        >
+          <template v-if="search" #trailing>
+            <UButton
+              color="neutral"
+              variant="link"
+              size="sm"
+              icon="i-lucide-x"
+              aria-label="Clear filter"
+              @click="search = ''"
+            />
+          </template>
+        </UInput>
         <UButton
           color="neutral"
           variant="ghost"
@@ -156,12 +172,16 @@ onMounted(() => {
     </div>
     <ul v-else aria-label="Posts" class="post-list">
       <li v-for="post in filtered" :key="post.path">
-        <button class="post-row" @click="open(post.path)">
-          <span class="post-head">
-            <span class="post-title">{{ post.title }}</span>
-            <StatusBadge :status="rowStatus(post.status)" />
-          </span>
-          <span class="post-path">{{ post.path }}</span>
+        <button class="post-row" :title="post.path" @click="open(post.path)">
+          <span class="post-title" :title="post.title">{{
+            post.status === "unavailable" ? basename(post.path) : post.title
+          }}</span>
+          <span v-if="post.status !== 'unavailable'" class="post-path">{{
+            rowPath(post.path)
+          }}</span>
+          <span class="post-status"
+            ><StatusBadge :status="rowStatus(post.status)"
+          /></span>
           <span v-if="post.status === 'unavailable'" class="post-note"
             >Could not be read. Check its frontmatter on disk.</span
           >
@@ -169,15 +189,16 @@ onMounted(() => {
       </li>
     </ul>
     <div class="toolbar mt-6">
-      <p class="meta">
+      <p v-if="loaded" class="meta">
         {{ posts.total }} files on disk
         <template v-if="posts.total > pageSize">
           · Showing {{ offset + 1 }}–{{ offset + posts.items.length }} of
           {{ posts.total }}</template
         >
-        <template v-if="filtering && loaded">
-          · Showing {{ filtered.length }} of {{ posts.items.length }} on this
-          page</template
+      </p>
+      <p class="meta" role="status">
+        <template v-if="filtering && loaded"
+          >{{ filtered.length }} of {{ posts.items.length }} posts match</template
         >
       </p>
       <div class="actions">
@@ -231,6 +252,7 @@ onMounted(() => {
               <template #trailing><span class="meta mono">.md</span></template>
             </UInput>
             <p id="slug-hint" class="meta">Lowercase letters, numbers and hyphens.</p>
+            <p class="meta mono">Creates {{ newPath }}</p>
           </div>
           <p v-if="createError" class="alert" role="alert">{{ createError }}</p>
         </form>
