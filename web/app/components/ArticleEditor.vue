@@ -113,12 +113,29 @@ const save = () =>
   perform(async () => {
     saved.value = false;
     const markdown = savedSource(current.value.markdown, text.value);
-    const article = await request<Article>("/api/post", "PUT", {
-      path: current.value.path,
-      revision: current.value.revision,
-      markdown,
-    });
-    accept(article);
+    try {
+      const article = await request<Article>("/api/post", "PUT", {
+        path: current.value.path,
+        revision: current.value.revision,
+        markdown,
+      });
+      accept(article);
+    } catch (cause) {
+      // A refused save compares at once when the file really changed on disk, or
+      // simply loads it when nothing here was edited; any other failure keeps the
+      // error block.
+      if (cause instanceof ApiError && cause.code === "conflict") {
+        const onDisk = await request<Article>(
+          `/api/post?path=${encodeURIComponent(current.value.path)}`,
+        ).catch(() => null);
+        if (onDisk && onDisk.revision !== current.value.revision) {
+          if (dirty.value) external.value = onDisk;
+          else accept(onDisk, false);
+          return;
+        }
+      }
+      throw cause;
+    }
   }, "Save did not happen");
 const publish = () =>
   perform(async () => {
@@ -268,10 +285,9 @@ const useDisk = () => {
             color="neutral"
             variant="outline"
             icon="i-lucide-hard-drive"
-            aria-label="Check disk"
             :disabled="busy"
             @click="checkDisk"
-            ><span class="editor-collapse">Check disk</span></UButton
+            >Check disk</UButton
           >
         </UTooltip>
       </div>

@@ -55,10 +55,13 @@ Unsupported frontmatter produces a clear failure rather than silently deleting
 fields. A no-op preserves original bytes; deliberate textarea edits may normalize
 line endings. Filename moves do not automatically change slug metadata.
 
-When a file changes externally, your stale save is rejected. Keep the editor
-open, use Check disk, review the disk version and copy/reconcile your text before
-explicitly replacing it. Recovery errors require the operator's
-[journal recovery procedure](recovery.md). Never repeatedly retry a recovery error.
+When a file changes externally, a stale save is refused and the editor shows the
+disk version beside your text as a line diff, with Use disk version, Copy disk
+version and Keep my text. Nothing on disk is overwritten and your text stays in
+the editor until you decide; Check disk runs the same comparison on demand. If
+nothing was edited in the browser, the disk version is simply loaded. Recovery
+errors require the operator's [journal recovery procedure](recovery.md). Never
+repeatedly retry a recovery error.
 
 If connectivity fails, the editor keeps unsent text in memory and reports it as
 unsaved. It is not an offline application. Reloading/closing the tab can lose
