@@ -4,28 +4,33 @@ All notable changes are recorded here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.0.0] - 2026-10-06
 
 ### Added
 
-- File-first Markdown content store with a recovery journal for every changing save or move, and a CLI.
-- Authenticated API with one Argon2id administrator and local SQLite authentication state.
-- Browser editor with explicit save and publish, revision-aware conflict handling, archival and safe preview.
-- Scoped Git commit, fetch, fast-forward update and non-forced push, including private HTTPS remotes using private token files.
-- Single-process container image with hardened Compose files, a backup/restore drill, and validated Caddy and nginx proxy examples.
+- File-first Markdown store: frontmatter round-trip, byte-preserving no-op saves, recovery journal for every changing save or move.
+- Command-line interface for the content store.
+- Browser editor: Markdown source with safe preview, explicit Save, Ctrl/Cmd+S, draft/publish metadata.
+- Revision-aware conflict handling with an explicit disk-version choice; rename and archive.
+- Authenticated API with one Argon2id administrator, CSRF and origin checks, terminal-only `init-admin`/`reset-admin`.
+- Git: scoped commit, fetch, fast-forward update, non-forced push, branches, private HTTPS remotes via token file (ADR-010).
+- Single-process production topology with hash-based CSP (ADR-011).
+- Container image and hardened Compose (non-root, read-only, dropped capabilities, loopback-only port).
+- Backup/restore drill and validated Caddy and nginx examples.
+- Responsive admin UI (desktop, tablet, phone) with AA contrast, keyboard and dialog focus handling.
 
-### Changed
+### Security and deployment boundaries
 
-- None yet; this is the first release.
-
-### Security
-
-- No telemetry. Symlinks are never followed; destinations are never overwritten. Git runs without inherited environment or configuration, and raw stderr and remote URLs are never exposed.
+- No telemetry or external services; secrets only via private files, never argv, URLs or logs.
+- Symlinks are never followed and destinations are never overwritten.
+- Git child processes run without inherited environment or configuration.
+- Production requires an operator-run HTTPS proxy; see `docs/security.md`.
 
 ### Known limitations
 
-- No project license has been granted yet (issue #3).
-- Production-host validation is outstanding (issue #5); one transitive advisory (node-forge, issue #11) is build-time only and not shipped.
+- Validation on the intended production host and first image publication are pending (#5).
+- The node-forge advisory is build-time only and not shipped (#11).
+- SSH and proxy Git transports are deferred (#18).
 - No visual editor, file watcher, ARM image or automatic update.
 
 Releases are tagged `vX.Y.Z`; the container image for a release is published as `ghcr.io/weburz/burzblog:vX.Y.Z` and `sha-<commit>` and must be pinned by digest (see `docs/release.md`).

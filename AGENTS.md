@@ -2,7 +2,7 @@
 
 Phase 1 is a Python 3.12+ POSIX library and local CLI. Markdown files are
 canonical; Git operations and the authenticated API are separate from storage.
-Read `docs/architecture/foundation.md` and `SECURITY.md` before storage changes.
+Read `docs/architecture/foundation.md` and `docs/security.md` before storage changes.
 
 - `task setup`: install locked dependency groups using uv.
 - `task dev`: configured API and Nuxt development servers; see docs/application.md.
@@ -19,7 +19,7 @@ Read `docs/architecture/foundation.md` and `SECURITY.md` before storage changes.
 - Preserve original bytes on no-op saves and Markdown bodies on metadata edits.
 - Never follow symlinks or overwrite a destination during create/rename.
 - Test filesystem behavior in temporary directories, including failure paths.
-- Do not copy the previous implementation or select a project license.
+- Do not copy the previous implementation. The project license is Apache-2.0 (`LICENSE`); keep it.
 - Follow the authorized milestone order: recovery, Git, application/auth, then UI.
 - Every changing save/move retains its source inode under `.burzblog-recovery`.
   Never prune journals automatically or include them in application Git commits.

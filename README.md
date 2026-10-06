@@ -1,9 +1,9 @@
 # BurzBlog
 
 A lightweight, file-first Markdown CMS. Your files remain the source of truth.
-The browser application offers a focused Markdown editor with explicit Git
-operations. Version 1.0 is being prepared; no release, image or license has
-been published yet (see [release process](docs/release.md)).
+The browser application offers a focused Markdown editor with explicit
+draft/publish metadata and explicit Git operations. Version 1.0.0; see [release process](docs/release.md) for how
+releases and images are published.
 
 ```text
 Browser / CLI → authenticated application → ordinary Markdown ←→ external editors
@@ -68,7 +68,7 @@ store.save("posts/example.md", snapshot.document, snapshot.revision)
 All reads consult disk. No-op saves preserve bytes and modification time.
 Unknown supported YAML fields remain intact. Paths, ownership, links, file sizes
 and revisions are checked. These checks have explicit limits: see
-[security](SECURITY.md), [architecture](docs/architecture/foundation.md), and
+[security boundaries](docs/security.md), [architecture](docs/architecture/foundation.md), and
 [frontmatter](docs/frontmatter.md). Saves and moves retain captured originals for
 [recovery](docs/recovery.md), including late external writes. Conflicts require
 review; they are never automatically merged. Metadata edits can normalize YAML formatting.
@@ -102,13 +102,10 @@ building the image, initialization, an HTTPS reverse proxy (validated Caddy and
 nginx examples in `deploy/`), private Git remotes, [backups](docs/backup.md),
 upgrades and rollback; [self-hosting](docs/self-hosting.md) also covers a
 non-container setup. `task docker:check` verifies the image; it has passed on native
-Docker Engine (Debian 12) and Docker Desktop. No image or release has been published. The release procedure, tag and image conventions are in [docs/release.md](docs/release.md).
+Docker Engine (Debian 12) and Docker Desktop. The first image and GitHub release follow [docs/release.md](docs/release.md) after validation on the intended production host (issue #5); until then build the image locally.
 
 ## Contributing and license
 
-See [CONTRIBUTING.md](CONTRIBUTING.md), [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md),
-and [dependency review](docs/dependencies.md).
-
-**License pending maintainer decision. No open-source license has been granted
-yet.** This is intended to become an open-source project; public visibility is
-not itself a license. No code from the previous BurzBlog was imported.
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [dependency review](docs/dependencies.md).
+BurzBlog is licensed under the [Apache License 2.0](LICENSE). No code from the
+previous BurzBlog was imported.

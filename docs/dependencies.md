@@ -8,6 +8,8 @@ with pnpm 11. No Pinia or rich-text editor dependency. Framework/tools are MIT;
 Playwright is Apache-2.0, bundled Sofia Sans/JetBrains Mono fonts are OFL-1.1 and
 Lucide icons are ISC. Assets remain package-managed, not copied from old products.
 Family palette values are adapted from UniBurz's design tokens, not business UI.
+All of these are compatible with redistribution under the project's Apache-2.0
+license, provided their notices are retained.
 
 The installed development/build tree is substantial (Nuxt UI's transitive tools),
 while deployment uses only the generated static files in `.output/public`, not
@@ -72,5 +74,5 @@ and their locked transitive dependencies. Pyright uses Node only for development
 Task orchestrates commands; Crisp checks commit messages; Hadolint checks Dockerfiles.
 No frontend bundle
 or runtime web framework is installed. Redistribution must retain dependency
-license notices; the maintainer's eventual project license must be checked for
-compatibility. The lockfile records resolved versions and artifact hashes.
+license notices; the project license is Apache-2.0, with which every locked runtime and
+build dependency (MIT, BSD-3-Clause, Apache-2.0, ISC, OFL-1.1) is compatible. The lockfile records resolved versions and artifact hashes.
