@@ -27,6 +27,8 @@ reverse proxy. This is a bounded reachability assessment, **not a clean dependen
 audit or a claim that the upstream bug is fixed**. Keep the advisory visible and
 update when an upstream patch is available; do not add audit suppression.
 
+Re-audit on 2026-10-06 (`pnpm audit --prod`): six advisories, all in build- or development-time tooling that never ships. node-forge (GHSA-86w9-cpqp-85rv, issue #11) is unchanged; the registry still has no release after 1.4.0. braces ≤3.0.3 (GHSA-vfj7-8cjw-p6xm) is reached only through nitropack's build-time globbing. simple-git ≤3.36.0 / 4.0.0 and @simple-git/argv-parser <2.0.1 (GHSA-v5rq-49vh-5v5c, GHSA-x6jw-m9v5-85vh, GHSA-g4wm-2vf7-vfgr, GHSA-858h-whjf-mvg5) come through `@nuxt/devtools`, which is disabled in `nuxt.config.ts` and is not loaded by `nuxt generate`. None of these packages exists in `.output/public`, which is the only thing the Python process serves and the only thing copied into the image; `web/scripts/check-runtime.mjs` now refuses them as well. Patched versions exist for braces and simple-git, so a narrow pnpm override is possible when the next dependency update is made; it is not applied here to keep the release lockfile unchanged. `pip-audit` over `uv export --no-dev` on the same date reports no known vulnerabilities in the Python runtime set.
+
 ## Authenticated application additions
 
 - FastAPI (MIT), Uvicorn (BSD-3-Clause): typed HTTP boundary and ASGI server,
