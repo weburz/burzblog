@@ -4,6 +4,7 @@ import type { Article } from "../types";
 import { ApiError, request, errorMessage } from "../utils/api";
 import { diffTooLong, lineDiff } from "../utils/diff";
 import { editorText, previewDocument, savedSource } from "../utils/editor";
+import { withRetainedFocus } from "../utils/focus";
 
 const props = defineProps<{ article: Article }>();
 const emit = defineEmits<{ close: [] }>();
@@ -90,20 +91,24 @@ onUnmounted(() => {
   titleObserver?.disconnect();
   clearTimeout(copiedTimer);
 });
-const perform = async (operation: () => Promise<void>, heading = "That did not work") => {
-  if (busy.value) return;
-  busy.value = true;
-  error.value = "";
-  try {
-    await operation();
-  } catch (cause) {
-    error.value = errorMessage(cause);
-    errorCode.value = cause instanceof ApiError ? cause.code : "";
-    errorHeading.value = heading;
-  } finally {
-    busy.value = false;
-  }
-};
+const perform = (operation: () => Promise<void>, heading = "That did not work") =>
+  withRetainedFocus(
+    async () => {
+      if (busy.value) return;
+      busy.value = true;
+      error.value = "";
+      try {
+        await operation();
+      } catch (cause) {
+        error.value = errorMessage(cause);
+        errorCode.value = cause instanceof ApiError ? cause.code : "";
+        errorHeading.value = heading;
+      } finally {
+        busy.value = false;
+      }
+    },
+    () => [source.value, titleElement.value],
+  );
 const save = () =>
   perform(async () => {
     saved.value = false;
@@ -229,12 +234,14 @@ const useDisk = () => {
       }}</span>
       <div class="editor-meta">
         <StatusBadge :status="articleStatus" pill />
-        <span class="mono editor-path">{{ current.path }}</span>
+        <span class="mono editor-path" :title="current.path">{{ current.path }}</span>
       </div>
     </div>
-    <h1 ref="titleElement" tabindex="-1" class="page-title editor-title">
-      {{ current.title || current.path }}
-    </h1>
+    <div class="editor-column">
+      <h1 ref="titleElement" tabindex="-1" class="page-title editor-title">
+        {{ current.title || current.path }}
+      </h1>
+    </div>
     <div class="editor-modes">
       <div class="editor-column editor-bar">
         <div class="segment" role="group" aria-label="Editor view">
@@ -255,6 +262,7 @@ const useDisk = () => {
         </div>
         <UTooltip
           text="Reload if the file changed outside BurzBlog. Never replaces unsaved text."
+          :portal="false"
         >
           <UButton
             color="neutral"

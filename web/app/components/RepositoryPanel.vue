@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import type { GitState } from "../types";
 import { ApiError, request, errorMessage } from "../utils/api";
+import { withRetainedFocus } from "../utils/focus";
 
 const toast = useToast();
 const notifySuccess = (title: string) => toast.add({ title, color: "success" });
@@ -9,11 +10,13 @@ const state = ref<GitState | null>(null);
 const error = ref("");
 const remoteFailure = ref(false);
 const lastAction = ref("");
+const lastCode = ref("");
 const invalidFailure = ref(false);
 const busy = ref(false);
 const selected = ref<string[]>([]);
 const message = ref("");
 const branch = ref("");
+const titleElement = ref<HTMLElement | null>(null);
 const remoteLabel = computed(() => {
   const remote = state.value?.remote;
   if (!remote) {
@@ -65,54 +68,61 @@ const allSelected = computed(
 const toggleAll = () => {
   selected.value = allSelected.value ? [] : [...changed.value];
 };
-const refresh = async (keep: string[] = [], track = true) => {
-  if (track) {
-    lastAction.value = "refresh";
-    remoteFailure.value = false;
-    invalidFailure.value = false;
-  }
-  try {
-    state.value = await request<GitState>("/api/git");
-    selected.value = keep.filter((path) => changed.value.includes(path));
-  } catch (cause) {
-    error.value = errorMessage(cause);
-  }
-};
-const action = async (name: string) => {
-  busy.value = true;
-  error.value = "";
-  remoteFailure.value = false;
-  invalidFailure.value = false;
-  lastAction.value = name;
-  const committed = selected.value.length;
-  try {
-    state.value = await request<GitState>("/api/git", "POST", {
-      action: name,
-      branch:
-        name === "push" || name === "update"
-          ? (state.value?.repository?.branch ?? "")
-          : branch.value,
-      paths: selected.value,
-      message: message.value,
-    });
-    selected.value = [];
-    const remote = state.value?.remote?.name ?? "remote";
-    if (name === "commit") {
-      message.value = "";
-      notifySuccess(`Committed ${plural(committed, "file")}`);
-    } else if (name === "push") notifySuccess(`Pushed to ${remote}`);
-    else if (name === "update") notifySuccess(`Updated from ${remote}`);
-  } catch (cause) {
-    error.value = errorMessage(cause);
-    remoteFailure.value = cause instanceof ApiError && cause.code === "remote";
-    invalidFailure.value =
-      name === "commit" && cause instanceof ApiError && cause.code === "invalid";
-    await refresh(selected.value, false);
-  } finally {
-    busy.value = false;
-  }
-};
-const titleElement = ref<HTMLElement | null>(null);
+const refresh = (keep: string[] = [], track = true) =>
+  withRetainedFocus(async () => {
+    if (track) {
+      lastAction.value = "refresh";
+      remoteFailure.value = false;
+      invalidFailure.value = false;
+      error.value = "";
+    }
+    try {
+      state.value = await request<GitState>("/api/git");
+      selected.value = keep.filter((path) => changed.value.includes(path));
+    } catch (cause) {
+      error.value = errorMessage(cause);
+    }
+  });
+const action = (name: string) =>
+  withRetainedFocus(
+    async () => {
+      busy.value = true;
+      error.value = "";
+      remoteFailure.value = false;
+      invalidFailure.value = false;
+      lastAction.value = name;
+      lastCode.value = "";
+      const committed = selected.value.length;
+      try {
+        state.value = await request<GitState>("/api/git", "POST", {
+          action: name,
+          branch:
+            name === "push" || name === "update"
+              ? (state.value?.repository?.branch ?? "")
+              : branch.value,
+          paths: selected.value,
+          message: message.value,
+        });
+        selected.value = [];
+        const remote = state.value?.remote?.name ?? "remote";
+        if (name === "commit") {
+          message.value = "";
+          notifySuccess(`Committed ${plural(committed, "file")}`);
+        } else if (name === "push") notifySuccess(`Pushed to ${remote}`);
+        else if (name === "update") notifySuccess(`Updated from ${remote}`);
+      } catch (cause) {
+        error.value = errorMessage(cause);
+        lastCode.value = cause instanceof ApiError ? cause.code : "";
+        remoteFailure.value = cause instanceof ApiError && cause.code === "remote";
+        invalidFailure.value =
+          name === "commit" && cause instanceof ApiError && cause.code === "invalid";
+        await refresh(selected.value, false);
+      } finally {
+        busy.value = false;
+      }
+    },
+    () => [titleElement.value],
+  );
 onMounted(() => {
   titleElement.value?.focus();
   void refresh();
@@ -146,11 +156,26 @@ onMounted(() => {
         on disk.
       </p>
       <p
-        v-if="!remoteFailure && (lastAction === 'update' || lastAction === 'push')"
+        v-if="
+          !remoteFailure &&
+          (lastAction === 'update' || lastAction === 'push') &&
+          lastCode === 'conflict'
+        "
         class="mt-2"
       >
         Nothing was merged automatically. Compare both histories with ordinary Git before
         retrying.
+      </p>
+      <p
+        v-if="
+          !remoteFailure &&
+          syncAction &&
+          !['conflict', 'authentication', 'network'].includes(lastCode)
+        "
+        class="mt-2"
+      >
+        Nothing local was changed. If this keeps happening, ask the operator to check the
+        remote configuration.
       </p>
     </div>
     <p v-if="state && !state.repository" class="quiet-block">
@@ -212,9 +237,11 @@ onMounted(() => {
             @click="action('update')"
             >Apply safe update</UButton
           >
-          <span class="meta"
-            >Fast-forwards this branch only if nothing local would be overwritten.</span
-          >
+          <span class="meta">{{
+            state.repository.clean
+              ? "Fast-forwards this branch only if nothing local would be overwritten."
+              : "Needs a clean working tree. Commit local changes first."
+          }}</span>
         </li>
         <li>
           <UButton
@@ -335,15 +362,23 @@ onMounted(() => {
         <p v-if="!state.repository.changes.length" class="meta mt-2">
           Nothing has changed.
         </p>
-        <ul v-else class="mono mt-2 text-xs">
-          <li
-            v-for="change in state.repository.changes"
-            :key="change.path"
-            class="py-1 break-all"
-          >
-            {{ change.index }}{{ change.worktree }} {{ change.path }}
-          </li>
-        </ul>
+        <div
+          v-else
+          class="file-panel file-list change-list mt-2"
+          role="region"
+          tabindex="0"
+          aria-label="Raw Git status"
+        >
+          <ul>
+            <li
+              v-for="change in state.repository.changes"
+              :key="change.path"
+              class="change-row"
+            >
+              {{ change.index }}{{ change.worktree }} {{ change.path }}
+            </li>
+          </ul>
+        </div>
       </details>
     </template>
   </section>

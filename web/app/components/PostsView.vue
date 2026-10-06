@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import type { Article, PostList } from "../types";
-import { request, errorMessage } from "../utils/api";
+import { ApiError, request, errorMessage } from "../utils/api";
+import { withRetainedFocus } from "../utils/focus";
 import { slugify } from "../utils/posts";
 
 type Filter = "all" | "draft" | "published";
@@ -39,19 +40,22 @@ const directory = (path: string) => path.slice(0, path.lastIndexOf("/") + 1);
 // Rows show the filename; the directory is added only outside posts/.
 const rowPath = (path: string) => (directory(path) === "posts/" ? basename(path) : path);
 const newPath = computed(() => `posts/${slug.value.trim() || "…"}.md`);
-const refresh = async (next = offset.value) => {
-  busy.value = true;
-  error.value = "";
-  try {
-    posts.value = await request<PostList>(`/api/posts?offset=${next}&limit=${pageSize}`);
-    offset.value = next;
-  } catch (cause) {
-    error.value = errorMessage(cause);
-  } finally {
-    busy.value = false;
-    loaded.value = true;
-  }
-};
+const refresh = (next = offset.value) =>
+  withRetainedFocus(async () => {
+    busy.value = true;
+    error.value = "";
+    try {
+      posts.value = await request<PostList>(
+        `/api/posts?offset=${next}&limit=${pageSize}`,
+      );
+      offset.value = next;
+    } catch (cause) {
+      error.value = errorMessage(cause);
+    } finally {
+      busy.value = false;
+      loaded.value = true;
+    }
+  });
 const open = async (path: string) => {
   try {
     emit("open", await request<Article>(`/api/post?path=${encodeURIComponent(path)}`));
@@ -73,22 +77,26 @@ const clearFilter = () => {
 watch(title, (value) => {
   if (!slugTouched.value) slug.value = slugify(value);
 });
-const create = async () => {
-  busy.value = true;
-  createError.value = "";
-  try {
-    const article = await request<Article>("/api/posts", "POST", {
-      title: title.value,
-      slug: slug.value,
-    });
-    creating.value = false;
-    emit("open", article);
-  } catch (cause) {
-    createError.value = errorMessage(cause);
-  } finally {
-    busy.value = false;
-  }
-};
+const create = () =>
+  withRetainedFocus(async () => {
+    busy.value = true;
+    createError.value = "";
+    try {
+      const article = await request<Article>("/api/posts", "POST", {
+        title: title.value,
+        slug: slug.value,
+      });
+      creating.value = false;
+      emit("open", article);
+    } catch (cause) {
+      createError.value =
+        cause instanceof ApiError && cause.code === "conflict"
+          ? `${newPath.value} already exists. Choose a different filename.`
+          : errorMessage(cause);
+    } finally {
+      busy.value = false;
+    }
+  });
 const titleElement = ref<HTMLElement | null>(null);
 onMounted(() => {
   titleElement.value?.focus();
@@ -189,18 +197,20 @@ onMounted(() => {
       </li>
     </ul>
     <div class="toolbar mt-6">
-      <p v-if="loaded" class="meta">
-        {{ posts.total }} files on disk
-        <template v-if="posts.total > pageSize">
-          · Showing {{ offset + 1 }}–{{ offset + posts.items.length }} of
-          {{ posts.total }}</template
-        >
-      </p>
-      <p class="meta" role="status">
-        <template v-if="filtering && loaded"
-          >{{ filtered.length }} of {{ posts.items.length }} posts match</template
-        >
-      </p>
+      <div class="meta-row">
+        <p v-if="loaded" class="meta">
+          {{ posts.total }} files on disk
+          <template v-if="posts.total > pageSize">
+            · Showing {{ offset + 1 }}–{{ offset + posts.items.length }} of
+            {{ posts.total }}</template
+          >
+        </p>
+        <p class="meta" role="status">
+          <template v-if="filtering && loaded"
+            >{{ filtered.length }} of {{ posts.items.length }} posts match</template
+          >
+        </p>
+      </div>
       <div class="actions">
         <UButton
           v-if="offset > 0"
