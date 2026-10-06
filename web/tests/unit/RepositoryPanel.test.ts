@@ -160,3 +160,71 @@ describe("repository remote presentation", () => {
     wrapper.unmount();
   });
 });
+
+describe("repository sync failures", () => {
+  const press = (wrapper: ReturnType<typeof mountPanel>, label: string) =>
+    wrapper
+      .findAll("button")
+      .find((button) => button.text() === label)
+      ?.trigger("click");
+  const configured = () =>
+    state({ name: "origin", transport: "https", authenticated: true });
+  const failPush = async (error: ApiError) => {
+    vi.mocked(request)
+      .mockResolvedValueOnce(configured())
+      .mockRejectedValueOnce(error)
+      .mockResolvedValueOnce(configured());
+    const wrapper = mountPanel();
+    await flushPromises();
+    await press(wrapper, "Push commits");
+    await flushPromises();
+    return wrapper;
+  };
+
+  it("says nothing local changed when a push fails without a history conflict", async () => {
+    const wrapper = await failPush(
+      new ApiError(400, "invalid", "The operation cannot be performed safely."),
+    );
+    const alert = wrapper.get("[role=alert]").text();
+    expect(alert).toContain("Nothing local was changed");
+    expect(alert).not.toContain("Nothing was merged automatically");
+    wrapper.unmount();
+  });
+
+  it("keeps the history advice for a push the remote refused as a conflict", async () => {
+    const wrapper = await failPush(
+      new ApiError(409, "conflict", "The remote refused this push."),
+    );
+    const alert = wrapper.get("[role=alert]").text();
+    expect(alert).toContain("Nothing was merged automatically");
+    expect(alert).not.toContain("Nothing local was changed");
+    wrapper.unmount();
+  });
+
+  it("clears a stale sync error when the writer refreshes", async () => {
+    const wrapper = await failPush(
+      new ApiError(409, "conflict", "The remote refused this push."),
+    );
+    expect(wrapper.find("[role=alert]").exists()).toBe(true);
+    vi.mocked(request).mockResolvedValueOnce(configured());
+    await wrapper.get('button[aria-label="Refresh"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find("[role=alert]").exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("explains that Apply safe update needs a clean working tree", async () => {
+    const value = state({ name: "origin", transport: "file", authenticated: false });
+    value.repository!.clean = false;
+    value.repository!.changed_markdown = ["posts/a.md"];
+    vi.mocked(request).mockResolvedValue(value);
+    const wrapper = mountPanel();
+    await flushPromises();
+    const row = wrapper
+      .findAll("li")
+      .find((item) => item.text().includes("Apply safe update"));
+    expect(row?.text()).toContain("Needs a clean working tree");
+    expect(row?.text()).not.toContain("Fast-forwards");
+    wrapper.unmount();
+  });
+});

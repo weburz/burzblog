@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import type { Article, PostList } from "../types";
-import { request, errorMessage } from "../utils/api";
+import { ApiError, request, errorMessage } from "../utils/api";
+import { withRetainedFocus } from "../utils/focus";
 import { slugify } from "../utils/posts";
 
 type Filter = "all" | "draft" | "published";
@@ -34,19 +35,27 @@ const filtered = computed(() =>
 );
 const rowStatus = (status: string) =>
   status === "published" || status === "draft" ? status : "unavailable";
-const refresh = async (next = offset.value) => {
-  busy.value = true;
-  error.value = "";
-  try {
-    posts.value = await request<PostList>(`/api/posts?offset=${next}&limit=${pageSize}`);
-    offset.value = next;
-  } catch (cause) {
-    error.value = errorMessage(cause);
-  } finally {
-    busy.value = false;
-    loaded.value = true;
-  }
-};
+const basename = (path: string) => path.slice(path.lastIndexOf("/") + 1);
+const directory = (path: string) => path.slice(0, path.lastIndexOf("/") + 1);
+// Rows show the filename; the directory is added only outside posts/.
+const rowPath = (path: string) => (directory(path) === "posts/" ? basename(path) : path);
+const newPath = computed(() => `posts/${slug.value.trim() || "…"}.md`);
+const refresh = (next = offset.value) =>
+  withRetainedFocus(async () => {
+    busy.value = true;
+    error.value = "";
+    try {
+      posts.value = await request<PostList>(
+        `/api/posts?offset=${next}&limit=${pageSize}`,
+      );
+      offset.value = next;
+    } catch (cause) {
+      error.value = errorMessage(cause);
+    } finally {
+      busy.value = false;
+      loaded.value = true;
+    }
+  });
 const open = async (path: string) => {
   try {
     emit("open", await request<Article>(`/api/post?path=${encodeURIComponent(path)}`));
@@ -68,22 +77,26 @@ const clearFilter = () => {
 watch(title, (value) => {
   if (!slugTouched.value) slug.value = slugify(value);
 });
-const create = async () => {
-  busy.value = true;
-  createError.value = "";
-  try {
-    const article = await request<Article>("/api/posts", "POST", {
-      title: title.value,
-      slug: slug.value,
-    });
-    creating.value = false;
-    emit("open", article);
-  } catch (cause) {
-    createError.value = errorMessage(cause);
-  } finally {
-    busy.value = false;
-  }
-};
+const create = () =>
+  withRetainedFocus(async () => {
+    busy.value = true;
+    createError.value = "";
+    try {
+      const article = await request<Article>("/api/posts", "POST", {
+        title: title.value,
+        slug: slug.value,
+      });
+      creating.value = false;
+      emit("open", article);
+    } catch (cause) {
+      createError.value =
+        cause instanceof ApiError && cause.code === "conflict"
+          ? `${newPath.value} already exists. Choose a different filename.`
+          : errorMessage(cause);
+    } finally {
+      busy.value = false;
+    }
+  });
 const titleElement = ref<HTMLElement | null>(null);
 onMounted(() => {
   titleElement.value?.focus();
@@ -117,7 +130,18 @@ onMounted(() => {
           icon="i-lucide-search"
           aria-label="Filter this page of posts"
           placeholder="Filter titles…"
-        />
+        >
+          <template v-if="search" #trailing>
+            <UButton
+              color="neutral"
+              variant="link"
+              size="sm"
+              icon="i-lucide-x"
+              aria-label="Clear filter"
+              @click="search = ''"
+            />
+          </template>
+        </UInput>
         <UButton
           color="neutral"
           variant="ghost"
@@ -156,12 +180,16 @@ onMounted(() => {
     </div>
     <ul v-else aria-label="Posts" class="post-list">
       <li v-for="post in filtered" :key="post.path">
-        <button class="post-row" @click="open(post.path)">
-          <span class="post-head">
-            <span class="post-title">{{ post.title }}</span>
-            <StatusBadge :status="rowStatus(post.status)" />
-          </span>
-          <span class="post-path">{{ post.path }}</span>
+        <button class="post-row" :title="post.path" @click="open(post.path)">
+          <span class="post-title" :title="post.title">{{
+            post.status === "unavailable" ? basename(post.path) : post.title
+          }}</span>
+          <span v-if="post.status !== 'unavailable'" class="post-path">{{
+            rowPath(post.path)
+          }}</span>
+          <span class="post-status"
+            ><StatusBadge :status="rowStatus(post.status)"
+          /></span>
           <span v-if="post.status === 'unavailable'" class="post-note"
             >Could not be read. Check its frontmatter on disk.</span
           >
@@ -169,17 +197,20 @@ onMounted(() => {
       </li>
     </ul>
     <div class="toolbar mt-6">
-      <p class="meta">
-        {{ posts.total }} files on disk
-        <template v-if="posts.total > pageSize">
-          · Showing {{ offset + 1 }}–{{ offset + posts.items.length }} of
-          {{ posts.total }}</template
-        >
-        <template v-if="filtering && loaded">
-          · Showing {{ filtered.length }} of {{ posts.items.length }} on this
-          page</template
-        >
-      </p>
+      <div class="meta-row">
+        <p v-if="loaded" class="meta">
+          {{ posts.total }} files on disk
+          <template v-if="posts.total > pageSize">
+            · Showing {{ offset + 1 }}–{{ offset + posts.items.length }} of
+            {{ posts.total }}</template
+          >
+        </p>
+        <p class="meta" role="status">
+          <template v-if="filtering && loaded"
+            >{{ filtered.length }} of {{ posts.items.length }} posts match</template
+          >
+        </p>
+      </div>
       <div class="actions">
         <UButton
           v-if="offset > 0"
@@ -231,6 +262,7 @@ onMounted(() => {
               <template #trailing><span class="meta mono">.md</span></template>
             </UInput>
             <p id="slug-hint" class="meta">Lowercase letters, numbers and hyphens.</p>
+            <p class="meta mono">Creates {{ newPath }}</p>
           </div>
           <p v-if="createError" class="alert" role="alert">{{ createError }}</p>
         </form>

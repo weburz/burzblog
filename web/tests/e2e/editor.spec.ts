@@ -118,6 +118,9 @@ test("browser and external editor share ordinary Markdown without silent loss", 
   expect(existsSync(join(root, "repo/outside.md"))).toBe(false);
   await page.getByLabel("Move / rename file").fill(`posts/${slug}-renamed.md`);
   await page.getByRole("button", { name: "Move file", exact: true }).click();
+  // Scrolled to File options, the compact context bar shows the title rather than the
+  // path on phones; the path returns once the heading is back in view.
+  await page.evaluate(() => window.scrollTo(0, 0));
   await expect(page.getByText(`posts/${slug}-renamed.md`, { exact: true })).toBeVisible();
   expect(existsSync(file)).toBe(false);
   await page.getByRole("button", { name: "Archive post" }).click();

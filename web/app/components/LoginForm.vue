@@ -1,25 +1,27 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { request, errorMessage } from "../utils/api";
+import { withRetainedFocus } from "../utils/focus";
 
 defineProps<{ compact?: boolean }>();
 const emit = defineEmits<{ success: [] }>();
 const password = ref("");
 const busy = ref(false);
 const error = ref("");
-const submit = async () => {
-  busy.value = true;
-  error.value = "";
-  try {
-    await request("/api/login", "POST", { password: password.value });
-    password.value = "";
-    emit("success");
-  } catch (cause) {
-    error.value = errorMessage(cause);
-  } finally {
-    busy.value = false;
-  }
-};
+const submit = () =>
+  withRetainedFocus(async () => {
+    busy.value = true;
+    error.value = "";
+    try {
+      await request("/api/login", "POST", { password: password.value });
+      password.value = "";
+      emit("success");
+    } catch (cause) {
+      error.value = errorMessage(cause);
+    } finally {
+      busy.value = false;
+    }
+  });
 </script>
 
 <template>
@@ -40,6 +42,7 @@ const submit = async () => {
         type="password"
         autocomplete="current-password"
         required
+        autofocus
         class="w-full"
         :size="compact ? 'lg' : 'xl'"
         :aria-describedby="error ? 'login-error' : undefined"

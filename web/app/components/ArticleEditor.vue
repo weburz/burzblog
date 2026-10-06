@@ -2,7 +2,9 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import type { Article } from "../types";
 import { ApiError, request, errorMessage } from "../utils/api";
+import { diffTooLong, lineDiff } from "../utils/diff";
 import { editorText, previewDocument, savedSource } from "../utils/editor";
+import { withRetainedFocus } from "../utils/focus";
 
 const props = defineProps<{ article: Article }>();
 const emit = defineEmits<{ close: [] }>();
@@ -21,10 +23,25 @@ const titleElement = ref<HTMLElement | null>(null);
 const confirmingLeave = ref(false);
 const confirmingArchive = ref(false);
 const confirmingDisk = ref(false);
+const stuck = ref(false);
+const copied = ref(false);
+const copyFailed = ref(false);
+let copiedTimer: ReturnType<typeof setTimeout> | undefined;
+let titleObserver: IntersectionObserver | undefined;
 const dirty = computed(() => text.value !== editorText(current.value.markdown));
 const state = computed<"busy" | "dirty" | "saved" | "clean">(() =>
   busy.value ? "busy" : dirty.value ? "dirty" : saved.value ? "saved" : "clean",
 );
+const errorIcon = computed(() =>
+  errorHeading.value === "That did not work" ? "i-lucide-info" : "i-lucide-octagon-alert",
+);
+const diskDiff = computed(() =>
+  external.value ? lineDiff(text.value, editorText(external.value.markdown)) : [],
+);
+const diskTooLong = computed(() =>
+  external.value ? diffTooLong(text.value, editorText(external.value.markdown)) : false,
+);
+const gutter = { same: "", added: "+", removed: "−" };
 const articleStatus = computed(() =>
   current.value.status === "published" ? "published" : "draft",
 );
@@ -62,22 +79,36 @@ onMounted(() => {
   titleElement.value?.focus();
   window.addEventListener("beforeunload", guard);
   grow();
-});
-onUnmounted(() => window.removeEventListener("beforeunload", guard));
-const perform = async (operation: () => Promise<void>, heading = "That did not work") => {
-  if (busy.value) return;
-  busy.value = true;
-  error.value = "";
-  try {
-    await operation();
-  } catch (cause) {
-    error.value = errorMessage(cause);
-    errorCode.value = cause instanceof ApiError ? cause.code : "";
-    errorHeading.value = heading;
-  } finally {
-    busy.value = false;
+  if (titleElement.value && typeof IntersectionObserver !== "undefined") {
+    titleObserver = new IntersectionObserver(([entry]) => {
+      stuck.value = entry ? !entry.isIntersecting : false;
+    });
+    titleObserver.observe(titleElement.value);
   }
-};
+});
+onUnmounted(() => {
+  window.removeEventListener("beforeunload", guard);
+  titleObserver?.disconnect();
+  clearTimeout(copiedTimer);
+});
+const perform = (operation: () => Promise<void>, heading = "That did not work") =>
+  withRetainedFocus(
+    async () => {
+      if (busy.value) return;
+      busy.value = true;
+      error.value = "";
+      try {
+        await operation();
+      } catch (cause) {
+        error.value = errorMessage(cause);
+        errorCode.value = cause instanceof ApiError ? cause.code : "";
+        errorHeading.value = heading;
+      } finally {
+        busy.value = false;
+      }
+    },
+    () => [source.value, titleElement.value],
+  );
 const save = () =>
   perform(async () => {
     saved.value = false;
@@ -162,6 +193,23 @@ const leave = () => {
   onLeave = null;
 };
 defineExpose({ dirty, requestLeave });
+const copyDisk = async () => {
+  if (!external.value) return;
+  copyFailed.value = false;
+  try {
+    await navigator.clipboard.writeText(external.value.markdown);
+    copied.value = true;
+    clearTimeout(copiedTimer);
+    copiedTimer = setTimeout(() => (copied.value = false), 2000);
+  } catch {
+    copyFailed.value = true;
+  }
+};
+const keepMine = () => {
+  external.value = null;
+  copied.value = false;
+  copyFailed.value = false;
+};
 const useDisk = () => {
   confirmingDisk.value = false;
   if (external.value) {
@@ -173,7 +221,7 @@ const useDisk = () => {
 
 <template>
   <section class="editor" @keydown.ctrl.s.prevent="save" @keydown.meta.s.prevent="save">
-    <div class="editor-header">
+    <div class="editor-header" :class="{ 'is-stuck': stuck }">
       <UButton
         color="neutral"
         variant="ghost"
@@ -181,48 +229,56 @@ const useDisk = () => {
         @click="requestLeave(() => emit('close'))"
         >← Posts</UButton
       >
+      <span class="editor-crumb" aria-hidden="true">{{
+        current.title || current.path
+      }}</span>
       <div class="editor-meta">
-        <StatusBadge :status="articleStatus" />
-        <span class="mono editor-path">{{ current.path }}</span>
+        <StatusBadge :status="articleStatus" pill />
+        <span class="mono editor-path" :title="current.path">{{ current.path }}</span>
       </div>
     </div>
-    <h1 ref="titleElement" tabindex="-1" class="page-title editor-title">
-      {{ current.title || current.path }}
-    </h1>
+    <div class="editor-column">
+      <h1 ref="titleElement" tabindex="-1" class="page-title editor-title">
+        {{ current.title || current.path }}
+      </h1>
+    </div>
     <div class="editor-modes">
-      <div class="segment" role="group" aria-label="Editor view">
-        <UButton
-          color="neutral"
-          :variant="preview === null ? 'soft' : 'ghost'"
-          :aria-pressed="preview === null"
-          @click="preview = null"
-          >Markdown</UButton
-        ><UButton
-          color="neutral"
-          :variant="preview !== null ? 'soft' : 'ghost'"
-          :aria-pressed="preview !== null"
-          :disabled="busy"
-          @click="showPreview"
-          >Preview</UButton
+      <div class="editor-column editor-bar">
+        <div class="segment" role="group" aria-label="Editor view">
+          <UButton
+            color="neutral"
+            :variant="preview === null ? 'soft' : 'ghost'"
+            :aria-pressed="preview === null"
+            @click="preview = null"
+            >Markdown</UButton
+          ><UButton
+            color="neutral"
+            :variant="preview !== null ? 'soft' : 'ghost'"
+            :aria-pressed="preview !== null"
+            :disabled="busy"
+            @click="showPreview"
+            >Preview</UButton
+          >
+        </div>
+        <UTooltip
+          text="Reload if the file changed outside BurzBlog. Never replaces unsaved text."
+          :portal="false"
         >
+          <UButton
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-hard-drive"
+            aria-label="Check disk"
+            :disabled="busy"
+            @click="checkDisk"
+            ><span class="editor-collapse">Check disk</span></UButton
+          >
+        </UTooltip>
       </div>
-      <UTooltip
-        text="Reload if the file changed outside BurzBlog. Never replaces unsaved text."
-      >
-        <UButton
-          color="neutral"
-          variant="outline"
-          icon="i-lucide-hard-drive"
-          aria-label="Check disk"
-          :disabled="busy"
-          @click="checkDisk"
-          ><span class="editor-collapse">Check disk</span></UButton
-        >
-      </UTooltip>
     </div>
     <div v-if="error" class="alert editor-column" role="alert">
       <p class="alert-title">
-        <UIcon name="i-lucide-octagon-alert" class="size-4 align-text-bottom" />
+        <UIcon :name="errorIcon" class="size-4 align-text-bottom" />
         {{ errorHeading }}
       </p>
       <p>{{ error }}</p>
@@ -230,26 +286,50 @@ const useDisk = () => {
         Your text is still here. Use Check disk to see what is on disk.
       </p>
     </div>
-    <div v-if="external" class="alert alert-warn editor-column" role="alert">
+    <div v-if="external" class="alert alert-warn editor-column conflict" role="alert">
       <h2 class="alert-title">This file changed outside BurzBlog.</h2>
       <p>
-        Your unsaved writing is still in the editor. Compare it with the disk version
-        before choosing.
+        Your unsaved text is still in the editor and nothing on disk was overwritten.
+        Compare the two versions, then decide.
       </p>
+      <div class="actions mt-3">
+        <UButton color="neutral" variant="outline" @click="confirmingDisk = true"
+          >Use disk version</UButton
+        >
+        <UButton color="neutral" variant="ghost" @click="copyDisk">{{
+          copied ? "Copied" : "Copy disk version"
+        }}</UButton>
+        <UButton color="neutral" variant="ghost" @click="keepMine">Keep my text</UButton>
+      </div>
+      <p v-if="copyFailed" class="mt-2">Select the text below and copy it manually.</p>
+      <p v-if="diskTooLong" class="mt-3">
+        Too long to compare line by line; showing the disk version.
+      </p>
+      <p v-else class="diff-legend mt-3">
+        <span>− only in your text</span><span>+ only on disk</span>
+      </p>
+      <div
+        class="diff-panel mt-2"
+        role="region"
+        tabindex="0"
+        aria-label="Differences between your text and the disk version"
+      >
+        <div
+          v-for="(line, index) in diskDiff"
+          :key="index"
+          class="diff-line"
+          :class="`diff-${line.kind}`"
+        >
+          <span class="diff-gutter" aria-hidden="true">{{ gutter[line.kind] }}</span
+          ><span class="diff-text">{{ line.text }}</span>
+        </div>
+      </div>
       <details class="mt-3">
         <summary class="cursor-pointer">Review disk version</summary>
         <pre class="mono mt-3 whitespace-pre-wrap break-words">{{
           external.markdown
         }}</pre>
       </details>
-      <div class="actions mt-3">
-        <UButton color="neutral" variant="outline" @click="confirmingDisk = true"
-          >Use disk version</UButton
-        >
-        <UButton color="neutral" variant="ghost" @click="external = null"
-          >Keep my text</UButton
-        >
-      </div>
     </div>
     <div v-show="preview === null" class="editor-column">
       <label for="markdown" class="sr-only">Markdown source, including frontmatter</label>
@@ -274,41 +354,43 @@ const useDisk = () => {
       <iframe class="preview" title="Article preview" sandbox="" :srcdoc="preview" />
     </div>
     <div class="editor-footer">
-      <p role="status" aria-live="polite" class="editor-state" :data-state="state">
-        <template v-if="state === 'busy'"
-          ><UIcon
-            name="i-lucide-loader-circle"
-            class="size-4 animate-spin"
-          />Working…</template
-        >
-        <template v-else-if="state === 'dirty'"
-          ><span class="dot" aria-hidden="true" />Unsaved changes</template
-        >
-        <template v-else-if="state === 'saved'"
-          ><UIcon name="i-lucide-check" class="size-4" />Saved ✓</template
-        >
-        <template v-else
-          ><UIcon name="i-lucide-file-check" class="size-4" />On disk</template
-        >
-      </p>
-      <div class="actions">
-        <span class="editor-collapse"><UKbd value="Ctrl" /> <UKbd value="S" /> </span>
-        <UTooltip
-          v-if="articleStatus !== 'published'"
-          text="Save first"
-          :disabled="!dirty"
-        >
-          <span class="inline-flex">
-            <UButton
-              color="secondary"
-              variant="outline"
-              :disabled="busy || dirty"
-              @click="publish"
-              >Publish</UButton
-            >
-          </span>
-        </UTooltip>
-        <UButton color="primary" :disabled="busy" @click="save">Save</UButton>
+      <div class="editor-column editor-bar">
+        <p role="status" aria-live="polite" class="editor-state" :data-state="state">
+          <template v-if="state === 'busy'"
+            ><UIcon
+              name="i-lucide-loader-circle"
+              class="size-4 animate-spin"
+            />Working…</template
+          >
+          <template v-else-if="state === 'dirty'"
+            ><span class="dot" aria-hidden="true" />Unsaved changes</template
+          >
+          <template v-else-if="state === 'saved'"
+            ><UIcon name="i-lucide-check" class="size-4" />Saved ✓</template
+          >
+          <template v-else
+            ><UIcon name="i-lucide-file-check" class="size-4" />On disk</template
+          >
+        </p>
+        <div class="actions">
+          <span class="editor-collapse"><UKbd value="Ctrl" /> <UKbd value="S" /> </span>
+          <UTooltip
+            v-if="articleStatus !== 'published'"
+            text="Save first"
+            :disabled="!dirty"
+          >
+            <span class="inline-flex">
+              <UButton
+                color="secondary"
+                variant="outline"
+                :disabled="busy || dirty"
+                @click="publish"
+                >Publish</UButton
+              >
+            </span>
+          </UTooltip>
+          <UButton color="primary" :disabled="busy" @click="save">Save</UButton>
+        </div>
       </div>
     </div>
     <details class="file-options editor-column">
