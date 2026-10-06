@@ -279,7 +279,8 @@ const useDisk = () => {
         </div>
         <UTooltip
           text="Reload if the file changed outside BurzBlog. Never replaces unsaved text."
-          :portal="false"
+          portal="#main"
+          :ui="{ content: 'h-auto max-w-[calc(100vw-16px)]', text: 'whitespace-normal' }"
         >
           <UButton
             color="neutral"
