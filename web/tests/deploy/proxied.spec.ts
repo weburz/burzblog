@@ -110,7 +110,8 @@ test("normal workflows through the HTTPS proxy keep cookies, CSRF and CSP intact
     expect(JSON.stringify(await context.storageState())).not.toContain(token);
   }
 
-  await page.getByRole("button", { name: "Sign out" }).click();
+  await page.getByRole("button", { name: "Account" }).click();
+  await page.getByRole("menuitem", { name: "Sign out" }).click();
   await expect(page.getByLabel("Administrator password")).toBeVisible();
   expect(violations).toEqual([]);
 });

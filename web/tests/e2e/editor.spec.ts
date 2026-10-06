@@ -57,6 +57,11 @@ test("browser and external editor share ordinary Markdown without silent loss", 
   await editor.fill("unsaved browser writing");
   await page.getByRole("button", { name: "Check disk" }).click();
   await expect(editor).toHaveValue("unsaved browser writing");
+  await page.getByRole("button", { name: "← Posts" }).click();
+  await expect(page.getByRole("dialog")).toContainText("Leave without saving?");
+  await page.getByRole("dialog").getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(editor).toHaveValue("unsaved browser writing");
   writeFileSync(file, "external conflicting writing\n");
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("changed");
@@ -64,8 +69,11 @@ test("browser and external editor share ordinary Markdown without silent loss", 
   expect(readFileSync(file, "utf8")).toBe("external conflicting writing\n");
   await page.getByRole("button", { name: "Check disk" }).click();
   await expect(page.getByText("This file changed outside BurzBlog.")).toBeVisible();
-  page.once("dialog", (dialog) => dialog.accept());
-  await page.getByRole("button", { name: "Use disk version" }).click();
+  await page.getByRole("button", { name: "Use disk version" }).first().click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Use disk version" })
+    .click();
   await expect(editor).toHaveValue("external conflicting writing\n");
   await context.setOffline(true);
   await editor.fill("keep this during network failure");
@@ -73,6 +81,17 @@ test("browser and external editor share ordinary Markdown without silent loss", 
   await expect(page.getByRole("alert")).toContainText("not saved");
   await expect(editor).toHaveValue("keep this during network failure");
   await context.setOffline(false);
+  await context.clearCookies();
+  await editor.fill("after session loss");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  const reauth = page.getByRole("region", { name: "Sign in again" });
+  await expect(reauth).toBeVisible();
+  await expect(page.getByRole("alert")).toContainText("session expired");
+  await reauth.getByLabel("Administrator password").fill("browser fixture password");
+  await reauth.getByRole("button", { name: "Sign in" }).click();
+  await expect(reauth).toBeHidden();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Saved ✓" })).toBeVisible();
   await editor.fill(
     '# Safe preview\n<script>window.parent.xss=true</script>\n<img src=x onerror="window.parent.xss=true">\n[bad](javascript:alert(1))\n![pixel](https://tracker.invalid/pixel)',
   );
@@ -101,8 +120,8 @@ test("browser and external editor share ordinary Markdown without silent loss", 
   await page.getByRole("button", { name: "Move file", exact: true }).click();
   await expect(page.getByText(`posts/${slug}-renamed.md`, { exact: true })).toBeVisible();
   expect(existsSync(file)).toBe(false);
-  page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Archive post" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Archive post" }).click();
   await expect(page.getByRole("heading", { name: "Posts", exact: true })).toBeVisible();
   expect(outbound).toEqual([]);
   expect(violations).toEqual([]);

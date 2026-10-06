@@ -1,35 +1,50 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import type { Article, PostList } from "../types";
 import { request, errorMessage } from "../utils/api";
+import { slugify } from "../utils/posts";
 
+type Filter = "all" | "draft" | "published";
+const pageSize = 100;
+const filters: { value: Filter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "draft", label: "Drafts" },
+  { value: "published", label: "Published" },
+];
 const emit = defineEmits<{ open: [article: Article] }>();
 const posts = ref<PostList>({ items: [], total: 0 });
 const offset = ref(0);
 const search = ref("");
-const drafts = ref(false);
+const filter = ref<Filter>("all");
+const loaded = ref(false);
 const creating = ref(false);
 const title = ref("");
 const slug = ref("");
+const slugTouched = ref(false);
 const error = ref("");
+const createError = ref("");
 const busy = ref(false);
+const filtering = computed(() => filter.value !== "all" || search.value.trim() !== "");
 const filtered = computed(() =>
   posts.value.items.filter(
     (post) =>
-      (!drafts.value || post.status === "draft") &&
-      post.title.toLowerCase().includes(search.value.toLowerCase()),
+      (filter.value === "all" || post.status === filter.value) &&
+      post.title.toLowerCase().includes(search.value.trim().toLowerCase()),
   ),
 );
+const rowStatus = (status: string) =>
+  status === "published" || status === "draft" ? status : "unavailable";
 const refresh = async (next = offset.value) => {
   busy.value = true;
   error.value = "";
   try {
-    posts.value = await request<PostList>(`/api/posts?offset=${next}&limit=100`);
+    posts.value = await request<PostList>(`/api/posts?offset=${next}&limit=${pageSize}`);
     offset.value = next;
   } catch (cause) {
     error.value = errorMessage(cause);
   } finally {
     busy.value = false;
+    loaded.value = true;
   }
 };
 const open = async (path: string) => {
@@ -39,129 +54,196 @@ const open = async (path: string) => {
     error.value = errorMessage(cause);
   }
 };
+const startCreate = () => {
+  title.value = "";
+  slug.value = "";
+  slugTouched.value = false;
+  createError.value = "";
+  creating.value = true;
+};
+const clearFilter = () => {
+  filter.value = "all";
+  search.value = "";
+};
+watch(title, (value) => {
+  if (!slugTouched.value) slug.value = slugify(value);
+});
 const create = async () => {
   busy.value = true;
-  error.value = "";
+  createError.value = "";
   try {
-    emit(
-      "open",
-      await request<Article>("/api/posts", "POST", {
-        title: title.value,
-        slug: slug.value,
-      }),
-    );
+    const article = await request<Article>("/api/posts", "POST", {
+      title: title.value,
+      slug: slug.value,
+    });
+    creating.value = false;
+    emit("open", article);
   } catch (cause) {
-    error.value = errorMessage(cause);
+    createError.value = errorMessage(cause);
   } finally {
     busy.value = false;
   }
 };
-onMounted(() => refresh());
+const titleElement = ref<HTMLElement | null>(null);
+onMounted(() => {
+  titleElement.value?.focus();
+  void refresh();
+});
 </script>
 
 <template>
   <section class="panel">
-    <div class="toolbar mb-8">
-      <div>
-        <p class="muted text-sm mb-2">YOUR WRITING</p>
-        <h1 class="page-title">Posts</h1>
-      </div>
-      <UButton color="secondary" size="lg" @click="creating = !creating">{{
-        creating ? "Cancel new post" : "New post"
-      }}</UButton>
+    <div class="toolbar mb-6">
+      <h1 ref="titleElement" tabindex="-1" class="page-title">Posts</h1>
+      <UButton color="primary" icon="i-lucide-plus" @click="startCreate"
+        >New post</UButton
+      >
     </div>
-    <form v-if="creating" class="my-8 max-w-xl" @submit.prevent="create">
-      <div class="field">
-        <label for="new-title">Title</label
-        ><UInput
-          id="new-title"
-          v-model="title"
-          required
-          maxlength="500"
-          class="w-full"
-          size="xl"
-        />
-      </div>
-      <div class="field">
-        <label for="new-slug">Filename / slug</label
-        ><UInput
-          id="new-slug"
-          v-model="slug"
-          required
-          pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
-          class="w-full"
-          placeholder="my-first-post"
-          aria-describedby="slug-hint"
-        />
-        <p id="slug-hint" class="muted text-sm">
-          Lowercase letters, numbers and hyphens. Creates an ordinary file in posts/.
-        </p>
-      </div>
-      <UButton type="submit" color="secondary" :loading="busy">Create draft</UButton>
-    </form>
     <div class="toolbar">
-      <div class="actions">
+      <div class="segment" role="group" aria-label="Filter by status">
         <UButton
+          v-for="option in filters"
+          :key="option.value"
           color="neutral"
-          :variant="drafts ? 'ghost' : 'soft'"
-          @click="drafts = false"
-          >All posts</UButton
-        ><UButton
-          color="neutral"
-          :variant="drafts ? 'soft' : 'ghost'"
-          @click="drafts = true"
-          >Drafts</UButton
+          :variant="filter === option.value ? 'soft' : 'ghost'"
+          :aria-pressed="filter === option.value"
+          @click="filter = option.value"
+          >{{ option.label }}</UButton
         >
       </div>
       <div class="actions">
         <UInput
           v-model="search"
+          icon="i-lucide-search"
           aria-label="Filter this page of posts"
-          placeholder="Filter this page…"
-        /><UButton color="neutral" variant="ghost" :loading="busy" @click="refresh()"
-          >Refresh</UButton
-        >
+          placeholder="Filter titles…"
+        />
+        <UButton
+          color="neutral"
+          variant="ghost"
+          icon="i-lucide-refresh-cw"
+          aria-label="Refresh"
+          :loading="busy"
+          @click="refresh()"
+        />
       </div>
     </div>
-    <p v-if="error" class="error" role="alert">{{ error }}</p>
-    <p v-if="!busy && !filtered.length" class="muted py-16">
-      No posts here yet. Start with a new draft, or add a Markdown file to your content
-      directory.
-    </p>
-    <ul aria-label="Posts">
+    <div v-if="error" class="alert" role="alert">
+      <p>{{ error }}</p>
+      <UButton class="mt-2" color="neutral" variant="outline" @click="refresh()"
+        >Try again</UButton
+      >
+    </div>
+    <div v-if="!loaded" :aria-busy="true" class="post-list">
+      <p class="sr-only" role="status">Loading posts…</p>
+      <div v-for="row in 4" :key="row" class="py-4">
+        <USkeleton class="h-5 w-3/5" />
+        <USkeleton class="mt-2 h-4 w-[35%]" />
+      </div>
+    </div>
+    <div v-else-if="!posts.items.length && !error" class="empty-state">
+      <h2 class="section-title">Nothing here yet</h2>
+      <p class="muted">Start a draft, or drop a Markdown file into posts/.</p>
+      <UButton color="neutral" variant="outline" @click="startCreate"
+        >Start a draft</UButton
+      >
+    </div>
+    <div v-else-if="posts.items.length && !filtered.length" class="empty-state">
+      <h2 class="section-title">No posts match.</h2>
+      <UButton color="secondary" variant="link" @click="clearFilter"
+        >Clear filter</UButton
+      >
+    </div>
+    <ul v-else aria-label="Posts" class="post-list">
       <li v-for="post in filtered" :key="post.path">
         <button class="post-row" @click="open(post.path)">
-          <span class="post-title">{{ post.title }}</span
-          ><span class="block muted mt-2 text-sm"
-            >{{
-              post.status === "published"
-                ? "Published"
-                : post.status === "unavailable"
-                  ? "Needs attention"
-                  : "Draft"
-            }}
-            · {{ post.path }}</span
+          <span class="post-head">
+            <span class="post-title">{{ post.title }}</span>
+            <StatusBadge :status="rowStatus(post.status)" />
+          </span>
+          <span class="post-path">{{ post.path }}</span>
+          <span v-if="post.status === 'unavailable'" class="post-note"
+            >Could not be read. Check its frontmatter on disk.</span
           >
         </button>
       </li>
     </ul>
     <div class="toolbar mt-6">
-      <p class="muted text-sm">{{ posts.total }} files · reads directly from disk</p>
+      <p class="meta">
+        {{ posts.total }} files on disk
+        <template v-if="posts.total > pageSize">
+          · Showing {{ offset + 1 }}–{{ offset + posts.items.length }} of
+          {{ posts.total }}</template
+        >
+        <template v-if="filtering && loaded">
+          · Showing {{ filtered.length }} of {{ posts.items.length }} on this
+          page</template
+        >
+      </p>
       <div class="actions">
         <UButton
           v-if="offset > 0"
           color="neutral"
-          variant="ghost"
-          @click="refresh(offset - 100)"
+          variant="outline"
+          @click="refresh(offset - pageSize)"
           >Previous</UButton
         ><UButton
-          v-if="offset + 100 < posts.total"
+          v-if="offset + pageSize < posts.total"
           color="neutral"
-          variant="ghost"
-          @click="refresh(offset + 100)"
+          variant="outline"
+          @click="refresh(offset + pageSize)"
           >Next</UButton
         >
       </div>
     </div>
+    <UModal
+      v-model:open="creating"
+      title="New post"
+      description="Creates an ordinary Markdown draft in posts/."
+    >
+      <template #body>
+        <form id="new-post-form" @submit.prevent="create">
+          <div class="field">
+            <label for="new-title">Title</label
+            ><UInput
+              id="new-title"
+              v-model="title"
+              required
+              autofocus
+              maxlength="500"
+              class="w-full"
+              size="lg"
+            />
+          </div>
+          <div class="field !mb-0">
+            <label for="new-slug">Filename / slug</label
+            ><UInput
+              id="new-slug"
+              v-model="slug"
+              required
+              pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
+              class="w-full font-mono"
+              placeholder="my-first-post"
+              aria-describedby="slug-hint"
+              @update:model-value="slugTouched = true"
+            >
+              <template #trailing><span class="meta mono">.md</span></template>
+            </UInput>
+            <p id="slug-hint" class="meta">Lowercase letters, numbers and hyphens.</p>
+          </div>
+          <p v-if="createError" class="alert" role="alert">{{ createError }}</p>
+        </form>
+      </template>
+      <template #footer>
+        <div class="flex w-full justify-end gap-2">
+          <UButton color="neutral" variant="ghost" @click="creating = false"
+            >Cancel</UButton
+          >
+          <UButton type="submit" form="new-post-form" color="primary" :loading="busy"
+            >Create draft</UButton
+          >
+        </div>
+      </template>
+    </UModal>
   </section>
 </template>

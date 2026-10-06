@@ -38,7 +38,9 @@ Production-build browser tests use local real Markdown files and a bare remote,
 at desktop/tablet/mobile viewport sizes. Unit tests cover request and editor
 failure semantics. Source preservation, external conflicts, network failure,
 XSS and path rejection are tested; no claim of comprehensive accessibility or
-mobile-device certification is made. Native dialogs guard destructive choices.
+mobile-device certification is made. In-app confirmation dialogs guard destructive
+choices; the session-expired panel appears automatically on a 401 so writing is
+never lost to a sign-out.
 
 No rich-text mode, media manager, automatic change watcher, dark mode or private
 remote credentials are included. Filtering operates on the current page of 100

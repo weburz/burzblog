@@ -10,6 +10,12 @@ export class ApiError extends Error {
   }
 }
 
+const sessionExpired = () => {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("burzblog:session-expired"));
+  }
+};
+
 export const request = async <T>(
   path: string,
   method = "GET",
@@ -21,6 +27,7 @@ export const request = async <T>(
     if (path !== "/api/login") {
       const session = await request<Session>("/api/session");
       if (!session.authenticated || !session.csrf) {
+        sessionExpired();
         throw new ApiError(
           401,
           "authentication",
@@ -50,6 +57,7 @@ export const request = async <T>(
     const value = (await response.json().catch(() => null)) as {
       error?: { code?: string; message?: string };
     } | null;
+    if (response.status === 401) sessionExpired();
     throw new ApiError(
       response.status,
       value?.error?.code ?? "request",

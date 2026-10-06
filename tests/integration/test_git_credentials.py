@@ -18,6 +18,7 @@ from burzblog.git_credentials import (
     RemoteCredential,
     validate_certificate_authority,
 )
+from burzblog.git_domain import GitRepository
 from burzblog.git_mutations import GitChanges, Remote
 from burzblog.git_process import GitError, RemoteError, isolated_environment
 from burzblog.settings import Settings
@@ -334,7 +335,17 @@ def test_credential_free_remotes_remain_supported(tmp_path, workspace):
         public_server.server_close()
     bare = tmp_path / "local.git"
     git(tmp_path, "init", "--bare", "--initial-branch=main", str(bare))
+    git(root, "remote", "add", "local", str(bare))
+    git(root, "config", "branch.main.remote", "local")
+    git(root, "config", "branch.main.merge", "refs/heads/main")
     changes.push(Remote("local", str(bare)), "main")
+    assert (
+        git(root, "rev-parse", "refs/remotes/local/main").stdout
+        == git(root, "rev-parse", "refs/heads/main").stdout
+    )
+    state = GitRepository(root).status()
+    assert state is not None
+    assert state.ahead == 0
     changes.fetch(Remote("local", str(bare)))
     assert git(root, "rev-parse", "refs/remotes/local/main").returncode == 0
 
