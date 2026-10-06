@@ -16,9 +16,7 @@ updates deliberately and regenerate `uv.lock` with uv; never hand-edit it.
 
 Tests under `tests/unit` use no filesystem; `tests/integration` use temporary
 directories and real local files/processes. Add regression tests for failures
-and preservation, not just successful CRUD. Browser E2E will use Playwright
-when the browser application exists.
+and preservation, not just successful CRUD. Browser E2E runs Playwright against the production topology (`task web:check`); unit tests in `web/tests/unit` use Vitest.
 
 No code should be copied from other projects without a provenance and license
-review. The project license and contribution licensing policy are pending;
-resolve those with maintainers before accepting outside contributions.
+review. The project license and contribution licensing policy are pending (issue #3); resolve those with maintainers before accepting outside contributions.

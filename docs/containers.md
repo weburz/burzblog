@@ -219,12 +219,14 @@ identical apart from build/image and enforce the hardening and bind-mount rules.
 ## Publishing workflow (dormant)
 
 GitHub Actions is intentionally disabled. Do not enable it without maintainer
-direction. `.github/workflows/image.yml` is a manual main-branch workflow: local
-quality gates → Hadolint → build linux/amd64 image → `task docker:smoke` →
-optional GHCR push of that exact image. Its default is build/test only. Push uses
-the short-lived GitHub token and tags `sha-<full-commit>`; consumers should pin
-the resulting digest. Do not overwrite published commit tags. ARM images are
-deferred until tested.
+direction. `.github/workflows/image.yml` is a manual workflow runnable from
+`main` (build and test only) or from a `v*` tag: local quality gates → Hadolint →
+build linux/amd64 image → `task docker:smoke`. Publishing requires the `publish`
+input and a `v*` tag whose version equals `pyproject.toml`'s. It pushes the exact
+tested image as `sha-<full-commit>` and `v<version>` (never `latest`, never
+overwritten) using the short-lived GitHub token, and writes the resulting digest
+to the job summary; consumers pin that digest. ARM images are deferred until
+tested. See [release.md](release.md) for the full procedure.
 
 Before public distribution, resolve the project license and dependency notices
 (issue #3). A maintainer must also set GHCR package visibility if anonymous pulls

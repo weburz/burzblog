@@ -170,3 +170,7 @@ broken remote secret blocked password recovery (see the authentication section).
 Still unverified: the maintainer's actual server, ACME certificate issuance,
 nginx at runtime (validated with `nginx -t` only), rootless Docker,
 user-namespace remapping, ARM, and the systemd guidance.
+
+## Container re-verification after the UX pass — 2026-10-06
+
+PR #22 replaced the browser bundle packaged into the image. `task docker:check` on Docker Desktop 29.6.2 (WSL2, linux/amd64) against main 6c6b02b: Hadolint and both proxy examples valid, image built, 24/24 acceptance checks (image 238.8 MB; no Node/uv/pip/compiler/curl/ssh). The native-Engine and intended-production-server validations in issue #5 remain as recorded above; nothing here is a production-host validation.

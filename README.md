@@ -1,8 +1,9 @@
 # BurzBlog
 
-A lightweight, file-first Markdown CMS in development. Your files remain the
-source of truth. The early browser application supports source editing and
-explicit Git operations. It is not yet a reviewed production release.
+A lightweight, file-first Markdown CMS. Your files remain the source of truth.
+The browser application offers a focused Markdown editor with explicit Git
+operations. Version 1.0 is being prepared; no release, image or license has
+been published yet (see [release process](docs/release.md)).
 
 ```text
 Browser / CLI → authenticated application → ordinary Markdown ←→ external editors
@@ -17,8 +18,8 @@ and ordinary Git repository.
 
 Prerequisites: Python 3.12+, [uv](https://docs.astral.sh/uv/),
 [Task](https://taskfile.dev/), Node 24 LTS, pnpm 11, Git, and a local POSIX
-filesystem. Docker is optional; the Python runtime itself does not need Node,
-external services. The optional HTTP application uses local SQLite authentication
+filesystem. Docker is optional. The Python runtime needs neither Node.js nor any
+external service. The optional HTTP application uses local SQLite authentication
 state; the content library and CLI need no database or credentials.
 
 ```sh
@@ -29,6 +30,7 @@ task check
 
 `uv.lock` locks dependencies. `task check` runs formatting, lint, strict typing,
 unit/integration/CLI tests, package build, frontend checks and browser E2E.
+`task docker:check` additionally lints, builds and acceptance-tests the container image (24 checks) where a Docker daemon exists.
 See [browser setup and usage](docs/browser.md) to configure paths and initialize
 the administrator before `task dev`. GitHub Actions is intentionally disabled;
 the dormant workflow targets Python 3.12 and 3.14. Local checks gate merges.
@@ -100,7 +102,7 @@ building the image, initialization, an HTTPS reverse proxy (validated Caddy and
 nginx examples in `deploy/`), private Git remotes, [backups](docs/backup.md),
 upgrades and rollback; [self-hosting](docs/self-hosting.md) also covers a
 non-container setup. `task docker:check` verifies the image; it has passed on native
-Docker Engine (Debian 12) and Docker Desktop. No image or release has been published.
+Docker Engine (Debian 12) and Docker Desktop. No image or release has been published. The release procedure, tag and image conventions are in [docs/release.md](docs/release.md).
 
 ## Contributing and license
 

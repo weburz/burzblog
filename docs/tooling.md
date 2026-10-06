@@ -6,7 +6,7 @@ project adapts those conventions without importing their application code or
 service dependencies. The package remains compatible with Python 3.12+.
 
 `task setup` installs the lockfile. `task check` runs all local merge gates;
-`task dev` shows the CLI. `make` commands remain compatibility aliases. Task
+`task dev` runs the API and the Nuxt development server. `make` commands remain compatibility aliases. Task
 3.54.0 and uv 0.12.21 are pinned in the dormant workflows.
 
 Dependency groups separate `linters`, `tests`, and `build`; default `dev` includes
@@ -33,5 +33,4 @@ PR; do not report dormant workflows as executed. Docker checks are separate:
 digest-pinned image). Where no Docker
 daemon is available, report container runtime checks as unrun.
 
-When frontend code is introduced, use pnpm, Oxlint and Oxfmt as in UniBurz.
-Those tools are not installed for this Python-only foundation.
+The browser application in `web/` uses pinned pnpm 11, Oxlint and Oxfmt as in UniBurz; `task web:check` runs format, lint, `nuxt typecheck`, Vitest, the production build with its runtime-artifact boundary check, and Playwright.
