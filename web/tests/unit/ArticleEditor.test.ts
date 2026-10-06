@@ -1,13 +1,27 @@
 import { mount, flushPromises } from "@vue/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import ArticleEditor from "../../app/components/ArticleEditor.vue";
+import ConfirmDialog from "../../app/components/ConfirmDialog.vue";
+import StatusBadge from "../../app/components/StatusBadge.vue";
 import { request } from "../../app/utils/api";
 
-vi.mock("../../app/utils/api", () => ({
+vi.mock("../../app/utils/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../app/utils/api")>()),
   request: vi.fn<() => Promise<unknown>>(),
-  errorMessage: (error: Error) => error.message,
 }));
 afterEach(() => vi.clearAllMocks());
+
+const global = {
+  components: { StatusBadge, ConfirmDialog },
+  stubs: {
+    UButton: { template: "<button><slot /></button>" },
+    UInput: true,
+    UModal: true,
+    UTooltip: { template: "<span><slot /></span>" },
+    UKbd: true,
+    UIcon: true,
+  },
+};
 
 describe("editor ownership of unsent input", () => {
   it("checking an unchanged disk file never discards unsaved writing", async () => {
@@ -21,9 +35,7 @@ describe("editor ownership of unsent input", () => {
     vi.mocked(request).mockResolvedValue(article);
     const wrapper = mount(ArticleEditor, {
       props: { article },
-      global: {
-        stubs: { UButton: { template: "<button><slot /></button>" }, UInput: true },
-      },
+      global,
     });
     await wrapper.get("textarea").setValue("unsaved browser text");
     await wrapper
@@ -49,9 +61,7 @@ describe("editor ownership of unsent input", () => {
           status: "draft",
         },
       },
-      global: {
-        stubs: { UButton: { template: "<button><slot /></button>" }, UInput: true },
-      },
+      global,
     });
     await wrapper.get("textarea").setValue("keep my writing");
     await wrapper
@@ -61,6 +71,46 @@ describe("editor ownership of unsent input", () => {
     await flushPromises();
     expect(wrapper.get("textarea").element.value).toBe("keep my writing");
     expect(wrapper.get('[role="alert"]').text()).toContain("Conflict");
+    wrapper.unmount();
+  });
+  it("tracks saved state across preview", async () => {
+    const article = {
+      path: "posts/a.md",
+      revision: "a".repeat(64),
+      markdown: "disk body\n",
+      title: "A",
+      status: "draft",
+    };
+    const wrapper = mount(ArticleEditor, { props: { article }, global });
+    const status = () => wrapper.get('[role="status"]').text();
+    const press = (name: string) =>
+      wrapper
+        .findAll("button")
+        .find((button) => button.text() === name)
+        ?.trigger("click");
+    expect(status()).toContain("On disk");
+    await wrapper.get("textarea").setValue("new body\n");
+    expect(status()).toContain("Unsaved changes");
+    vi.mocked(request).mockResolvedValueOnce({
+      ...article,
+      revision: "b".repeat(64),
+      markdown: "new body\n",
+    });
+    await press("Save");
+    await flushPromises();
+    expect(status()).toContain("Saved ✓");
+    vi.mocked(request).mockResolvedValueOnce({ html: "<p>new body</p>" });
+    await press("Preview");
+    await flushPromises();
+    expect(status()).toContain("Saved ✓");
+    vi.mocked(request).mockResolvedValueOnce({
+      ...article,
+      revision: "c".repeat(64),
+      markdown: "new body\n",
+    });
+    await press("Check disk");
+    await flushPromises();
+    expect(status()).toContain("On disk");
     wrapper.unmount();
   });
 });

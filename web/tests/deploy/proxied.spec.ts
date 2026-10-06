@@ -59,8 +59,11 @@ test("normal workflows through the HTTPS proxy keep cookies, CSRF and CSP intact
     await expect(page.getByRole("alert")).toContainText("changed");
     expect(readFileSync(file, "utf8")).toContain("External host edit.");
     await page.getByRole("button", { name: "Check disk" }).click();
-    page.once("dialog", (dialog) => dialog.accept());
-    await page.getByRole("button", { name: "Use disk version" }).click();
+    await page.getByRole("button", { name: "Use disk version" }).first().click();
+    await page
+      .getByRole("dialog")
+      .getByRole("button", { name: "Use disk version" })
+      .click();
     await expect(editor).toHaveValue(/External host edit\./);
   }
 
@@ -69,8 +72,8 @@ test("normal workflows through the HTTPS proxy keep cookies, CSRF and CSP intact
   await expect(
     page.frameLocator('iframe[title="Article preview"]').getByRole("heading"),
   ).toHaveText("Preview through the proxy");
-  page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "← Posts" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Leave" }).click();
 
   await page.getByRole("button", { name: "Repository", exact: true }).click();
   await expect(page.getByText(/Remote: origin · HTTPS/)).toBeVisible();
@@ -110,7 +113,8 @@ test("normal workflows through the HTTPS proxy keep cookies, CSRF and CSP intact
     expect(JSON.stringify(await context.storageState())).not.toContain(token);
   }
 
-  await page.getByRole("button", { name: "Sign out" }).click();
+  await page.getByRole("button", { name: "Account" }).click();
+  await page.getByRole("menuitem", { name: "Sign out" }).click();
   await expect(page.getByLabel("Administrator password")).toBeVisible();
   expect(violations).toEqual([]);
 });

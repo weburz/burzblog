@@ -290,7 +290,11 @@ class GitChanges:
 
     @serialized
     def push(self, remote: Remote, branch: str) -> None:
-        """Push an explicit local branch without force; rejection is a normal conflict."""
+        """Push an explicit local branch without force; rejection is a normal conflict.
+
+        On success the remote-tracking ref for the branch is moved to the pushed commit,
+        as a named-remote push would, so ahead/behind counts need no fetch.
+        """
         root, _ = self._state()
         name = branch_name(branch)
         protocol = remote.protocol()
@@ -324,6 +328,10 @@ class GitChanges:
             )
         if not flags & {b" ", b"*", b"="}:
             raise RemoteError(UNREACHABLE)
+        run_git(
+            root,
+            ["update-ref", f"refs/remotes/{remote.name}/{name}", f"refs/heads/{name}"],
+        )
 
     @serialized
     def switch(self, branch: str) -> None:

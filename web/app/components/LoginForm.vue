@@ -2,6 +2,7 @@
 import { ref } from "vue";
 import { request, errorMessage } from "../utils/api";
 
+defineProps<{ compact?: boolean }>();
 const emit = defineEmits<{ success: [] }>();
 const password = ref("");
 const busy = ref(false);
@@ -22,10 +23,16 @@ const submit = async () => {
 </script>
 
 <template>
-  <form class="panel max-w-sm" @submit.prevent="submit">
-    <h1 class="page-title mb-3">A quiet place to write.</h1>
-    <p class="muted mb-8">Your words. Your Markdown. Your files.</p>
-    <div class="field">
+  <form
+    class="login"
+    :class="{ 'login-compact': compact, panel: !compact }"
+    @submit.prevent="submit"
+  >
+    <div v-if="!compact">
+      <h1 class="login-title mb-3">A quiet place to write.</h1>
+      <p class="muted">Your words, in Markdown files you own.</p>
+    </div>
+    <div class="field !mb-0 login-field">
       <label for="password">Administrator password</label>
       <UInput
         id="password"
@@ -34,11 +41,24 @@ const submit = async () => {
         autocomplete="current-password"
         required
         class="w-full"
-        size="xl"
+        :size="compact ? 'lg' : 'xl'"
         :aria-describedby="error ? 'login-error' : undefined"
       />
     </div>
-    <p v-if="error" id="login-error" class="error" role="alert">{{ error }}</p>
-    <UButton type="submit" color="secondary" size="lg" :loading="busy">Sign in</UButton>
+    <p v-if="error" id="login-error" class="alert login-error !my-0" role="alert">
+      {{ error }}
+    </p>
+    <div class="login-actions">
+      <UButton
+        type="submit"
+        color="primary"
+        size="lg"
+        class="justify-center"
+        :class="{ 'w-full': !compact }"
+        :loading="busy"
+        >Sign in</UButton
+      >
+      <slot name="actions" />
+    </div>
   </form>
 </template>

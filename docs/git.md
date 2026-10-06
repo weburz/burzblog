@@ -39,6 +39,9 @@ uv run burzblog --root content git-update --remote origin draft/article
 uv run burzblog --root content git-push draft/article --remote origin --url https://example.org/owner/repo.git
 ```
 
+A successful push also updates the remote-tracking ref for that branch, so
+ahead/behind counts reflect it without a fetch.
+
 Initialize repositories and configure user.name/user.email using ordinary Git.
 The CLI never invents commit identity. Only explicitly selected Markdown paths
 are committed; unrelated staged changes remain staged. Recovery/archive paths
