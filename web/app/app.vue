@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from "vue";
 import type { Article, Session } from "./types";
-import { request, errorMessage } from "./utils/api";
+import { ApiError, request, errorMessage } from "./utils/api";
 
 const authenticated = ref(false);
 const ready = ref(false);
@@ -23,10 +23,11 @@ const signedIn = () => {
   reauthenticate.value = false;
   error.value = "";
 };
-const editor = ref<{ dirty: boolean } | null>(null);
-const confirmingLeave = ref(false);
+const editor = ref<{
+  dirty: boolean;
+  requestLeave: (onLeave: () => void) => void;
+} | null>(null);
 const confirmingLogout = ref(false);
-const pendingRepository = ref(false);
 const showReauthenticate = () => {
   reauthenticate.value = true;
 };
@@ -39,28 +40,28 @@ const show = (target: "posts" | "repository") => {
   repository.value = target === "repository";
 };
 const navigate = (target: "posts" | "repository") => {
-  if (article.value && editor.value?.dirty) {
-    pendingRepository.value = target === "repository";
-    confirmingLeave.value = true;
+  if (article.value && editor.value) {
+    editor.value.requestLeave(() => show(target));
     return;
   }
   show(target);
-};
-const leave = () => {
-  confirmingLeave.value = false;
-  show(pendingRepository.value ? "repository" : "posts");
 };
 const signOut = async () => {
   confirmingLogout.value = false;
   try {
     await request("/api/logout", "POST", {});
-    authenticated.value = false;
-    article.value = null;
-    repository.value = false;
-    reauthenticate.value = false;
   } catch (cause) {
-    error.value = errorMessage(cause);
+    // An already-expired session is as good as signed out.
+    if (!(cause instanceof ApiError && cause.code === "authentication")) {
+      error.value = errorMessage(cause);
+      return;
+    }
   }
+  authenticated.value = false;
+  article.value = null;
+  repository.value = false;
+  reauthenticate.value = false;
+  error.value = "";
 };
 const logout = () => {
   if (article.value && editor.value?.dirty) {
@@ -155,14 +156,6 @@ const accountItems = [
           <PostsView v-else @open="article = $event" />
         </template>
       </main>
-      <ConfirmDialog
-        v-model:open="confirmingLeave"
-        title="Leave without saving?"
-        body="Unsaved writing will be lost. Copy anything you want to keep first."
-        confirm-label="Leave"
-        confirm-color="error"
-        @confirm="leave"
-      />
       <ConfirmDialog
         v-model:open="confirmingLogout"
         title="Sign out and close the editor?"

@@ -65,7 +65,12 @@ const allSelected = computed(
 const toggleAll = () => {
   selected.value = allSelected.value ? [] : [...changed.value];
 };
-const refresh = async (keep: string[] = []) => {
+const refresh = async (keep: string[] = [], track = true) => {
+  if (track) {
+    lastAction.value = "refresh";
+    remoteFailure.value = false;
+    invalidFailure.value = false;
+  }
   try {
     state.value = await request<GitState>("/api/git");
     selected.value = keep.filter((path) => changed.value.includes(path));
@@ -102,7 +107,7 @@ const action = async (name: string) => {
     remoteFailure.value = cause instanceof ApiError && cause.code === "remote";
     invalidFailure.value =
       name === "commit" && cause instanceof ApiError && cause.code === "invalid";
-    await refresh(selected.value);
+    await refresh(selected.value, false);
   } finally {
     busy.value = false;
   }

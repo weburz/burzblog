@@ -5,4 +5,6 @@ export const slugify = (title: string): string =>
     .toLowerCase()
     .replace(/[^\p{ASCII}]/gu, "")
     .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 128)
+    .replace(/-+$/, "");

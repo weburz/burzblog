@@ -221,6 +221,7 @@ onMounted(() => {
               id="new-slug"
               v-model="slug"
               required
+              maxlength="128"
               pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
               class="w-full font-mono"
               placeholder="my-first-post"

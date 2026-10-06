@@ -5,9 +5,9 @@ import ConfirmDialog from "../../app/components/ConfirmDialog.vue";
 import StatusBadge from "../../app/components/StatusBadge.vue";
 import { request } from "../../app/utils/api";
 
-vi.mock("../../app/utils/api", () => ({
+vi.mock("../../app/utils/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../app/utils/api")>()),
   request: vi.fn<() => Promise<unknown>>(),
-  errorMessage: (error: Error) => error.message,
 }));
 afterEach(() => vi.clearAllMocks());
 
@@ -103,6 +103,14 @@ describe("editor ownership of unsent input", () => {
     await press("Preview");
     await flushPromises();
     expect(status()).toContain("Saved ✓");
+    vi.mocked(request).mockResolvedValueOnce({
+      ...article,
+      revision: "c".repeat(64),
+      markdown: "new body\n",
+    });
+    await press("Check disk");
+    await flushPromises();
+    expect(status()).toContain("On disk");
     wrapper.unmount();
   });
 });

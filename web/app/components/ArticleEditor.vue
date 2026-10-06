@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import type { Article } from "../types";
-import { request, errorMessage } from "../utils/api";
+import { ApiError, request, errorMessage } from "../utils/api";
 import { editorText, previewDocument, savedSource } from "../utils/editor";
 
 const props = defineProps<{ article: Article }>();
@@ -10,6 +10,7 @@ const current = ref<Article>(props.article);
 const text = ref(editorText(props.article.markdown));
 const error = ref("");
 const errorHeading = ref("That did not work");
+const errorCode = ref("");
 const busy = ref(false);
 const preview = ref<string | null>(null);
 const external = ref<Article | null>(null);
@@ -21,7 +22,6 @@ const confirmingLeave = ref(false);
 const confirmingArchive = ref(false);
 const confirmingDisk = ref(false);
 const dirty = computed(() => text.value !== editorText(current.value.markdown));
-defineExpose({ dirty });
 const state = computed<"busy" | "dirty" | "saved" | "clean">(() =>
   busy.value ? "busy" : dirty.value ? "dirty" : saved.value ? "saved" : "clean",
 );
@@ -31,17 +31,26 @@ const articleStatus = computed(() =>
 // Browsers without `field-sizing: content` need the textarea sized from its content.
 const grow = () => {
   const element = source.value;
-  if (!element || (typeof CSS !== "undefined" && CSS.supports("field-sizing", "content")))
+  if (
+    !element ||
+    element.offsetParent === null ||
+    (typeof CSS !== "undefined" && CSS.supports("field-sizing", "content"))
+  )
     return;
   element.style.height = "auto";
   element.style.height = `${element.scrollHeight}px`;
 };
 watch(text, () => nextTick(grow));
+watch(preview, (value) => {
+  if (value === null) nextTick(grow);
+});
 const accept = (article: Article, saves = true) => {
+  const previous = current.value.revision;
   current.value = article;
   text.value = editorText(article.markdown);
   external.value = null;
   if (saves) saved.value = true;
+  else if (article.revision !== previous) saved.value = false;
 };
 const guard = (event: BeforeUnloadEvent) => {
   if (dirty.value) {
@@ -63,6 +72,7 @@ const perform = async (operation: () => Promise<void>, heading = "That did not w
     await operation();
   } catch (cause) {
     error.value = errorMessage(cause);
+    errorCode.value = cause instanceof ApiError ? cause.code : "";
     errorHeading.value = heading;
   } finally {
     busy.value = false;
@@ -91,7 +101,7 @@ const publish = () =>
         revision: current.value.revision,
       }),
     );
-  }, "Save did not happen");
+  }, "Publish did not happen");
 const showPreview = () =>
   perform(async () => {
     const rendered = await request<{ html: string }>("/api/preview", "POST", {
@@ -137,17 +147,21 @@ const archive = () => {
     emit("close");
   });
 };
-const close = () => {
-  if (dirty.value) {
-    confirmingLeave.value = true;
+let onLeave: (() => void) | null = null;
+const requestLeave = (proceed: () => void) => {
+  if (!dirty.value) {
+    proceed();
     return;
   }
-  emit("close");
+  onLeave = proceed;
+  confirmingLeave.value = true;
 };
 const leave = () => {
   confirmingLeave.value = false;
-  emit("close");
+  onLeave?.();
+  onLeave = null;
 };
+defineExpose({ dirty, requestLeave });
 const useDisk = () => {
   confirmingDisk.value = false;
   if (external.value) {
@@ -160,7 +174,11 @@ const useDisk = () => {
 <template>
   <section class="editor" @keydown.ctrl.s.prevent="save" @keydown.meta.s.prevent="save">
     <div class="editor-header">
-      <UButton color="neutral" variant="ghost" :disabled="busy" @click="close"
+      <UButton
+        color="neutral"
+        variant="ghost"
+        :disabled="busy"
+        @click="requestLeave(() => emit('close'))"
         >← Posts</UButton
       >
       <div class="editor-meta">
@@ -208,7 +226,7 @@ const useDisk = () => {
         {{ errorHeading }}
       </p>
       <p>{{ error }}</p>
-      <p v-if="!error.includes('still here')" class="mt-1">
+      <p v-if="!['authentication', 'network'].includes(errorCode)" class="mt-1">
         Your text is still here. Use Check disk to see what is on disk.
       </p>
     </div>
@@ -280,13 +298,15 @@ const useDisk = () => {
           text="Save first"
           :disabled="!dirty"
         >
-          <UButton
-            color="secondary"
-            variant="outline"
-            :disabled="busy || dirty"
-            @click="publish"
-            >Publish</UButton
-          >
+          <span class="inline-flex">
+            <UButton
+              color="secondary"
+              variant="outline"
+              :disabled="busy || dirty"
+              @click="publish"
+              >Publish</UButton
+            >
+          </span>
         </UTooltip>
         <UButton color="primary" :disabled="busy" @click="save">Save</UButton>
       </div>
