@@ -266,8 +266,9 @@ class GitChanges:
         if (
             not paths
             or len(paths) > 1000
-            or not message.strip()
-            or len(message.encode()) > 4096
+            # Invisible characters alone would make an empty-looking subject.
+            or not message.strip(" \t\n\r\u200b\u200c\u200d\u2060\ufeff")
+            or len(message) > 4000
             or "\0" in message
         ):
             raise GitError("Select content paths and provide a bounded commit message.")

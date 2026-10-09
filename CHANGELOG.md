@@ -8,6 +8,11 @@ All notable changes are recorded here, following
 
 ### Fixed
 
+- Frontmatter BurzBlog writes reads the same elsewhere: strings a YAML 1.1 reader
+  would take as booleans, numbers or dates (`On`, `No`, `10:30`) are quoted;
+  control and line-separator characters in values are refused; delimiters are
+  found on newlines only; invisible-only titles and commit messages count as
+  empty; commit messages are limited to 4,000 characters consistently (#46).
 - Posts says how many Markdown files have unusable names and how many folders
   were skipped for being writable by others, instead of hiding the files or
   failing the whole list; discovery allows 50,000 entries; slugs stop at 125

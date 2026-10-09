@@ -29,3 +29,10 @@ parser; comments/order/quotes are retained where supported, but YAML indentation
 and whitespace may change. Existing Markdown body, CRLF and missing final
 newline are preserved. New documents use LF, stable field order and a final
 newline. Markdown constructs, including raw HTML, are inert text in this phase.
+
+When BurzBlog writes metadata, plain strings that a YAML 1.1 reader (PyYAML,
+Ruby's Psych and many site generators) would read as a boolean, number, null or
+date are written double-quoted, so `title: "On"` stays a title everywhere. Values
+containing control characters, NEL or the Unicode line/paragraph separators are
+refused, because YAML readers fold them. Comments in a frontmatter block that
+holds nothing but comments are not kept when Publish adds the first field.
