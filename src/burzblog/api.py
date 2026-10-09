@@ -265,8 +265,11 @@ def create_app(settings: Settings) -> FastAPI:
     def posts(
         offset: int = Query(default=0, ge=0),
         limit: int = Query(default=100, ge=1, le=200),
+        status: Literal["draft", "published", "unavailable"] | None = None,
+        q: str = Query(default="", max_length=200),
+        sort: Literal["path", "modified"] = "path",
     ) -> dict[str, object]:
-        return content.list(offset, limit)
+        return content.list(offset, limit, status, q, sort)
 
     def post(path: str = Query(min_length=1, max_length=1024)) -> Article:
         return content.read(path)

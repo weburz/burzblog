@@ -48,7 +48,9 @@ Sign in → New post → title and filename → Create draft → Markdown → Sa
 Preview never writes content. Publish sets `status: published`; it does not deploy
 a site or push Git. External tools can read/edit the same file at any time.
 Refresh the list or choose Check disk in the editor to load external changes.
-No file watcher or autosave is claimed.
+No file watcher or autosave is claimed. Posts lists the most recently changed
+files first (or by path); Drafts, Published and the search box (titles and
+filenames) cover every file, not only the visible page of 100.
 
 The source editor includes frontmatter. Metadata can be edited directly there.
 Unsupported frontmatter produces a clear failure rather than silently deleting

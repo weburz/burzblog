@@ -128,7 +128,23 @@ def main() -> None:
                 article = client.get(
                     "/api/post", params={"path": "posts/post-0000.md"}
                 ).json()
-                for operation in ("list_page_100", "save", "git_status"):
+                # The first filtered request reads every file; later ones reuse the
+                # in-memory summaries of unchanged files.
+                started = time.perf_counter()
+                client.get(
+                    "/api/posts?limit=100&status=draft&q=post"
+                ).raise_for_status()
+                measurements["list_filtered_cold_ms"] = round(
+                    (time.perf_counter() - started) * 1000, 2
+                )
+                lists = {
+                    "list_page_100": "/api/posts?limit=100",
+                    # The browser's default view: newest first, still one parsed page.
+                    "list_recent_100": "/api/posts?limit=100&sort=modified",
+                    # A status or text filter parses every file to find its matches.
+                    "list_filtered_all": "/api/posts?limit=100&status=draft&q=post",
+                }
+                for operation in (*lists, "save", "git_status"):
                     samples: list[float] = []
                     for iteration in range(21):
                         started = time.perf_counter()
@@ -142,11 +158,7 @@ def main() -> None:
                                 },
                             )
                         else:
-                            response = client.get(
-                                "/api/posts?limit=100"
-                                if operation == "list_page_100"
-                                else "/api/git"
-                            )
+                            response = client.get(lists.get(operation, "/api/git"))
                         response.raise_for_status()
                         elapsed = (time.perf_counter() - started) * 1000
                         if operation == "save":
