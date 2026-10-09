@@ -45,8 +45,8 @@ hardened multi-tenant Internet service.
 ## Everyday flow
 
 Sign in → New post → title and filename → Create draft → Markdown → Save.
-Preview never writes content. Publish sets `status: published`; it does not deploy
-a site or push Git. External tools can read/edit the same file at any time.
+Preview never writes content. Publish sets `status: published` and Unpublish sets it
+back to `draft`; neither deploys a site or pushes Git. External tools can read/edit the same file at any time.
 Refresh the list or choose Check disk in the editor to load external changes.
 No file watcher or autosave is claimed. The address names the current view
 (`?post=posts/x.md`, `?view=repository`, list filters and page), so Back,

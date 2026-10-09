@@ -31,6 +31,7 @@ All notable changes are recorded here, following
 
 ### Added
 
+- Unpublish returns a published post to draft, changing only its status (#33).
 - The address reflects the view: Back, Forward, reload and bookmarks work, the
   list keeps its filters and scroll position, and the tab title names the view (#31).
 - Posts lists the most recently changed files first, shows when each changed and

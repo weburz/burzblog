@@ -277,6 +277,9 @@ def create_app(settings: Settings) -> FastAPI:
     def publish(payload: Revision) -> Article:
         return content.publish(payload.path, payload.revision)
 
+    def unpublish(payload: Revision) -> Article:
+        return content.unpublish(payload.path, payload.revision)
+
     def render(payload: Preview) -> dict[str, str]:
         return {"html": render_preview(payload.markdown)}
 
@@ -361,6 +364,7 @@ def create_app(settings: Settings) -> FastAPI:
         ("/api/rename", rename, "POST"),
         ("/api/archive", archive, "POST"),
         ("/api/publish", publish, "POST"),
+        ("/api/unpublish", unpublish, "POST"),
         ("/api/preview", render, "POST"),
         ("/api/git", git_status, "GET"),
         ("/api/git", git_change, "POST"),

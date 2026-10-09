@@ -606,3 +606,34 @@ def test_publish_never_stacks_frontmatter_on_an_unread_block(
     assert response.status_code == 400
     assert response.json()["error"]["detail"].startswith("This file opens with")
     assert path.read_text() == source
+
+
+def test_unpublish_returns_a_post_to_draft_and_keeps_everything_else(
+    client, configured
+):
+    login(client)
+    path = configured[0].content_root / "posts/kept.md"
+    path.write_text(
+        "---\ntitle: Kept # note\nstatus: published\ncustom: [a, b]\n---\nBody\n"
+    )
+    article = client.get("/api/post", params={"path": "posts/kept.md"}).json()
+    response = client.post(
+        "/api/unpublish",
+        json={"path": "posts/kept.md", "revision": article["revision"]},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "draft"
+    assert path.read_text() == (
+        "---\ntitle: Kept # note\nstatus: draft\ncustom: [a, b]\n---\nBody\n"
+    )
+    stale = client.post(
+        "/api/unpublish",
+        json={"path": "posts/kept.md", "revision": article["revision"]},
+    )
+    assert stale.status_code == 409
+    assert (
+        client.post(
+            "/api/unpublish", json={"path": "posts/kept.md", "revision": "0" * 64}
+        ).status_code
+        == 409
+    )
