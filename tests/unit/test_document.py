@@ -159,3 +159,21 @@ def test_metadata_that_cannot_be_written_back_is_content_error():
     document.metadata["status"] = "published"
     with pytest.raises(ContentError):
         serialize(document)
+
+
+@pytest.mark.parametrize("opener", ["[", "{a: ", "[{a: "])
+def test_deep_flow_nesting_is_refused_before_the_yaml_scanner(opener):
+    import time
+
+    started = time.perf_counter()
+    with pytest.raises(ContentError, match="structural limits"):
+        parse(f"---\na: {opener * (60000 // len(opener))}\n---\n")
+    assert time.perf_counter() - started < 1
+
+
+def test_nesting_check_ignores_comments_and_allows_ordinary_flow():
+    document = parse(
+        '---\ntitle: "Don\'t [stop]" # [[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[\n'
+        "custom: [a, [b, {c: d}]]\n---\nx"
+    )
+    assert document.metadata["custom"][1][1] == {"c": "d"}
