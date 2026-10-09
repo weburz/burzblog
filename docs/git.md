@@ -15,9 +15,12 @@ remain visible and need review.
 
 Repository config is deliberately restricted to ordinary `core` format/filemode/
 line-ending settings, user name/email, branch tracking, remote URL/refspec values,
-init.defaultBranch, pull.ff/rebase and push.default. Includes, aliases, filters,
+init.defaultBranch, pull.ff/rebase and push.default, plus inert keys that
+ordinary tools write (fetch/remote prune, commit.gpgsign, branch descriptions,
+VS Code's merge-base hint, advice and color settings). Includes, aliases, filters,
 credential helpers, fsmonitor and custom commands require external Git tooling.
-No existing configuration is rewritten. Unsupported repositories fail explicitly.
+No existing configuration is rewritten. Unsupported repositories fail explicitly,
+naming the key when it is a plain name (never a URL-bearing key).
 Linked worktrees, submodule inspection, shallow/alternate-object repositories,
 non-SHA-1 extensions and concurrent hostile `.git` changes are outside this phase.
 
@@ -40,7 +43,14 @@ uv run burzblog --root content git-push draft/article --remote origin --url http
 ```
 
 A successful push also updates the remote-tracking ref for that branch, so
-ahead/behind counts reflect it without a fetch.
+ahead/behind counts reflect it without a fetch. Without tracking configuration
+the browser compares the current branch with `refs/remotes/<configured
+remote>/<branch>` once fetch or push has created it. Fetch mirrors the remote's
+branches into tracking refs even after a force-push (`+` refspec); local
+branches are never changed by fetch. Branch names may contain dots, but not
+`..`, a leading dot in any part, a trailing dot or a `.lock` part. Markdown files
+whose names the content store refuses (spaces, non-ASCII, a leading `_` or `-`)
+are reported as `unsupported_markdown` instead of being offered for commit.
 
 Initialize repositories and configure user.name/user.email using ordinary Git.
 The CLI never invents commit identity. Only explicitly selected Markdown paths

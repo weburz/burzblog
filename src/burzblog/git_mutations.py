@@ -21,7 +21,7 @@ from burzblog.git_domain import SAFE_KEYS, SAFE_SECTION, GitRepository, Reposito
 from burzblog.git_process import GitError, RemoteError, run_git
 from burzblog.storage import ContentStore, validate_content_path
 
-BRANCH = re.compile(r"[A-Za-z0-9][A-Za-z0-9_/-]{0,127}\Z")
+BRANCH = re.compile(r"[A-Za-z0-9][A-Za-z0-9_./-]{0,127}\Z")
 REMOTE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}\Z")
 UNREACHABLE = (
     "Could not reach the configured remote, or it refused the request or credentials. "
@@ -51,11 +51,42 @@ def serialized[Result, **Parameters](
     return invoke
 
 
+def _exists(root: Path, reference: str) -> bool:
+    """Whether a fully qualified reference resolves to a commit."""
+    return bool(
+        run_git(
+            root,
+            ["rev-parse", "--verify", "--quiet", f"{reference}^{{commit}}"],
+            accepted=(0, 1),
+        ).strip()
+    )
+
+
+def _differs(root: Path, paths: list[str]) -> bool:
+    """Whether the staged versions of `paths` differ from HEAD (or HEAD is unborn)."""
+    if not _exists(root, "HEAD"):
+        return True
+    return (
+        run_git(
+            root,
+            ["diff", "--cached", "--name-only", "-z", "HEAD", "--", *paths],
+        )
+        != b""
+    )
+
+
 def branch_name(name: str) -> str:
     """Accept simple portable branch names, rejecting revisions and options."""
-    if not BRANCH.fullmatch(name) or "//" in name or name.endswith("/"):
+    if (
+        not BRANCH.fullmatch(name)
+        or "//" in name
+        or ".." in name
+        or "/." in name
+        or name.endswith(("/", "."))
+        or any(part.endswith(".lock") for part in name.split("/"))
+    ):
         raise GitError(
-            "Use a simple branch name with letters, digits, hyphens and slashes."
+            "Use a simple branch name with letters, digits, dots, hyphens and slashes."
         )
     return name
 
@@ -221,7 +252,10 @@ class GitChanges:
     def create_branch(self, name: str) -> None:
         """Create a branch at HEAD without touching content or switching branches."""
         root, _ = self._state()
-        run_git(root, ["branch", "--", branch_name(name)])
+        name = branch_name(name)
+        if _exists(root, f"refs/heads/{name}"):
+            raise ConflictError("A branch with that name already exists.")
+        run_git(root, ["branch", "--", name])
 
     @serialized
     def commit(self, paths: list[str], message: str) -> str:
@@ -248,6 +282,8 @@ class GitChanges:
                 (self.repository.content_root.relative_to(root) / path).as_posix()
             )
         run_git(root, ["add", "--", *selected])
+        if not _differs(root, selected):
+            raise ConflictError("The selected files have no changes to commit.")
         run_git(
             root,
             [
@@ -279,7 +315,9 @@ class GitChanges:
                     "--no-write-fetch-head",
                     "--",
                     remote.url,
-                    f"refs/heads/*:refs/remotes/{remote.name}/*",
+                    # Tracking refs mirror the remote, even after a force-push;
+                    # local branches are never touched by fetch.
+                    f"+refs/heads/*:refs/remotes/{remote.name}/*",
                 ],
                 timeout=30,
                 protocol=protocol,
@@ -297,6 +335,8 @@ class GitChanges:
         """
         root, _ = self._state()
         name = branch_name(branch)
+        if not _exists(root, f"refs/heads/{name}"):
+            raise ConflictError("This branch has no commits to push yet.")
         protocol = remote.protocol()
         configuration = remote.configuration()
         try:
