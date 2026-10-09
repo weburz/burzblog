@@ -21,7 +21,13 @@ from burzblog.auth import (
     RateLimitError,
     Session,
 )
-from burzblog.errors import ConflictError, ContentError, ExistsError, RecoveryError
+from burzblog.errors import (
+    ConflictError,
+    ContentError,
+    ExistsError,
+    RecoveryError,
+    public_message,
+)
 from burzblog.git_domain import GitRepository
 from burzblog.git_mutations import GitChanges
 from burzblog.git_process import RemoteError
@@ -98,24 +104,6 @@ def failure(
     return JSONResponse({"error": error}, status_code=status)
 
 
-def public_detail(error: ContentError) -> str | None:
-    """Pass on a curated domain message, refusing anything that looks like a path.
-
-    Domain messages are fixed, content-free sentences (see `errors.py`); this is a
-    second line of defence so a future message carrying a path or input never
-    reaches the browser.
-    """
-    message = str(error)
-    if (
-        not message
-        or len(message) > 300
-        or not message.isprintable()
-        or any(character in message for character in "/\\")
-    ):
-        return None
-    return message
-
-
 def create_app(settings: Settings) -> FastAPI:
     """Create one configured application, requiring out-of-band administrator setup."""
     settings.validate()
@@ -158,7 +146,7 @@ def create_app(settings: Settings) -> FastAPI:
                 429,
                 "rate_limited",
                 "Login is busy or temporarily limited. Please try again later.",
-                public_detail(error),
+                public_message(error),
             )
         if isinstance(error, CredentialsError):
             return failure(401, "credentials", "That password is not correct.")
@@ -189,20 +177,20 @@ def create_app(settings: Settings) -> FastAPI:
                 409,
                 "exists",
                 "A file already exists at that path; nothing was overwritten.",
-                public_detail(error),
+                public_message(error),
             )
         if isinstance(error, ConflictError):
             return failure(
                 409,
                 "conflict",
                 "Content or repository state changed. Keep unsaved input and review disk and repository state before retrying.",
-                public_detail(error),
+                public_message(error),
             )
         return failure(
             400,
             "invalid",
             "The operation cannot be performed safely. Check the input and operator documentation.",
-            public_detail(error),
+            public_message(error),
         )
 
     async def validation_error(
@@ -272,7 +260,7 @@ def create_app(settings: Settings) -> FastAPI:
         return content.list(offset, limit, status, q, sort)
 
     def post(path: str = Query(min_length=1, max_length=1024)) -> Article:
-        return content.read(path)
+        return content.editable(path)
 
     def create(payload: Create) -> Article:
         return content.create(payload.title, payload.slug, payload.body)

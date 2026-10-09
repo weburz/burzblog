@@ -52,9 +52,11 @@ const failureHint = computed(() => {
   const value = failure.value;
   if (!value || value.code === "network") return "";
   if (value.code === "authentication") return "Your text is still here.";
-  return value.place === "footer"
-    ? "Your text is still here. Use Check disk to see what is on disk."
-    : "";
+  if (value.place !== "footer") return "";
+  // A refusal of the text itself is fixed in the editor, not by reloading disk.
+  return value.code === "invalid" || value.code === "validation"
+    ? "Your text is still here. Correct it and save again."
+    : "Your text is still here. Use Check disk to see what is on disk.";
 });
 const moveProblem = computed(() => {
   const target = destination.value.trim();
@@ -68,7 +70,11 @@ const diskTooLong = computed(() =>
 );
 const gutter = { same: "", added: "+", removed: "−" };
 const articleStatus = computed(() =>
-  current.value.status === "published" ? "published" : "draft",
+  current.value.problem
+    ? "unavailable"
+    : current.value.status === "published"
+      ? "published"
+      : "draft",
 );
 // Browsers without `field-sizing: content` need the textarea sized from its content.
 const grow = () => {
@@ -456,6 +462,22 @@ const useDisk = () => {
         }}</pre>
       </details>
     </div>
+    <div
+      v-if="current.problem"
+      class="alert alert-warn editor-column"
+      role="status"
+      aria-live="polite"
+    >
+      <p class="alert-title">
+        <UIcon name="i-lucide-triangle-alert" class="size-4 align-text-bottom" />
+        BurzBlog cannot read this file's frontmatter
+      </p>
+      <p>{{ current.problem }}</p>
+      <p class="mt-1">
+        Fix it in the source below and save. The current file is kept as a recovery copy,
+        and nothing is saved until the frontmatter is valid.
+      </p>
+    </div>
     <div v-show="preview === null" class="editor-column">
       <label for="markdown" class="sr-only">Markdown source, including frontmatter</label>
       <textarea
@@ -521,11 +543,7 @@ const useDisk = () => {
         </p>
         <div class="actions">
           <span class="editor-collapse"><UKbd value="Ctrl" /> <UKbd value="S" /> </span>
-          <UTooltip
-            v-if="articleStatus !== 'published'"
-            text="Save first"
-            :disabled="!dirty"
-          >
+          <UTooltip v-if="articleStatus === 'draft'" text="Save first" :disabled="!dirty">
             <span class="inline-flex">
               <UButton
                 color="secondary"

@@ -15,6 +15,8 @@ All notable changes are recorded here, following
   button (#34).
 - Drafts, Published and search cover every post instead of the visible page of
   100; search also matches filenames (#29).
+- A post marked Needs attention opens as its exact text with the reason and can be
+  repaired and saved in the browser (#30).
 
 ### Added
 

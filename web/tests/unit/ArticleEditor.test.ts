@@ -338,3 +338,46 @@ describe("failures beside their controls", () => {
     wrapper.unmount();
   });
 });
+
+describe("repairing a file whose frontmatter cannot be read", () => {
+  const broken = {
+    path: "posts/broken.md",
+    revision: "a".repeat(64),
+    markdown: "---\ntitle: [unterminated\n---\nBody\n",
+    title: "",
+    status: "unavailable",
+    problem: "Malformed or duplicate-key YAML frontmatter.",
+  };
+  it("shows the exact text and the reason, and offers no Publish", () => {
+    const wrapper = mount(ArticleEditor, { props: { article: broken }, global });
+    expect(wrapper.get("textarea").element.value).toBe(broken.markdown);
+    expect(wrapper.text()).toContain("BurzBlog cannot read this file's frontmatter");
+    expect(wrapper.text()).toContain("Malformed or duplicate-key YAML frontmatter.");
+    expect(wrapper.text()).toContain("Needs attention");
+    expect(wrapper.findAll("button").some((button) => button.text() === "Publish")).toBe(
+      false,
+    );
+    wrapper.unmount();
+  });
+  it("clears the warning once a valid version is saved", async () => {
+    vi.mocked(request).mockResolvedValueOnce({
+      ...broken,
+      revision: "b".repeat(64),
+      markdown: "---\ntitle: Fixed\n---\nBody\n",
+      title: "Fixed",
+      status: "draft",
+      problem: null,
+    });
+    const wrapper = mount(ArticleEditor, { props: { article: broken }, global });
+    await wrapper.get("textarea").setValue("---\ntitle: Fixed\n---\nBody\n");
+    await wrapper
+      .findAll("button")
+      .find((button) => button.text() === "Save")
+      ?.trigger("click");
+    await flushPromises();
+    expect(wrapper.text()).not.toContain("cannot read this file's frontmatter");
+    expect(wrapper.get("h1").text()).toBe("Fixed");
+    expect(wrapper.get('[role="status"]').text()).toContain("Saved ✓");
+    wrapper.unmount();
+  });
+});

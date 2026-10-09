@@ -15,3 +15,20 @@ class ExistsError(ConflictError):
 
 class RecoveryError(ConflictError):
     """An interrupted/conflicting mutation retained content in the recovery journal."""
+
+
+def public_message(error: ContentError) -> str | None:
+    """Pass on a curated domain message, refusing anything that looks like a path.
+
+    Domain messages are fixed, content-free sentences; this is a second line of
+    defence so a future message carrying a path or input never reaches a browser.
+    """
+    message = str(error)
+    if (
+        not message
+        or len(message) > 300
+        or not message.isprintable()
+        or any(character in message for character in "/\\")
+    ):
+        return None
+    return message

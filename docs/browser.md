@@ -57,6 +57,14 @@ Unsupported frontmatter produces a clear failure rather than silently deleting
 fields. A no-op preserves original bytes; deliberate textarea edits may normalize
 line endings. Filename moves do not automatically change slug metadata.
 
+A file whose frontmatter cannot be read is listed as Needs attention. Opening it
+shows its exact text with the reason (for example malformed YAML or an unknown
+status); fix the frontmatter and save. A save that is still invalid is refused with
+the reason and changes nothing; a valid one replaces the file through the usual
+revision check and keeps the previous version as a recovery copy. Publish stays
+unavailable until the file is valid. Non-UTF-8, oversized or unsafe files still
+cannot be opened in the browser.
+
 When a file changes externally, a stale save is refused and the editor shows the
 disk version beside your text as a line diff, with Use disk version, Copy disk
 version and Keep my text. Nothing on disk is overwritten and your text stays in

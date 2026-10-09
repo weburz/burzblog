@@ -4,6 +4,8 @@ export interface Article {
   markdown: string;
   title: string;
   status: string;
+  // Why the frontmatter cannot be read; `markdown` is then the file's exact text.
+  problem?: string | null;
 }
 export interface PostSummary {
   path: string;

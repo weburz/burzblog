@@ -6,7 +6,7 @@ from threading import Lock
 from typing import Literal
 
 from burzblog.document import Document, parse, serialize
-from burzblog.errors import ConflictError, ContentError
+from burzblog.errors import ConflictError, ContentError, public_message
 from burzblog.storage import ContentStore, Listed
 
 
@@ -19,6 +19,8 @@ class Article:
     markdown: str
     title: str
     status: str
+    # Why the frontmatter cannot be read; `markdown` is then the file's exact text.
+    problem: str | None = None
 
 
 class ContentApplication:
@@ -39,11 +41,31 @@ class ContentApplication:
     def read(self, path: str) -> Article:
         """Read fresh disk state without derived content persistence."""
         snapshot = self.store.read(path)
-        metadata = snapshot.document.metadata
+        return self._article(path, snapshot.revision, snapshot.document)
+
+    def editable(self, path: str) -> Article:
+        """Read for editing, including a file whose frontmatter cannot be parsed.
+
+        Such a file comes back as its exact text with the reason, so it can be
+        repaired: saving parses the new text and keeps the usual revision check
+        and recovery copy. Unsafe, oversized or non-UTF-8 files still fail.
+        """
+        text, revision = self.store.read_text(path)
+        try:
+            document = parse(text)
+        except ContentError as error:
+            problem = public_message(error) or "The frontmatter cannot be read."
+            return Article(path, revision, text, "", "unavailable", problem)
+        return self._article(path, revision, document)
+
+    @staticmethod
+    def _article(path: str, revision: str, document: Document) -> Article:
+        """Present a parsed document; its Markdown round-trips byte for byte."""
+        metadata = document.metadata
         return Article(
             path,
-            snapshot.revision,
-            serialize(snapshot.document),
+            revision,
+            serialize(document),
             # No invented title: the browser shows an untitled file by its filename.
             metadata.get("title", ""),
             metadata.get("status", "draft"),
@@ -157,7 +179,8 @@ class ContentApplication:
     def rename(self, path: str, destination: str, revision: str) -> Article:
         """Move without overwriting, preserving metadata as supplied in the file."""
         self.store.rename(path, destination, revision)
-        return self.read(destination)
+        # A file moved while its frontmatter is broken still moved successfully.
+        return self.editable(destination)
 
     def archive(self, path: str, revision: str) -> str:
         """Move into the reversible archive, retaining recovery copies."""
