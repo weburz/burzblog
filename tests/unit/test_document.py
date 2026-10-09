@@ -135,3 +135,27 @@ def test_adding_body_after_delimiter_without_final_newline():
     document = parse("---\ntitle: Hi\n---")
     document.body = "Hello"
     assert serialize(document) == "---\ntitle: Hi\n---\nHello"
+
+
+@pytest.mark.parametrize(
+    "frontmatter",
+    [
+        "? {a: [1]}\n: c\n",
+        "? - - i\n",
+        ": \n u\n\n",
+        'title: "\\ud83d\\ude00 Hello"\n',
+    ],
+)
+def test_hostile_frontmatter_is_malformed_content_not_a_crash(frontmatter):
+    with pytest.raises(ContentError):
+        parse(f"---\n{frontmatter}---\nBody\n")
+
+
+def test_metadata_that_cannot_be_written_back_is_content_error():
+    try:
+        document = parse("---\n? | #c\n---\nBody\n")
+    except ContentError:
+        return
+    document.metadata["status"] = "published"
+    with pytest.raises(ContentError):
+        serialize(document)

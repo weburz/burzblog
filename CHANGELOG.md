@@ -8,6 +8,8 @@ All notable changes are recorded here, following
 
 ### Fixed
 
+- A malformed or unencodable file, or a non-UTF-8 name in the repository, no
+  longer turns the post list or the Git panel into a server error (#39).
 - Failures name their cause and appear beside the control that caused them: wrong
   passwords, existing destinations, missing folders, invalid paths and titles, and
   files removed outside BurzBlog each get their own message (#28).

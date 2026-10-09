@@ -231,7 +231,9 @@ class GitRepository:
         branches: list[str] = []
         upstream = None
         ahead = behind = None
-        for row in branch_rows.splitlines():
+        # NUL-delimited rows end in "\n"; splitlines() would also split on
+        # U+0085/2028/2029 inside a branch name.
+        for row in filter(None, branch_rows.split("\n")):
             name, tracking, counts = row.split("\0")
             branches.append(name)
             if name == branch and tracking:

@@ -10,7 +10,6 @@ from datetime import date, datetime
 from typing import Any, Protocol, TextIO, cast
 
 from ruamel.yaml import YAML
-from ruamel.yaml.error import YAMLError
 from ruamel.yaml.events import CollectionEndEvent, CollectionStartEvent
 from ruamel.yaml.tokens import AliasToken, AnchorToken, DirectiveToken, TagToken
 
@@ -49,6 +48,16 @@ def _yaml() -> _YamlParser:
     return cast(_YamlParser, parser)
 
 
+def _text(value: str) -> None:
+    """Refuse lone surrogates, such as JSON-style surrogate escapes: not text."""
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        raise ContentError(
+            "Frontmatter contains text that is not valid Unicode."
+        ) from None
+
+
 def _tree(value: Any, depth: int = 0) -> None:
     """Restrict metadata to portable scalars, lists and string-key mappings."""
     if depth > 32:
@@ -57,6 +66,7 @@ def _tree(value: Any, depth: int = 0) -> None:
         for key, item in cast(dict[object, Any], value).items():
             if not isinstance(key, str):
                 raise ContentError("Frontmatter keys must be strings.")
+            _text(key)
             _tree(item, depth + 1)
     elif isinstance(value, list):
         items = cast(list[object], value)
@@ -65,7 +75,9 @@ def _tree(value: Any, depth: int = 0) -> None:
     elif isinstance(value, float):
         if not math.isfinite(value):
             raise ContentError("Non-finite numbers are unsupported.")
-    elif value is not None and not isinstance(value, (str, bool, int, date)):
+    elif isinstance(value, str):
+        _text(value)
+    elif value is not None and not isinstance(value, (bool, int, date)):
         raise ContentError("Unsupported frontmatter value.")
 
 
@@ -123,7 +135,8 @@ def _load(text: str) -> dict[str, Any]:
         value = parser.load(text)
     except ContentError:
         raise
-    except (YAMLError, ValueError, OverflowError):
+    except Exception:  # noqa: BLE001 - ruamel also raises TypeError, AssertionError...
+        # Any parser failure is malformed content, never a server error.
         raise ContentError("Malformed or duplicate-key YAML frontmatter.") from None
     if value is None:
         return {}
@@ -214,7 +227,10 @@ def serialize(document: Document) -> str:
             if key in document.metadata:
                 metadata[key] = document.metadata[key]
         stream = io.StringIO()
-        _yaml().dump(metadata, stream)
+        try:
+            _yaml().dump(metadata, stream)
+        except Exception:  # noqa: BLE001 - emitter failures are unsupported content
+            raise ContentError("Frontmatter cannot be written back safely.") from None
         newline = (
             "\r\n"
             if original and (original.source or "").startswith("---\r\n")

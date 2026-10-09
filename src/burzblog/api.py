@@ -290,15 +290,37 @@ def create_app(settings: Settings) -> FastAPI:
         }
     )
 
+    def shown(text: str) -> str:
+        """Git names may not be UTF-8; show them readably instead of failing JSON."""
+        return text.encode("utf-8", "surrogateescape").decode("utf-8", "replace")
+
     def git_status() -> dict[str, object]:
         state = GitRepository(settings.content_root).status()
         if state is None:
             return {"repository": None, "remote_configured": False, "remote": None}
         result = asdict(state)
         result.pop("root")
+        for name in ("branch", "upstream"):
+            if result[name] is not None:
+                result[name] = shown(result[name])
+        result["branches"] = [shown(name) for name in state.branches]
+        result["remotes"] = [shown(name) for name in state.remotes]
+        result["changes"] = [
+            change
+            | {
+                "path": shown(change["path"]),
+                "original_path": None
+                if change["original_path"] is None
+                else shown(change["original_path"]),
+            }
+            for change in result["changes"]
+        ]
         scope = settings.content_root.relative_to(Path(state.root))
+        # A name that is not UTF-8 can never be a content path, so it is not offered.
         result["changed_markdown"] = [
-            str(Path(path).relative_to(scope)) for path in state.changed_markdown
+            str(Path(path).relative_to(scope))
+            for path in state.changed_markdown
+            if shown(path) == path
         ]
         return {
             "repository": result | {"clean": state.clean},
