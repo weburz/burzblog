@@ -48,7 +48,10 @@ Sign in → New post → title and filename → Create draft → Markdown → Sa
 Preview never writes content. Publish sets `status: published`; it does not deploy
 a site or push Git. External tools can read/edit the same file at any time.
 Refresh the list or choose Check disk in the editor to load external changes.
-No file watcher or autosave is claimed. Posts lists the most recently changed
+No file watcher or autosave is claimed. The address names the current view
+(`?post=posts/x.md`, `?view=repository`, list filters and page), so Back,
+Forward, reload and bookmarks work; a bookmarked post opens after sign-in, and
+Back from the editor asks before dropping unsaved text. Posts lists the most recently changed
 files first (or by path); Drafts, Published and the search box (titles and
 filenames) cover every file, not only the visible page of 100.
 

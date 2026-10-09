@@ -12,7 +12,11 @@ import { pathProblem } from "../utils/posts";
 type Place = "top" | "footer" | "rename" | "archive";
 
 const props = defineProps<{ article: Article }>();
-const emit = defineEmits<{ close: [] }>();
+const emit = defineEmits<{
+  close: [];
+  archived: [path: string];
+  changed: [article: Article];
+}>();
 const current = ref<Article>(props.article);
 const text = ref(editorText(props.article.markdown));
 const failure = ref<{
@@ -121,6 +125,7 @@ watch(
 const accept = (article: Article, saves = true) => {
   const previous = current.value.revision;
   current.value = article;
+  emit("changed", article);
   text.value = editorText(article.markdown);
   external.value = null;
   if (saves) saved.value = true;
@@ -289,7 +294,7 @@ const archive = () => {
         path: current.value.path,
         revision: current.value.revision,
       });
-      emit("close");
+      emit("archived", current.value.path);
     },
     "archive",
     "The post was not archived",
@@ -300,18 +305,31 @@ const archive = () => {
   );
 };
 let onLeave: (() => void) | null = null;
-const requestLeave = (proceed: () => void) => {
+let onStay: (() => void) | null = null;
+// `stay` runs when the writer keeps editing (Cancel, Escape or clicking outside),
+// so a browser Back that was already applied can be undone by the caller.
+const requestLeave = (proceed: () => void, stay?: () => void) => {
   if (!dirty.value) {
     proceed();
     return;
   }
   onLeave = proceed;
+  onStay = stay ?? null;
   confirmingLeave.value = true;
 };
-const leave = () => {
-  confirmingLeave.value = false;
-  onLeave?.();
+watch(confirmingLeave, (open) => {
+  if (open || !onStay) return;
+  const stay = onStay;
   onLeave = null;
+  onStay = null;
+  stay();
+});
+const leave = () => {
+  const proceed = onLeave;
+  onLeave = null;
+  onStay = null;
+  confirmingLeave.value = false;
+  proceed?.();
 };
 defineExpose({ dirty, requestLeave });
 const copyDisk = async () => {
