@@ -319,13 +319,18 @@ textarea:focus-visible {
 }
 .list-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--bb-space-3);
   margin-top: var(--bb-space-4);
   min-height: 32px;
 }
+.list-head .meta {
+  white-space: nowrap;
+}
 .list-sort {
+  margin-left: auto;
   flex: none;
   width: auto;
 }
