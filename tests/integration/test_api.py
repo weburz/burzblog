@@ -637,3 +637,62 @@ def test_unpublish_returns_a_post_to_draft_and_keeps_everything_else(
         ).status_code
         == 409
     )
+
+
+def test_every_failure_uses_the_error_shape(configured, monkeypatch):
+    settings, _ = configured
+    with TestClient(
+        create_app(settings), base_url=ORIGIN, raise_server_exceptions=False
+    ) as client:
+        login(client)
+        assert client.get("/api/nope").json()["error"]["code"] == "not_found"
+        assert client.delete("/api/post").json()["error"]["code"] == "method"
+        unreadable = client.post(
+            "/api/posts",
+            content=b'{"title": "\xff"}',
+            headers={"content-type": "application/json"},
+        )
+        assert unreadable.status_code in {400, 422}
+        assert "error" in unreadable.json()
+        accepted = client.post(
+            "/api/preview",
+            json={"markdown": "x"},
+            headers={"content-type": "Application/JSON ; charset=utf-8"},
+        )
+        assert accepted.status_code == 200
+
+        def broken(*_args):
+            raise RuntimeError("/private/detail")
+
+        monkeypatch.setattr("burzblog.application.ContentApplication.list", broken)
+        response = client.get("/api/posts")
+        assert response.status_code == 500
+        assert response.json()["error"]["code"] == "internal"
+        assert "private" not in response.text
+        assert response.headers["cache-control"] == "no-store"
+        assert response.headers["x-content-type-options"] == "nosniff"
+
+
+def test_simultaneous_correct_logins_all_succeed(configured):
+    from concurrent.futures import ThreadPoolExecutor
+
+    settings, _ = configured
+    with TestClient(create_app(settings), base_url=ORIGIN) as client:
+
+        def attempt(_):
+            return client.post(
+                "/api/login", json={"password": PASSWORD}, headers={"origin": ORIGIN}
+            ).status_code
+
+        with ThreadPoolExecutor(4) as pool:
+            assert sorted(pool.map(attempt, range(4))) == [200, 200, 200, 200]
+
+
+def test_ipv6_literal_origins_are_refused_at_startup(configured):
+    settings, _ = configured
+    with pytest.raises(ContentError, match="IPv6"):
+        create_app(
+            Settings(
+                settings.content_root, settings.state_directory, "http://[::1]:3000"
+            )
+        )

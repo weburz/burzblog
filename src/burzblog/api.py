@@ -9,6 +9,7 @@ from fastapi import Depends, FastAPI, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from burzblog.application import Article, ContentApplication
@@ -31,7 +32,7 @@ from burzblog.errors import (
 from burzblog.git_domain import GitRepository
 from burzblog.git_mutations import GitChanges
 from burzblog.git_process import RemoteError
-from burzblog.http_security import RequestBoundary
+from burzblog.http_security import DEFAULT_HEADERS, RequestBoundary
 from burzblog.preview import render_preview
 from burzblog.settings import Settings
 from burzblog.storage import ContentStore, validate_content_path
@@ -140,7 +141,8 @@ def create_app(settings: Settings) -> FastAPI:
     def origin(request: Request) -> None:
         if request.headers.get("origin") != settings.origin:
             raise OriginError("Request origin was rejected.")
-        if request.headers.get("content-type", "").split(";")[0] != "application/json":
+        media = request.headers.get("content-type", "").split(";")[0].strip().lower()
+        if media != "application/json":
             raise ContentError("Send an application/json request.")
 
     def authenticated(request: Request) -> Session:
@@ -202,6 +204,32 @@ def create_app(settings: Settings) -> FastAPI:
             "The operation cannot be performed safely. Check the input and operator documentation.",
             public_message(error),
         )
+
+    async def http_error(
+        _request: Request, error: StarletteHTTPException
+    ) -> JSONResponse:
+        # Unknown routes, wrong methods and unreadable JSON bodies use the same
+        # error shape as everything else.
+        codes = {404: "not_found", 405: "method"}
+        return failure(
+            error.status_code,
+            codes.get(error.status_code, "request"),
+            {
+                404: "There is no such address.",
+                405: "That method is not allowed here.",
+            }.get(error.status_code, "The request could not be read."),
+        )
+
+    async def server_error(_request: Request, _error: Exception) -> JSONResponse:
+        # Raised outside the header middleware, so the safe headers are set here.
+        response = failure(
+            500,
+            "internal",
+            "Something went wrong on the server; nothing was changed by this message. Retry, and tell the operator if it repeats.",
+        )
+        for name, value in DEFAULT_HEADERS:
+            response.headers[name.decode()] = value.decode()
+        return response
 
     async def validation_error(
         _request: Request, _error: RequestValidationError
@@ -365,6 +393,8 @@ def create_app(settings: Settings) -> FastAPI:
         return git_status()
 
     app.exception_handler(ContentError)(content_error)
+    app.exception_handler(StarletteHTTPException)(http_error)
+    app.exception_handler(Exception)(server_error)
     app.exception_handler(RequestValidationError)(validation_error)
     app.exception_handler(FileNotFoundError)(missing_error)
     app.exception_handler(OSError)(filesystem_error)

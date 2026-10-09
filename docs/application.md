@@ -116,6 +116,10 @@ operator fixes it. 401 is `authentication` (log in or verify the request again),
 `credentials` (wrong password at login) or `origin` (the request did not come
 from `BURZBLOG_ORIGIN`); 429 is login throttling; 413/422 reject
 oversized/invalid requests. Validation responses never echo input values.
+Unknown addresses are 404 `not_found`, wrong methods 405 `method`, unreadable
+bodies 400 `request`, and unexpected server failures 500 `internal` with the
+same security headers; every failure uses this shape. `Content-Type` is matched
+case-insensitively. Origins must use a hostname or IPv4 address.
 Markdown is limited to 2 MiB; the entire JSON request to 3 MiB.
 
 ## Operational limits
@@ -123,7 +127,8 @@ Markdown is limited to 2 MiB; the entire JSON request to 3 MiB.
 One administrator; fixed 12-hour sessions; at most 20 retained sessions; ten login
 attempts per ten minutes globally, including successful attempts. This simple
 window is complemented by one concurrent Argon2 verification per application
-instance, preserving hashing parameters while bounding parallel memory use. The
+instance, preserving hashing parameters while bounding parallel memory use; a
+second login waits up to ten seconds for it instead of being refused. The
 attempt window persists across restarts but permits temporary login denial by an attacker.
 State is trusted operator material, not safe against another process running as
 the same OS user. Back up private state separately with restrictive permissions;

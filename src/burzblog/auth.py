@@ -101,6 +101,8 @@ class Authentication:
             )
         self.hasher = PasswordHasher()
         self.hash_slot = BoundedSemaphore(1)
+        # Seconds a login waits for another verification before being refused.
+        self.hash_wait = 10.0
         with self.connection() as connection:
             connection.executescript("""
                 CREATE TABLE IF NOT EXISTS administrator (id INTEGER PRIMARY KEY CHECK (id = 1), password_hash TEXT NOT NULL);
@@ -204,7 +206,9 @@ class Authentication:
 
     def _verified_hash(self, password_hash: str, password: str) -> str:
         """Bound concurrent Argon2 memory use without weakening hash parameters."""
-        if not self.hash_slot.acquire(blocking=False):
+        # A double-click or a second tab waits for the verification in progress
+        # instead of being refused; memory stays bounded to one verification.
+        if not self.hash_slot.acquire(timeout=self.hash_wait):
             raise RateLimitError("Another login is being verified. Try again shortly.")
         try:
             try:
