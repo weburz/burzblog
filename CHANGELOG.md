@@ -8,6 +8,10 @@ All notable changes are recorded here, following
 
 ### Fixed
 
+- Repository page: changes and commit on the left, sync and branches beside them;
+  no-op push and update are disabled with the reason, changes outside Markdown are
+  named as the blocker, branches switch from a list, files show their change type,
+  and the page shows a loading state (#32).
 - Git panel: fetch follows force-pushed remotes, dotted branch names work,
   ahead/behind appear without tracking configuration, nothing-to-commit and
   duplicate branches are explained conflicts, pushing a branch without commits is

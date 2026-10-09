@@ -94,8 +94,12 @@ test("browser commit and remote updates preserve ordinary Git workflows", async 
   );
   await page.getByRole("button", { name: "Check for updates" }).click();
   expect((await refreshed).status()).toBe(200);
-  await page.getByRole("button", { name: "Apply safe update" }).click();
-  await expect(page.getByRole("alert")).toContainText("Sync needs attention");
+  // Diverged histories: neither sync action is offered, and the page says why.
+  await expect(page.getByRole("button", { name: "Apply safe update" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Push commits" })).toBeDisabled();
+  await expect(
+    page.getByText(/have new commits\. Apply safe update and Push/),
+  ).toBeVisible();
   expect(readFileSync(join(root, "repo/content/posts/git-flow.md"), "utf8")).toBe(
     "local divergent version\n",
   );

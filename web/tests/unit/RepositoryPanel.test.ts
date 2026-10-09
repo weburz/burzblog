@@ -38,6 +38,13 @@ const mountPanel = () =>
         UButton: { template: "<button><slot /></button>" },
         UInput: true,
         UIcon: true,
+        USkeleton: true,
+        USelect: {
+          props: ["modelValue", "items"],
+          emits: ["update:modelValue"],
+          template:
+            "<select :value='modelValue' @change='$emit(\"update:modelValue\", $event.target.value)'><option v-for='item in items' :key='item' :value='item'>{{ item }}</option></select>",
+        },
       },
     },
   });
@@ -221,10 +228,91 @@ describe("repository sync failures", () => {
     const wrapper = mountPanel();
     await flushPromises();
     const row = wrapper
-      .findAll("li")
+      .findAll(".sync-action")
       .find((item) => item.text().includes("Apply safe update"));
     expect(row?.text()).toContain("Needs a clean working tree");
     expect(row?.text()).not.toContain("Fast-forwards");
+    wrapper.unmount();
+  });
+});
+
+describe("repository actions that would do nothing", () => {
+  const button = (wrapper: ReturnType<typeof mountPanel>, label: string) =>
+    wrapper.findAll("button").find((item) => item.text() === label);
+  const note = (wrapper: ReturnType<typeof mountPanel>, label: string) =>
+    wrapper
+      .findAll(".sync-action")
+      .find((item) => item.text().includes(label))
+      ?.get(".meta")
+      .text();
+  const counted = (ahead: number, behind: number) => {
+    const value = state({ name: "origin", transport: "file", authenticated: false });
+    value.repository!.upstream = "origin/main";
+    value.repository!.ahead = ahead;
+    value.repository!.behind = behind;
+    return value;
+  };
+  it("disables push and update when the last check found nothing to do", async () => {
+    vi.mocked(request).mockResolvedValue(counted(0, 0));
+    const wrapper = mountPanel();
+    await flushPromises();
+    expect(button(wrapper, "Push commits")?.attributes("disabled")).toBeDefined();
+    expect(button(wrapper, "Apply safe update")?.attributes("disabled")).toBeDefined();
+    expect(note(wrapper, "Push commits")).toBe("Nothing to push as of the last check.");
+    expect(note(wrapper, "Apply safe update")).toBe(
+      "Nothing to apply as of the last check.",
+    );
+    expect(button(wrapper, "Check for updates")?.attributes("disabled")).toBeUndefined();
+    wrapper.unmount();
+  });
+  it("disables both sides of diverged histories", async () => {
+    vi.mocked(request).mockResolvedValue(counted(1, 2));
+    const wrapper = mountPanel();
+    await flushPromises();
+    expect(button(wrapper, "Push commits")?.attributes("disabled")).toBeDefined();
+    expect(button(wrapper, "Apply safe update")?.attributes("disabled")).toBeDefined();
+    wrapper.unmount();
+  });
+  it("blames changes outside Markdown, not Markdown, for a blocked update", async () => {
+    const value = counted(0, 1);
+    value.repository!.clean = false;
+    value.repository!.changes = [{ path: "README.txt", index: "?", worktree: "?" }];
+    vi.mocked(request).mockResolvedValue(value);
+    const wrapper = mountPanel();
+    await flushPromises();
+    expect(wrapper.text()).toContain("changes outside Markdown block a safe update");
+    expect(wrapper.text()).not.toContain("Commit your Markdown changes first");
+    expect(wrapper.text()).toContain("1 other change BurzBlog cannot commit");
+    wrapper.unmount();
+  });
+  it("shows no sync buttons without a remote", async () => {
+    vi.mocked(request).mockResolvedValue(state(null));
+    const wrapper = mountPanel();
+    await flushPromises();
+    expect(button(wrapper, "Push commits")).toBeUndefined();
+    expect(wrapper.text()).toContain("nothing to sync");
+    wrapper.unmount();
+  });
+  it("labels changes, lists uncommittable names and switches by choosing a branch", async () => {
+    const value = counted(0, 0);
+    value.repository!.clean = false;
+    value.repository!.branches = ["main", "drafts"];
+    value.repository!.changed_markdown = ["posts/new.md", "posts/old.md"];
+    value.repository!.unsupported_markdown = ["posts/My Post.md"];
+    value.repository!.changes = [
+      { path: "content/posts/new.md", index: "?", worktree: "?" },
+      { path: "content/posts/old.md", index: " ", worktree: "D" },
+      { path: "content/posts/My Post.md", index: "?", worktree: "?" },
+    ];
+    vi.mocked(request).mockResolvedValue(value);
+    const wrapper = mountPanel();
+    await flushPromises();
+    expect(wrapper.findAll(".change-kind").map((item) => item.text())).toEqual([
+      "New",
+      "Deleted",
+    ]);
+    expect(wrapper.text()).toContain("Not offered: posts/My Post.md");
+    expect(wrapper.findAll("option").map((item) => item.text())).toEqual(["drafts"]);
     wrapper.unmount();
   });
 });

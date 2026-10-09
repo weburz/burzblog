@@ -579,21 +579,49 @@ textarea:focus-visible {
   margin: 32px 0;
   color: var(--bb-text-2);
 }
-.state-strip {
+.repo-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  align-items: start;
+  gap: var(--bb-space-7);
+}
+.repo-side {
+  display: grid;
+  gap: var(--bb-space-5);
+}
+.side-card {
+  display: grid;
+  gap: var(--bb-space-3);
+  padding: var(--bb-space-4) var(--bb-space-5) var(--bb-space-5);
+  background: var(--bb-surface);
+  border: 1px solid var(--bb-border);
+  border-radius: var(--bb-radius-m);
+}
+.sync-state {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px 20px;
-  margin-top: 20px;
-  padding: 14px 16px;
-  background: var(--bb-surface);
-  border: 1px solid var(--bb-border);
-  border-radius: 8px;
+  gap: var(--bb-space-2) var(--bb-space-3);
 }
 .strip-counts {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+}
+.sync-note {
+  padding: var(--bb-space-2) var(--bb-space-3);
+  border-left: 3px solid var(--bb-accent);
+  background: var(--bb-surface-2);
+  font-size: 14px;
+}
+.sync-action {
+  display: grid;
+  gap: var(--bb-space-1);
+}
+.branch-row {
+  display: flex;
+  align-items: center;
+  gap: var(--bb-space-2);
 }
 .chip {
   display: inline-flex;
@@ -604,24 +632,32 @@ textarea:focus-visible {
   border-radius: 4px;
   color: var(--bb-text);
 }
-.chip-current {
-  background: var(--bb-blue-soft);
-  border-color: var(--bb-blue);
-}
-.sync-list {
-  margin-top: 8px;
-}
-.sync-list li {
+.file-label {
   display: flex;
+  flex: 1;
   align-items: center;
-  gap: 16px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--bb-border);
+  gap: 12px;
+  min-width: 0;
+  min-height: 40px;
+  cursor: pointer;
 }
-.sync-list li > :first-child {
+.change-kind {
   flex: none;
-  min-width: 170px;
-  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--bb-text-3);
+}
+.change-kind[data-kind="New"] {
+  color: var(--bb-ok);
+}
+.change-kind[data-kind="Deleted"] {
+  color: var(--bb-danger);
+}
+@media (max-width: 899px) {
+  .repo-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--bb-space-6);
+  }
 }
 .file-panel {
   border: 1px solid var(--bb-border);
@@ -649,7 +685,6 @@ textarea:focus-visible {
   padding: 0 var(--bb-space-3);
   border-bottom: 1px solid var(--bb-border);
   overflow-wrap: anywhere;
-  cursor: pointer;
 }
 .file-row:last-child {
   border-bottom: 0;
@@ -773,11 +808,6 @@ textarea:focus-visible {
   .file-options-row {
     flex-direction: column;
     align-items: stretch;
-  }
-  .sync-list li {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 6px;
   }
 }
 @media (max-width: 699px) {
