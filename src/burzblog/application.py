@@ -170,11 +170,19 @@ class ContentApplication:
 
     def publish(self, path: str, revision: str) -> Article:
         """Publish portable metadata only; no implicit deployment or Git push."""
+        return self._set_status(path, revision, "published")
+
+    def unpublish(self, path: str, revision: str) -> Article:
+        """Return a post to draft; the body and every other field stay as they are."""
+        return self._set_status(path, revision, "draft")
+
+    def _set_status(self, path: str, revision: str, status: str) -> Article:
+        """Change only `status`, through the same revision check and recovery."""
         snapshot = self.store.read(path)
         source = snapshot.document.source or ""
         if not snapshot.document.metadata and unread_opening(source):
             raise ContentError(UNREAD_OPENING)
-        snapshot.document.metadata["status"] = "published"
+        snapshot.document.metadata["status"] = status
         written = self.store.save(path, snapshot.document, revision)
         return self._verified_read(path, written)
 

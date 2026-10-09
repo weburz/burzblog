@@ -381,3 +381,45 @@ describe("repairing a file whose frontmatter cannot be read", () => {
     wrapper.unmount();
   });
 });
+
+describe("publishing both ways", () => {
+  it("offers Unpublish for a published post and returns it to draft", async () => {
+    const published = {
+      path: "posts/a.md",
+      revision: "a".repeat(64),
+      markdown: "---\nstatus: published\n---\nBody\n",
+      title: "A",
+      status: "published",
+    };
+    vi.mocked(request).mockResolvedValueOnce({
+      ...published,
+      revision: "b".repeat(64),
+      markdown: "---\nstatus: draft\n---\nBody\n",
+      status: "draft",
+    });
+    const wrapper = mount(ArticleEditor, {
+      props: { article: published },
+      global: {
+        ...global,
+        stubs: {
+          ...global.stubs,
+          UModal: { template: "<div><slot name='footer' /></div>" },
+        },
+      },
+    });
+    const buttons = () => wrapper.findAll("button").map((button) => button.text());
+    expect(buttons()).toContain("Unpublish");
+    expect(buttons()).not.toContain("Publish");
+    const confirms = wrapper
+      .findAll("button")
+      .filter((button) => button.text() === "Unpublish");
+    await confirms.at(-1)!.trigger("click");
+    await flushPromises();
+    expect(request).toHaveBeenCalledWith("/api/unpublish", "POST", {
+      path: "posts/a.md",
+      revision: "a".repeat(64),
+    });
+    expect(buttons()).toContain("Publish");
+    wrapper.unmount();
+  });
+});

@@ -38,6 +38,7 @@ const fileFailure = ref<HTMLElement | null>(null);
 const confirmingLeave = ref(false);
 const confirmingArchive = ref(false);
 const confirmingDisk = ref(false);
+const confirmingUnpublish = ref(false);
 const stuck = ref(false);
 const copied = ref(false);
 const copyFailed = ref(false);
@@ -233,6 +234,23 @@ const publish = () =>
     "footer",
     "Publish did not happen",
   );
+const unpublish = () => {
+  confirmingUnpublish.value = false;
+  return perform(
+    async () => {
+      if (dirty.value) throw new Error("Save your writing before unpublishing.");
+      saved.value = false;
+      accept(
+        await request<Article>("/api/unpublish", "POST", {
+          path: current.value.path,
+          revision: current.value.revision,
+        }),
+      );
+    },
+    "footer",
+    "Unpublish did not happen",
+  );
+};
 const showPreview = () =>
   perform(async () => {
     const rendered = await request<{ html: string }>("/api/preview", "POST", {
@@ -572,6 +590,21 @@ const useDisk = () => {
               >
             </span>
           </UTooltip>
+          <UTooltip
+            v-else-if="articleStatus === 'published'"
+            text="Save first"
+            :disabled="!dirty"
+          >
+            <span class="inline-flex">
+              <UButton
+                color="neutral"
+                variant="outline"
+                :disabled="busy || dirty"
+                @click="confirmingUnpublish = true"
+                >Unpublish</UButton
+              >
+            </span>
+          </UTooltip>
           <UButton color="primary" :disabled="busy" @click="save">Save</UButton>
         </div>
       </div>
@@ -659,6 +692,13 @@ const useDisk = () => {
       confirm-label="Archive post"
       confirm-color="error"
       @confirm="archive"
+    />
+    <ConfirmDialog
+      v-model:open="confirmingUnpublish"
+      title="Move this post back to drafts?"
+      body="Only its status changes to draft; the text and every other field stay as they are. Publishing again is one click."
+      confirm-label="Unpublish"
+      @confirm="unpublish"
     />
     <ConfirmDialog
       v-model:open="confirmingDisk"

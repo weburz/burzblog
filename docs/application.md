@@ -89,6 +89,7 @@ local storage by this API.
 - `POST /api/posts`: title, slug, optional body; creates a draft in `posts/`.
 - `PUT /api/post`: path, revision, markdown; never silently retries a stale save.
 - `POST /api/publish`: path, revision; changes status metadata, no Git push.
+- `POST /api/unpublish`: path, revision; sets `status: draft`, nothing else.
 - `POST /api/rename`: path, revision, destination. It moves the filename without
   rewriting slug metadata; edit frontmatter separately when desired.
 - `POST /api/archive`: path, revision; reversible archive path returned.
