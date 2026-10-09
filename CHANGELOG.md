@@ -20,6 +20,8 @@ All notable changes are recorded here, following
 
 ### Added
 
+- The address reflects the view: Back, Forward, reload and bookmarks work, the
+  list keeps its filters and scroll position, and the tab title names the view (#31).
 - Posts lists the most recently changed files first, shows when each changed and
   can sort by path; files without a title show as Untitled (#29).
 

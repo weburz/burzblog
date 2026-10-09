@@ -44,6 +44,11 @@ test("browser and external editor share ordinary Markdown without silent loss", 
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByRole("status").filter({ hasText: "Saved ✓" })).toBeVisible();
   expect(readFileSync(file, "utf8")).toContain("Written in the browser.");
+  // The open post lives in the address: reload returns to it and the tab names it.
+  await expect(page).toHaveURL(new RegExp(`post=posts%2F${slug}\\.md`));
+  await page.reload();
+  await expect(editor).toHaveValue(/Written in the browser\./);
+  await expect(page).toHaveTitle("A quieter writing workflow · BurzBlog");
   const externallyEdited =
     "---\r\ntitle: 'External title' # keep\r\ncustom_field: retained\r\nstatus: draft\r\n---\r\nExternal body";
   writeFileSync(file, externallyEdited);

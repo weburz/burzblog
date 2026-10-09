@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import type { Article, PostList } from "../types";
 import { ApiError, request, errorMessage } from "../utils/api";
 import { withRetainedFocus } from "../utils/focus";
+import { pageSize, type ListFilter, type ListSort, type ListState } from "../utils/route";
 
-type Filter = "all" | "draft" | "published";
-type Sort = "modified" | "path";
-const pageSize = 100;
+type Filter = ListFilter;
+type Sort = ListSort;
+const props = defineProps<{ initial: ListState; restoreScroll?: number | null }>();
 const filters: { value: Filter; label: string }[] = [
   { value: "all", label: "All" },
   { value: "draft", label: "Drafts" },
@@ -16,12 +17,14 @@ const sorts: { value: Sort; label: string }[] = [
   { value: "modified", label: "Recently changed" },
   { value: "path", label: "By path" },
 ];
-const emit = defineEmits<{ open: [article: Article] }>();
+const emit = defineEmits<{ open: [article: Article]; change: [list: ListState] }>();
 const posts = ref<PostList>({ items: [], total: 0, files: 0 });
-const offset = ref(0);
-const search = ref("");
-const filter = ref<Filter>("all");
-const sort = ref<Sort>("modified");
+const offset = ref(props.initial.offset);
+const search = ref(props.initial.q);
+const filter = ref<Filter>(props.initial.filter);
+const sort = ref<Sort>(props.initial.sort);
+// Returning with browser Back puts the list where the writer left it, once.
+let pendingScroll = props.restoreScroll ?? null;
 const loaded = ref(false);
 const creating = ref(false);
 const error = ref("");
@@ -50,6 +53,8 @@ let latest = 0;
 const refresh = (next = offset.value) =>
   withRetainedFocus(async () => {
     const ticket = ++latest;
+    // A new page starts at its first row.
+    const paging = loaded.value && next !== offset.value;
     busy.value = true;
     error.value = "";
     const query = new URLSearchParams({
@@ -65,6 +70,12 @@ const refresh = (next = offset.value) =>
       posts.value = list;
       offset.value = next;
       now.value = Date.now();
+      emit("change", {
+        filter: filter.value,
+        q: term.value,
+        sort: sort.value,
+        offset: next,
+      });
     } catch (cause) {
       if (ticket !== latest) return;
       error.value = errorMessage(cause);
@@ -74,6 +85,17 @@ const refresh = (next = offset.value) =>
         busy.value = false;
         loaded.value = true;
       }
+    }
+    // Only once the rows (not the loading skeleton) are on the page.
+    if (ticket === latest && paging && !error.value) {
+      await nextTick();
+      window.scrollTo(0, 0);
+    }
+    if (ticket === latest && pendingScroll !== null && !error.value) {
+      const top = pendingScroll;
+      pendingScroll = null;
+      await nextTick();
+      window.scrollTo(0, top);
     }
   });
 watch([filter, sort], () => refresh(0));

@@ -6,6 +6,7 @@ import NewPostDialog from "../../app/components/NewPostDialog.vue";
 import StatusBadge from "../../app/components/StatusBadge.vue";
 import { ApiError, request } from "../../app/utils/api";
 import type { PostList, PostSummary } from "../../app/types";
+import { defaultList, type ListState } from "../../app/utils/route";
 
 vi.mock("../../app/utils/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../app/utils/api")>()),
@@ -28,9 +29,10 @@ const listOf = (items: PostSummary[], files = items.length): PostList => ({
   total: items.length,
   files,
 });
-const mountView = async (list: PostList) => {
+const mountView = async (list: PostList, initial: Partial<ListState> = {}) => {
   vi.mocked(request).mockResolvedValue(list);
   const wrapper = mount(PostsView, {
+    props: { initial: { ...defaultList, ...initial } },
     global: {
       components: { StatusBadge, PostRow, NewPostDialog },
       stubs: {
@@ -223,6 +225,37 @@ describe("opening a post", () => {
     });
     await flushPromises();
     expect(wrapper.emitted("open")).toHaveLength(1);
+    wrapper.unmount();
+  });
+});
+
+describe("the list and the address", () => {
+  it("starts from the state the address describes", async () => {
+    await mountView(listOf([]), {
+      filter: "published",
+      q: "notes",
+      sort: "path",
+      offset: 100,
+    });
+    const query = lastQuery();
+    expect([
+      query.get("status"),
+      query.get("q"),
+      query.get("sort"),
+      query.get("offset"),
+    ]).toEqual(["published", "notes", "path", "100"]);
+  });
+  it("reports what it shows so the address can follow", async () => {
+    const wrapper = await mountView(listOf([summary("posts/a.md", "Alpha")]));
+    expect(wrapper.emitted("change")?.at(-1)).toEqual([defaultList]);
+    await wrapper
+      .findAll("button")
+      .find((button) => button.text() === "Drafts")!
+      .trigger("click");
+    await flushPromises();
+    expect(wrapper.emitted("change")?.at(-1)).toEqual([
+      { ...defaultList, filter: "draft" },
+    ]);
     wrapper.unmount();
   });
 });
