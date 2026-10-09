@@ -13,6 +13,13 @@ All notable changes are recorded here, following
   files removed outside BurzBlog each get their own message (#28).
 - The session dialog no longer claims a valid session ended; Sign out is a direct
   button (#34).
+- Drafts, Published and search cover every post instead of the visible page of
+  100; search also matches filenames (#29).
+
+### Added
+
+- Posts lists the most recently changed files first, shows when each changed and
+  can sort by path; files without a title show as Untitled (#29).
 
 ## [1.0.0] - 2026-10-06
 

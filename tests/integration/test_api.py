@@ -386,3 +386,87 @@ def test_error_detail_refuses_path_like_messages(client, monkeypatch):
     assert response.status_code == 400
     assert "detail" not in response.json()["error"]
     assert "/srv" not in response.text and "private.md" not in response.text
+
+
+def test_list_filters_every_file_and_sorts_by_last_change(client, configured):
+    login(client)
+    root = configured[0].content_root
+    for index in range(5):
+        path = root / f"posts/p{index}.md"
+        status = "published" if index % 2 else "draft"
+        path.write_text(f"---\ntitle: Note {index}\nstatus: {status}\n---\n")
+        os.utime(path, ns=(1_700_000_000_000_000_000 + index * 10**9,) * 2)
+    (root / "posts/untitled.md").write_text("Body only\n")
+    os.utime(root / "posts/untitled.md", ns=(1_600_000_000_000_000_000,) * 2)
+    (root / "bad.md").write_text("---\na: [\n---\n")
+    os.utime(root / "bad.md", ns=(1_500_000_000_000_000_000,) * 2)
+
+    def listing(**params):
+        response = client.get("/api/posts", params=params)
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    page = listing(limit=2, offset=2)
+    assert (page["total"], page["files"]) == (7, 7)
+    assert [item["path"] for item in page["items"]] == ["posts/p1.md", "posts/p2.md"]
+    drafts = listing(status="draft", limit=1, offset=3)
+    assert (drafts["total"], drafts["files"]) == (4, 7)
+    assert [item["path"] for item in drafts["items"]] == ["posts/untitled.md"]
+    assert listing(status="published")["total"] == 2
+    assert [item["path"] for item in listing(status="unavailable")["items"]] == [
+        "bad.md"
+    ]
+    assert [item["path"] for item in listing(q="NOTE 3")["items"]] == ["posts/p3.md"]
+    untitled = listing(q="untitled")["items"]
+    assert [(item["path"], item["title"]) for item in untitled] == [
+        ("posts/untitled.md", "")
+    ]
+    newest = listing(sort="modified", limit=3)["items"]
+    assert [item["path"] for item in newest] == [
+        "posts/p4.md",
+        "posts/p3.md",
+        "posts/p2.md",
+    ]
+    assert newest[0]["modified"] == "2023-11-14T22:13:24+00:00"
+    assert client.get("/api/posts", params={"status": "archived"}).status_code == 422
+    assert client.get("/api/posts", params={"q": "x" * 201}).status_code == 422
+
+
+def test_filtered_lists_reuse_only_unchanged_summaries(client, configured, monkeypatch):
+    from burzblog.application import ContentApplication
+
+    login(client)
+    root = configured[0].content_root
+    for index in range(3):
+        (root / f"posts/n{index}.md").write_text(f"---\ntitle: Old {index}\n---\n")
+    reads: list[str] = []
+    original = ContentApplication.read
+
+    def counted(application, path):
+        reads.append(path)
+        return original(application, path)
+
+    monkeypatch.setattr(ContentApplication, "read", counted)
+
+    def titles(**params):
+        items = client.get("/api/posts", params=params).json()["items"]
+        return [item["title"] for item in items]
+
+    assert titles(q="old") == ["Old 0", "Old 1", "Old 2"]
+    assert len(reads) == 3
+    assert titles(q="old") == ["Old 0", "Old 1", "Old 2"]
+    assert len(reads) == 3
+    target = root / "posts/n1.md"
+    before = target.stat()
+    # Same size and the same modification time: only the change time differs.
+    target.write_text("---\ntitle: New 1\n---\n")
+    os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
+    assert titles(q="1") == ["New 1"]
+    target.chmod(0o000)
+    try:
+        response = client.get("/api/posts", params={"status": "unavailable"})
+        assert [item["path"] for item in response.json()["items"]] == ["posts/n1.md"]
+    finally:
+        target.chmod(0o600)
+    (root / "posts/n2.md").unlink()
+    assert titles(q="old") == ["Old 0"]

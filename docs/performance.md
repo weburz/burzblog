@@ -46,8 +46,19 @@ artifact. Measurements vary with filesystem, CPU, caches and concurrent work.
 An earlier run measured list/save/status medians of 200.99/16.70/24.83 ms; report
 that variation rather than treating the table as a fixed performance guarantee.
 
-List discovery remains O(number of directory entries), with only the requested
-page parsed into summaries. There is no persistent index, worker or watcher.
+List discovery remains O(number of directory entries). Summaries of readable
+files are kept in process memory and reused while a file's inode, size, mtime and
+ctime are unchanged; any write, replacement, rename or permission change on disk
+invalidates that file's entry, and opening a post for editing always reads disk.
+A status or text filter needs every file's summary, so the first filtered request
+after start-up reads every file. There is no persistent index, worker or watcher.
 Measure a real large repository before deciding whether a rebuildable index is
-justified. Recovery journals intentionally accumulate; retain backups and follow
+justified.
+
+Observed on 2026-10-09 with the summary cache (same 1,000-file fixture, Python
+3.14.8, on a workstation also running other test servers, so absolute numbers are
+higher than above): first filtered request 2,790 ms; afterwards the first page of
+100 by path 11.44 / 15.28 ms, newest first 9.89 / 13.37 ms and a status plus text
+filter over all files 14.59 / 31.17 ms (median / p95). Without the cache the same
+filter measured 2,321 / 3,129 ms on every request. Recovery journals intentionally accumulate; retain backups and follow
 the manual retention guidance rather than deleting late-writer recovery copies.

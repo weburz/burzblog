@@ -1,10 +1,13 @@
 """Content application services shared by HTTP routes without owning file formats."""
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from threading import Lock
+from typing import Literal
 
 from burzblog.document import Document, parse, serialize
 from burzblog.errors import ConflictError, ContentError
-from burzblog.storage import ContentStore
+from burzblog.storage import ContentStore, Listed
 
 
 @dataclass(frozen=True)
@@ -24,6 +27,14 @@ class ContentApplication:
     def __init__(self, store: ContentStore) -> None:
         """Bind services to one operator-configured storage boundary."""
         self.store = store
+        # Process memory only, never persisted: list summaries of readable files,
+        # reused while a file's stat signature is unchanged. Reads for editing
+        # always go to disk.
+        self._summaries: dict[
+            str, tuple[tuple[int, int, int, int], dict[str, str]]
+        ] = {}
+        # Requests run in a thread pool; the cache is shared between them.
+        self._lock = Lock()
 
     def read(self, path: str) -> Article:
         """Read fresh disk state without derived content persistence."""
@@ -33,23 +44,87 @@ class ContentApplication:
             path,
             snapshot.revision,
             serialize(snapshot.document),
-            metadata.get("title", path.removesuffix(".md")),
+            # No invented title: the browser shows an untitled file by its filename.
+            metadata.get("title", ""),
             metadata.get("status", "draft"),
         )
 
-    def list(self, offset: int = 0, limit: int = 100) -> dict[str, object]:
-        """Return bounded summaries, surfacing malformed files without hiding other posts."""
-        paths = self.store.discover()
-        items: list[dict[str, str]] = []
-        for path in paths[offset : offset + limit]:
-            try:
-                article = self.read(path)
-                items.append(
-                    {"path": path, "title": article.title, "status": article.status}
-                )
-            except (ContentError, OSError):
-                items.append({"path": path, "title": path, "status": "unavailable"})
-        return {"items": items, "total": len(paths)}
+    def summary(self, path: str, modified: int) -> dict[str, str]:
+        """Describe one listed file; an unreadable file is surfaced, not hidden."""
+        changed = datetime.fromtimestamp(modified / 1e9, UTC).isoformat(
+            timespec="seconds"
+        )
+        try:
+            article = self.read(path)
+        except (ContentError, OSError):
+            return {
+                "path": path,
+                "title": path,
+                "status": "unavailable",
+                "modified": changed,
+            }
+        return {
+            "path": path,
+            "title": article.title,
+            "status": article.status,
+            "modified": changed,
+        }
+
+    def _summarized(self, entry: Listed) -> dict[str, str]:
+        """Reuse the summary of an unchanged readable file; read anything else."""
+        with self._lock:
+            cached = self._summaries.get(entry.path)
+        if cached is not None and cached[0] == entry.signature:
+            return cached[1]
+        summary = self.summary(entry.path, entry.modified)
+        if summary["status"] != "unavailable":
+            with self._lock:
+                self._summaries[entry.path] = (entry.signature, summary)
+        return summary
+
+    def list(
+        self,
+        offset: int = 0,
+        limit: int = 100,
+        status: str | None = None,
+        query: str = "",
+        order: Literal["path", "modified"] = "path",
+    ) -> dict[str, object]:
+        """Return bounded summaries of every file, or of every file that matches.
+
+        Without a filter only the requested page is read. A status or text filter
+        needs every file's summary; unchanged files reuse the in-memory summary,
+        so only new or changed files are parsed again.
+        """
+        entries = self.store.inventory()
+        if order == "modified":
+            entries.sort(key=lambda entry: (-entry.modified, entry.path))
+        needle = query.strip().casefold()
+        if status is None and not needle:
+            page = entries[offset : offset + limit]
+            return {
+                "items": [self._summarized(entry) for entry in page],
+                "total": len(entries),
+                "files": len(entries),
+            }
+        present = {entry.path for entry in entries}
+        with self._lock:
+            for path in [path for path in self._summaries if path not in present]:
+                del self._summaries[path]
+        matches = [
+            summary
+            for summary in map(self._summarized, entries)
+            if (status is None or summary["status"] == status)
+            and (
+                needle in summary["title"].casefold()
+                or needle in summary["path"].casefold()
+            )
+        ]
+        return {
+            "items": matches[offset : offset + limit],
+            "total": len(matches),
+            "files": len(entries),
+        }
 
     def create(self, title: str, slug: str, body: str) -> Article:
         """Create a draft in the configured posts collection without overwriting."""

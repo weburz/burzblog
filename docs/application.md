@@ -75,10 +75,14 @@ the token only to same-origin clients. Tokens are never persisted in browser
 local storage by this API.
 
 - `POST /api/login`: `{password}`; `GET /api/session`; `POST /api/logout`.
-- `GET /api/posts?offset=0&limit=100`: summaries and total; malformed files are
-  listed as unavailable rather than silently removed.
+- `GET /api/posts?offset=0&limit=100`: summaries (`path`, `title`, `status`,
+  `modified`), `total` matches and `files` discovered; malformed files are listed
+  as `unavailable` rather than silently removed. Optional `status`
+  (`draft`/`published`/`unavailable`) and `q` (case-insensitive, title or path)
+  filter every discovered file before paging; `sort=modified` lists the most
+  recently changed first (default `path`). `modified` is the file's mtime.
 - `GET /api/post?path=posts/example.md`: path, revision, complete Markdown,
-  title and status.
+  title and status. `title` is empty when the frontmatter has none.
 - `POST /api/posts`: title, slug, optional body; creates a draft in `posts/`.
 - `PUT /api/post`: path, revision, markdown; never silently retries a stale save.
 - `POST /api/publish`: path, revision; changes status metadata, no Git push.

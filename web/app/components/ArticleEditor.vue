@@ -345,7 +345,7 @@ const useDisk = () => {
         >← Posts</UButton
       >
       <span class="editor-crumb" aria-hidden="true">{{
-        current.title || current.path
+        current.title || "Untitled"
       }}</span>
       <div class="editor-meta">
         <StatusBadge :status="articleStatus" pill />
@@ -353,8 +353,13 @@ const useDisk = () => {
       </div>
     </div>
     <div class="editor-column">
-      <h1 ref="titleElement" tabindex="-1" class="page-title editor-title">
-        {{ current.title || current.path }}
+      <h1
+        ref="titleElement"
+        tabindex="-1"
+        class="page-title editor-title"
+        :class="{ 'post-untitled': !current.title }"
+      >
+        {{ current.title || "Untitled" }}
       </h1>
     </div>
     <div class="editor-modes">

@@ -20,6 +20,17 @@ DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
 
 
 @dataclass(frozen=True)
+class Listed:
+    """A discovered file and the stat values that change whenever it does."""
+
+    path: str
+    modified: int
+    # Inode, size, mtime and ctime: userspace cannot reset ctime, so any write,
+    # replacement, rename or permission change produces a different signature.
+    signature: tuple[int, int, int, int]
+
+
+@dataclass(frozen=True)
 class Snapshot:
     """A document and revision token for optimistic concurrency checks."""
 
@@ -140,7 +151,11 @@ class ContentStore:
 
     def discover(self) -> list[str]:
         """List visible supported files, bounded to 10,000 directory entries."""
-        found: list[str] = []
+        return [entry.path for entry in self.inventory()]
+
+    def inventory(self) -> list[Listed]:
+        """Visible supported files with their change signatures, by path."""
+        found: list[Listed] = []
         budget = [10000]
 
         def visit(fd: int, prefix: str, depth: int) -> None:
@@ -159,11 +174,23 @@ class ContentStore:
                             visit(child, path + "/", depth + 1)
                     elif entry.is_file(follow_symlinks=False) and path.endswith(".md"):
                         _parts(path)
-                        found.append(path)
+                        info = entry.stat(follow_symlinks=False)
+                        found.append(
+                            Listed(
+                                path,
+                                info.st_mtime_ns,
+                                (
+                                    info.st_ino,
+                                    info.st_size,
+                                    info.st_mtime_ns,
+                                    info.st_ctime_ns,
+                                ),
+                            )
+                        )
 
         with self._root() as root:
             visit(root, "", 0)
-        return sorted(found)
+        return sorted(found, key=lambda entry: entry.path)
 
     def create(self, path: str, document: Document) -> str:
         """Publish a new file without overwriting any existing directory entry."""
