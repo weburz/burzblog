@@ -696,3 +696,44 @@ def test_ipv6_literal_origins_are_refused_at_startup(configured):
                 settings.content_root, settings.state_directory, "http://[::1]:3000"
             )
         )
+
+
+def test_list_reports_what_it_leaves_out_instead_of_failing(client, configured):
+    login(client)
+    root = configured[0].content_root
+    create(client)
+    (root / "posts/My Post.md").write_text("spaces\n")
+    (root / "posts/café.md").write_text("accent\n")
+    (root / "posts/.hidden.md").write_text("hidden on purpose\n")
+    shared = root / "images"
+    shared.mkdir()
+    shared.chmod(0o775)
+    (shared / "inside.md").write_text("not read\n")
+    response = client.get("/api/posts")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert [item["path"] for item in body["items"]] == ["posts/hello.md"]
+    assert body["left_out"] == {"unsupported_names": 2, "unsafe_folders": 1}
+    too_long = client.post("/api/posts", json={"title": "Long", "slug": "a" * 126})
+    assert too_long.status_code == 422
+    longest = client.post("/api/posts", json={"title": "Long", "slug": "a" * 125})
+    assert longest.status_code == 201
+
+
+def test_create_in_a_setgid_folder_stays_readable(client, configured):
+    groups = [gid for gid in os.getgroups() if gid != os.getegid()]
+    if not groups:
+        pytest.skip("needs a supplementary group")
+    login(client)
+    posts = configured[0].content_root / "posts"
+    os.chown(posts, -1, groups[0])
+    posts.chmod(0o2755)
+    try:
+        created = client.post(
+            "/api/posts", json={"title": "Grouped", "slug": "grouped"}
+        )
+        assert created.status_code == 201, created.text
+        assert (posts / "grouped.md").stat().st_gid == os.getegid()
+    finally:
+        posts.chmod(0o755)
+        os.chown(posts, -1, os.getegid())

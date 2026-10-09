@@ -47,6 +47,21 @@ const summary = computed(() => {
   const counted = `${files} ${files === 1 ? "file" : "files"}`;
   return filtering.value ? `${total} of ${counted} match` : counted;
 });
+// Files that exist on disk but cannot appear here, so nothing vanishes silently.
+const leftOut = computed(() => {
+  const { unsupported_names: names = 0, unsafe_folders: folders = 0 } =
+    posts.value.left_out ?? {};
+  const parts = [];
+  if (names)
+    parts.push(
+      `${names} Markdown ${names === 1 ? "file has a name" : "files have names"} BurzBlog cannot use (spaces, accents or a leading _ or -) and ${names === 1 ? "is" : "are"} not listed. Rename ${names === 1 ? "it" : "them"} with letters, numbers, dots, hyphens and underscores.`,
+    );
+  if (folders)
+    parts.push(
+      `${folders} ${folders === 1 ? "folder is" : "folders are"} skipped because other users can write to ${folders === 1 ? "it" : "them"}; ask the operator to make ${folders === 1 ? "it" : "them"} private (chmod go-w).`,
+    );
+  return parts.join(" ");
+});
 // Filtering and search run on the server over every file, so a response can
 // arrive after a newer request; only the latest one is shown.
 let latest = 0;
@@ -207,6 +222,7 @@ onUnmounted(() => {
         />
       </div>
     </template>
+    <p v-if="leftOut" class="alert alert-warn" role="note">{{ leftOut }}</p>
     <div v-if="error" class="alert" role="alert">
       <p>{{ error }}</p>
       <UButton class="mt-2" color="neutral" variant="outline" @click="refresh()"

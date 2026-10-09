@@ -8,6 +8,11 @@ All notable changes are recorded here, following
 
 ### Fixed
 
+- Posts says how many Markdown files have unusable names and how many folders
+  were skipped for being writable by others, instead of hiding the files or
+  failing the whole list; discovery allows 50,000 entries; slugs stop at 125
+  characters so the filename fits; files created in setgid folders stay readable
+  (#44).
 - Simultaneous correct logins wait for each other instead of failing with 429;
   IPv6 literal origins are refused at start-up instead of rejecting every request;
   404, 405, unreadable bodies and unexpected errors use the JSON error shape with

@@ -19,6 +19,10 @@ SEGMENT = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\Z")
 DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
 
 
+class UnsafeFolderError(ContentError):
+    """A folder under the content root is not privately controlled."""
+
+
 @dataclass(frozen=True)
 class Listed:
     """A discovered file and the stat values that change whenever it does."""
@@ -28,6 +32,15 @@ class Listed:
     # Inode, size, mtime and ctime: userspace cannot reset ctime, so any write,
     # replacement, rename or permission change produces a different signature.
     signature: tuple[int, int, int, int]
+
+
+@dataclass(frozen=True)
+class Survey:
+    """What discovery found, and how much it had to leave out."""
+
+    entries: list[Listed]
+    unsupported_names: int
+    unsafe_folders: int
 
 
 @dataclass(frozen=True)
@@ -130,7 +143,7 @@ class ContentStore:
                 fd = child
                 info = os.fstat(fd)
                 if info.st_uid != os.geteuid() or info.st_mode & 0o022:
-                    raise ContentError(
+                    raise UnsafeFolderError(
                         "Content directories must be privately controlled."
                     )
             yield fd
@@ -185,13 +198,24 @@ class ContentStore:
         return Snapshot(parse(text), revision)
 
     def discover(self) -> list[str]:
-        """List visible supported files, bounded to 10,000 directory entries."""
+        """List visible supported files, bounded to 50,000 directory entries."""
         return [entry.path for entry in self.inventory()]
 
     def inventory(self) -> list[Listed]:
         """Visible supported files with their change signatures, by path."""
+        return self.survey().entries
+
+    def survey(self) -> "Survey":
+        """Supported files, plus counts of what discovery had to leave out.
+
+        Markdown files with names the store refuses are counted, not listed; a
+        folder that is not privately controlled is skipped (with its contents)
+        instead of failing the whole listing. Hidden entries are never counted.
+        """
         found: list[Listed] = []
-        budget = [10000]
+        budget = [50000]
+        unsupported = [0]
+        unsafe = [0]
 
         def visit(fd: int, prefix: str, depth: int) -> None:
             if depth > 32:
@@ -200,13 +224,23 @@ class ContentStore:
                 for entry in entries:
                     budget[0] -= 1
                     if budget[0] < 0:
-                        raise ContentError("Discovery exceeds 10,000 entries.")
+                        raise ContentError("Discovery exceeds 50,000 entries.")
+                    if entry.name.startswith("."):
+                        continue
+                    directory = entry.is_dir(follow_symlinks=False)
                     if not SEGMENT.fullmatch(entry.name):
+                        if not directory and entry.name.lower().endswith(".md"):
+                            unsupported[0] += 1
                         continue
                     path = prefix + entry.name
-                    if entry.is_dir(follow_symlinks=False):
-                        with self._parent(fd, [entry.name, "placeholder.md"]) as child:
-                            visit(child, path + "/", depth + 1)
+                    if directory:
+                        try:
+                            with self._parent(
+                                fd, [entry.name, "placeholder.md"]
+                            ) as child:
+                                visit(child, path + "/", depth + 1)
+                        except UnsafeFolderError:
+                            unsafe[0] += 1
                     elif entry.is_file(follow_symlinks=False) and path.endswith(".md"):
                         _parts(path)
                         info = entry.stat(follow_symlinks=False)
@@ -225,7 +259,9 @@ class ContentStore:
 
         with self._root() as root:
             visit(root, "", 0)
-        return sorted(found, key=lambda entry: entry.path)
+        return Survey(
+            sorted(found, key=lambda entry: entry.path), unsupported[0], unsafe[0]
+        )
 
     def create(self, path: str, document: Document) -> str:
         """Publish a new file without overwriting any existing directory entry."""
@@ -259,6 +295,9 @@ class ContentStore:
             )
             try:
                 with os.fdopen(fd, "wb") as stream:
+                    # A setgid folder hands new files its group; content must keep
+                    # the service user's own group to stay readable here.
+                    os.fchown(stream.fileno(), -1, os.getegid())
                     stream.write(data)
                     stream.flush()
                     os.fchmod(stream.fileno(), mode)

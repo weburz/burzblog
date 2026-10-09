@@ -259,3 +259,16 @@ describe("the list and the address", () => {
     wrapper.unmount();
   });
 });
+
+describe("files the list cannot show", () => {
+  it("says how many files and folders were left out and why", async () => {
+    const wrapper = await mountView({
+      ...listOf([summary("posts/a.md", "Alpha")]),
+      left_out: { unsupported_names: 2, unsafe_folders: 1 },
+    });
+    const note = wrapper.get("[role=note]").text();
+    expect(note).toContain("2 Markdown files have names BurzBlog cannot use");
+    expect(note).toContain("1 folder is skipped because other users can write to it");
+    wrapper.unmount();
+  });
+});
