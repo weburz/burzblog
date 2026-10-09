@@ -82,7 +82,10 @@ local storage by this API.
   filter every discovered file before paging; `sort=modified` lists the most
   recently changed first (default `path`). `modified` is the file's mtime.
 - `GET /api/post?path=posts/example.md`: path, revision, complete Markdown,
-  title and status. `title` is empty when the frontmatter has none.
+  title and status. `title` is empty when the frontmatter has none. A file whose
+  frontmatter cannot be parsed is returned with `status: "unavailable"`, its exact
+  text as `markdown` and the reason as `problem` (otherwise `null`), so it can be
+  repaired with an ordinary save; unsafe, oversized or non-UTF-8 files still fail.
 - `POST /api/posts`: title, slug, optional body; creates a draft in `posts/`.
 - `PUT /api/post`: path, revision, markdown; never silently retries a stale save.
 - `POST /api/publish`: path, revision; changes status metadata, no Git push.

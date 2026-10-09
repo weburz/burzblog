@@ -138,16 +138,20 @@ class ContentStore:
         finally:
             os.close(fd)
 
-    def read(self, path: str) -> Snapshot:
-        """Read from disk every time so external edits are immediately visible."""
+    def read_text(self, path: str) -> tuple[str, str]:
+        """Read a file's exact UTF-8 text and revision without parsing it."""
         parts = _parts(path)
         with self._root() as root, self._parent(root, parts) as parent:
             data, _ = self._bytes(parent, parts[-1])
         try:
-            document = parse(data.decode("utf-8"))
+            return data.decode("utf-8"), _revision(data)
         except UnicodeDecodeError:
             raise ContentError("Content must be UTF-8.") from None
-        return Snapshot(document, _revision(data))
+
+    def read(self, path: str) -> Snapshot:
+        """Read from disk every time so external edits are immediately visible."""
+        text, revision = self.read_text(path)
+        return Snapshot(parse(text), revision)
 
     def discover(self) -> list[str]:
         """List visible supported files, bounded to 10,000 directory entries."""

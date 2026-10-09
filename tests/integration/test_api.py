@@ -470,3 +470,80 @@ def test_filtered_lists_reuse_only_unchanged_summaries(client, configured, monke
         target.chmod(0o600)
     (root / "posts/n2.md").unlink()
     assert titles(q="old") == ["Old 0"]
+
+
+def test_unreadable_frontmatter_opens_as_text_and_can_be_repaired(client, configured):
+    login(client)
+    root = configured[0].content_root
+    broken = root / "posts/broken.md"
+    text = "---\ntitle: [unterminated\nstatus: draft\n---\nBody kept\n"
+    broken.write_text(text)
+    opened = client.get("/api/post", params={"path": "posts/broken.md"})
+    assert opened.status_code == 200
+    article = opened.json()
+    assert (article["markdown"], article["status"], article["title"]) == (
+        text,
+        "unavailable",
+        "",
+    )
+    assert article["problem"] == "Malformed or duplicate-key YAML frontmatter."
+
+    def save(markdown):
+        return client.put(
+            "/api/post",
+            json={
+                "path": "posts/broken.md",
+                "revision": article["revision"],
+                "markdown": markdown,
+            },
+        )
+
+    refused = save("---\ntitle: [still broken\n---\nBody kept\n")
+    assert refused.status_code == 400
+    assert refused.json()["error"]["detail"] == (
+        "Malformed or duplicate-key YAML frontmatter."
+    )
+    assert broken.read_text() == text
+    published = client.post(
+        "/api/publish",
+        json={"path": "posts/broken.md", "revision": article["revision"]},
+    )
+    assert published.status_code == 400
+    fixed = save("---\ntitle: Repaired\nstatus: draft\n---\nBody kept\n")
+    assert fixed.status_code == 200, fixed.text
+    assert (fixed.json()["title"], fixed.json()["problem"]) == ("Repaired", None)
+    assert any(
+        copy.read_text() == text
+        for copy in root.glob(".burzblog-recovery/*/original.md")
+    )
+    listed = client.get("/api/posts", params={"q": "broken"}).json()["items"]
+    assert [(item["title"], item["status"]) for item in listed] == [
+        ("Repaired", "draft")
+    ]
+
+
+def test_repair_mode_never_opens_unsafe_files_and_moves_still_report(
+    client, configured
+):
+    login(client)
+    root = configured[0].content_root
+    (root / "posts/latin1.md").write_bytes(b"caf\xe9\n")
+    undecodable = client.get("/api/post", params={"path": "posts/latin1.md"})
+    assert undecodable.status_code == 400
+    assert undecodable.json()["error"]["detail"] == "Content must be UTF-8."
+    (root / "posts/broken.md").write_text("---\nstatus: maybe\n---\n")
+    article = client.get("/api/post", params={"path": "posts/broken.md"}).json()
+    assert article["problem"] == "status must be draft or published."
+    moved = client.post(
+        "/api/rename",
+        json={
+            "path": "posts/broken.md",
+            "revision": article["revision"],
+            "destination": "posts/moved.md",
+        },
+    )
+    assert moved.status_code == 200
+    assert (moved.json()["path"], moved.json()["status"]) == (
+        "posts/moved.md",
+        "unavailable",
+    )
