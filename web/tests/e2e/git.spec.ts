@@ -62,9 +62,16 @@ test("browser commit and remote updates preserve ordinary Git workflows", async 
   expect((await fetched).status()).toBe(200);
   await expect(page.getByRole("button", { name: "Apply safe update" })).toBeEnabled();
   await page.getByRole("button", { name: "Apply safe update" }).click();
-  await expect
-    .poll(() => readFileSync(join(root, "repo/content/posts/git-flow.md"), "utf8"))
-    .toBe("external Git content\n");
+  // The update publishes by capturing the old inode, then linking the new file, so a
+  // poll can land in the instant the path is absent; expect.poll does not retry throws.
+  const onDisk = () => {
+    try {
+      return readFileSync(join(root, "repo/content/posts/git-flow.md"), "utf8");
+    } catch {
+      return null;
+    }
+  };
+  await expect.poll(onDisk).toBe("external Git content\n");
   await page.getByRole("button", { name: "Posts", exact: true }).click();
   await page.getByRole("button", { name: /git-flow/ }).click();
   await expect(editor).toHaveValue("external Git content\n");
