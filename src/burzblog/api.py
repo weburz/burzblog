@@ -16,10 +16,12 @@ from burzblog.auth import (
     SESSION_SECONDS,
     Authentication,
     AuthenticationError,
+    CredentialsError,
+    OriginError,
     RateLimitError,
     Session,
 )
-from burzblog.errors import ConflictError, ContentError, RecoveryError
+from burzblog.errors import ConflictError, ContentError, ExistsError, RecoveryError
 from burzblog.git_domain import GitRepository
 from burzblog.git_mutations import GitChanges
 from burzblog.git_process import RemoteError
@@ -86,11 +88,32 @@ class GitAction(Input):
     message: str = Field(default="", max_length=4000)
 
 
-def failure(status: int, code: str, message: str) -> JSONResponse:
+def failure(
+    status: int, code: str, message: str, detail: str | None = None
+) -> JSONResponse:
     """Return a stable error shape without filesystem paths or request values."""
-    return JSONResponse(
-        {"error": {"code": code, "message": message}}, status_code=status
-    )
+    error = {"code": code, "message": message}
+    if detail is not None:
+        error["detail"] = detail
+    return JSONResponse({"error": error}, status_code=status)
+
+
+def public_detail(error: ContentError) -> str | None:
+    """Pass on a curated domain message, refusing anything that looks like a path.
+
+    Domain messages are fixed, content-free sentences (see `errors.py`); this is a
+    second line of defence so a future message carrying a path or input never
+    reaches the browser.
+    """
+    message = str(error)
+    if (
+        not message
+        or len(message) > 300
+        or not message.isprintable()
+        or any(character in message for character in "/\\")
+    ):
+        return None
+    return message
 
 
 def create_app(settings: Settings) -> FastAPI:
@@ -118,7 +141,7 @@ def create_app(settings: Settings) -> FastAPI:
 
     def origin(request: Request) -> None:
         if request.headers.get("origin") != settings.origin:
-            raise AuthenticationError("Request origin was rejected.")
+            raise OriginError("Request origin was rejected.")
         if request.headers.get("content-type", "").split(";")[0] != "application/json":
             raise ContentError("Send an application/json request.")
 
@@ -135,6 +158,15 @@ def create_app(settings: Settings) -> FastAPI:
                 429,
                 "rate_limited",
                 "Login is busy or temporarily limited. Please try again later.",
+                public_detail(error),
+            )
+        if isinstance(error, CredentialsError):
+            return failure(401, "credentials", "That password is not correct.")
+        if isinstance(error, OriginError):
+            return failure(
+                401,
+                "origin",
+                "This page is not served from the address BurzBlog is configured for. Open BurzBlog at its configured address, or ask the operator to check BURZBLOG_ORIGIN.",
             )
         if isinstance(error, AuthenticationError):
             return failure(
@@ -152,22 +184,40 @@ def create_app(settings: Settings) -> FastAPI:
                 "recovery",
                 "Save needs attention. Recovery copies are retained on disk; ask the operator to inspect them before retrying.",
             )
+        if isinstance(error, ExistsError):
+            return failure(
+                409,
+                "exists",
+                "A file already exists at that path; nothing was overwritten.",
+                public_detail(error),
+            )
         if isinstance(error, ConflictError):
             return failure(
                 409,
                 "conflict",
                 "Content or repository state changed. Keep unsaved input and review disk and repository state before retrying.",
+                public_detail(error),
             )
         return failure(
             400,
             "invalid",
             "The operation cannot be performed safely. Check the input and operator documentation.",
+            public_detail(error),
         )
 
     async def validation_error(
         _request: Request, _error: RequestValidationError
     ) -> JSONResponse:
         return failure(422, "validation", "Check the request fields and size limits.")
+
+    async def missing_error(
+        _request: Request, _error: FileNotFoundError
+    ) -> JSONResponse:
+        return failure(
+            404,
+            "not_found",
+            "That file or folder is not on disk. It may have been moved, renamed or deleted outside BurzBlog.",
+        )
 
     async def filesystem_error(_request: Request, _error: OSError) -> JSONResponse:
         return failure(
@@ -285,6 +335,7 @@ def create_app(settings: Settings) -> FastAPI:
 
     app.exception_handler(ContentError)(content_error)
     app.exception_handler(RequestValidationError)(validation_error)
+    app.exception_handler(FileNotFoundError)(missing_error)
     app.exception_handler(OSError)(filesystem_error)
     app.add_api_route("/api/session", session_info, methods=["GET"])
     app.add_api_route("/api/login", login, methods=["POST"])

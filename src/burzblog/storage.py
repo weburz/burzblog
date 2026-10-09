@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from burzblog.document import MAX_BYTES, Document, parse, serialize
-from burzblog.errors import ConflictError, ContentError, RecoveryError
+from burzblog.errors import ConflictError, ContentError, ExistsError, RecoveryError
 from burzblog.recovery import capture, journal, write_file
 
 SEGMENT = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\Z")
@@ -211,7 +211,7 @@ class ContentStore:
                             follow_symlinks=False,
                         )
                     except FileExistsError:
-                        raise ConflictError(
+                        raise ExistsError(
                             "Destination already exists; nothing was overwritten."
                         ) from None
                 else:
@@ -327,7 +327,7 @@ class ContentStore:
             except FileNotFoundError:
                 pass
             else:
-                raise ConflictError(
+                raise ExistsError(
                     "Destination already exists; nothing was overwritten."
                 )
             self._publish(

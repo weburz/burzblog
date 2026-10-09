@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { nextTick, ref } from "vue";
 import { request, errorMessage } from "../utils/api";
 import { withRetainedFocus } from "../utils/focus";
 
@@ -8,20 +8,29 @@ const emit = defineEmits<{ success: [] }>();
 const password = ref("");
 const busy = ref(false);
 const error = ref("");
-const submit = () =>
-  withRetainedFocus(async () => {
+const submit = async () => {
+  const signedIn = await withRetainedFocus(async () => {
     busy.value = true;
     error.value = "";
     try {
       await request("/api/login", "POST", { password: password.value });
       password.value = "";
       emit("success");
+      return true;
     } catch (cause) {
       error.value = errorMessage(cause);
+      return false;
     } finally {
       busy.value = false;
     }
   });
+  if (signedIn) return;
+  // Put the writer straight back into the field to retype the password.
+  await nextTick();
+  const field = document.getElementById("password") as HTMLInputElement | null;
+  field?.focus();
+  field?.select();
+};
 </script>
 
 <template>

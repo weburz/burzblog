@@ -210,13 +210,6 @@ select {
 .alert-title {
   font-weight: 650;
 }
-.reauth {
-  border: 1px solid var(--bb-border-strong);
-  border-radius: 8px;
-  background: var(--bb-surface);
-  padding: 20px 24px;
-  margin: 20px 0;
-}
 .field {
   display: grid;
   gap: 6px;
@@ -471,8 +464,40 @@ textarea:focus-visible {
 .editor-footer .editor-bar {
   width: 100%;
 }
+.conflict {
+  scroll-margin-top: 72px;
+}
 .conflict .actions {
   margin-top: var(--bb-space-3);
+}
+.conflict .alert-title:focus {
+  outline: none;
+}
+.footer-alert {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--bb-space-3);
+  margin: 0 auto var(--bb-space-3);
+  max-height: 40vh;
+  overflow: auto;
+}
+.file-failure {
+  scroll-margin-bottom: 96px;
+}
+.row-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bb-space-2) var(--bb-space-4);
+  margin: 0 0 var(--bb-space-3);
+  padding: 10px 14px;
+  border: 1px solid var(--bb-danger);
+  border-radius: var(--bb-radius-m);
+  background: var(--bb-danger-soft);
+  color: var(--bb-danger);
+  font-size: 14px;
 }
 .diff-legend {
   display: flex;

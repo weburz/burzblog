@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref } from "vue";
 import type { GitState } from "../types";
 import { ApiError, request, errorMessage } from "../utils/api";
 import { withRetainedFocus } from "../utils/focus";
@@ -123,10 +123,16 @@ const action = (name: string) =>
     },
     () => [titleElement.value],
   );
+// After signing in again, replace a stale session failure with fresh state.
+const restored = () => {
+  if (error.value) void refresh();
+};
 onMounted(() => {
   titleElement.value?.focus();
   void refresh();
+  window.addEventListener("burzblog:session-restored", restored);
 });
+onUnmounted(() => window.removeEventListener("burzblog:session-restored", restored));
 </script>
 
 <template>

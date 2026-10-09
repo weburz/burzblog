@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import type { Article, PostList } from "../types";
 import { ApiError, request, errorMessage } from "../utils/api";
 import { withRetainedFocus } from "../utils/focus";
@@ -23,8 +23,12 @@ const title = ref("");
 const slug = ref("");
 const slugTouched = ref(false);
 const error = ref("");
+const errorCode = ref("");
 const createError = ref("");
 const busy = ref(false);
+const opening = ref<string | null>(null);
+// A failed open is reported on its own row, where the writer is looking.
+const rowError = ref<{ path: string; message: string } | null>(null);
 const filtering = computed(() => filter.value !== "all" || search.value.trim() !== "");
 const filtered = computed(() =>
   posts.value.items.filter(
@@ -51,18 +55,36 @@ const refresh = (next = offset.value) =>
       offset.value = next;
     } catch (cause) {
       error.value = errorMessage(cause);
+      errorCode.value = cause instanceof ApiError ? cause.code : "";
     } finally {
       busy.value = false;
       loaded.value = true;
     }
   });
 const open = async (path: string) => {
+  if (opening.value) return;
+  opening.value = path;
+  rowError.value = null;
   try {
     emit("open", await request<Article>(`/api/post?path=${encodeURIComponent(path)}`));
   } catch (cause) {
-    error.value = errorMessage(cause);
+    rowError.value = {
+      path,
+      message:
+        cause instanceof ApiError && cause.code === "not_found"
+          ? "This file is no longer on disk. It may have been moved or deleted outside BurzBlog; refresh the list."
+          : errorMessage(cause),
+    };
+  } finally {
+    opening.value = null;
   }
 };
+const restored = () => {
+  if (errorCode.value === "authentication") void refresh();
+  if (rowError.value) rowError.value = null;
+};
+onMounted(() => window.addEventListener("burzblog:session-restored", restored));
+onUnmounted(() => window.removeEventListener("burzblog:session-restored", restored));
 const startCreate = () => {
   title.value = "";
   slug.value = "";
@@ -79,8 +101,12 @@ watch(title, (value) => {
 });
 const create = () =>
   withRetainedFocus(async () => {
-    busy.value = true;
     createError.value = "";
+    if (!title.value.trim()) {
+      createError.value = "Give the post a title.";
+      return;
+    }
+    busy.value = true;
     try {
       const article = await request<Article>("/api/posts", "POST", {
         title: title.value,
@@ -90,7 +116,7 @@ const create = () =>
       emit("open", article);
     } catch (cause) {
       createError.value =
-        cause instanceof ApiError && cause.code === "conflict"
+        cause instanceof ApiError && cause.code === "exists"
           ? `${newPath.value} already exists. Choose a different filename.`
           : errorMessage(cause);
     } finally {
@@ -180,7 +206,12 @@ onMounted(() => {
     </div>
     <ul v-else aria-label="Posts" class="post-list">
       <li v-for="post in filtered" :key="post.path">
-        <button class="post-row" :title="post.path" @click="open(post.path)">
+        <button
+          class="post-row"
+          :title="post.path"
+          :aria-busy="opening === post.path ? 'true' : undefined"
+          @click="open(post.path)"
+        >
           <span class="post-title" :title="post.title">{{
             post.status === "unavailable" ? basename(post.path) : post.title
           }}</span>
@@ -188,12 +219,27 @@ onMounted(() => {
             rowPath(post.path)
           }}</span>
           <span class="post-status"
-            ><StatusBadge :status="rowStatus(post.status)"
+            ><UIcon
+              v-if="opening === post.path"
+              name="i-lucide-loader-circle"
+              class="size-4 animate-spin text-[var(--bb-text-3)]"
+              aria-label="Opening" /><StatusBadge v-else :status="rowStatus(post.status)"
           /></span>
           <span v-if="post.status === 'unavailable'" class="post-note"
             >Could not be read. Check its frontmatter on disk.</span
           >
         </button>
+        <div v-if="rowError?.path === post.path" class="row-error" role="alert">
+          <p>{{ rowError.message }}</p>
+          <div class="actions">
+            <UButton color="neutral" variant="outline" size="sm" @click="open(post.path)"
+              >Try again</UButton
+            >
+            <UButton color="neutral" variant="ghost" size="sm" @click="rowError = null"
+              >Dismiss</UButton
+            >
+          </div>
+        </div>
       </li>
     </ul>
     <div class="toolbar mt-6">

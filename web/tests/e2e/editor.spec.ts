@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, statSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, statSync, existsSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 
@@ -84,12 +84,16 @@ test("browser and external editor share ordinary Markdown without silent loss", 
   await context.clearCookies();
   await editor.fill("after session loss");
   await page.getByRole("button", { name: "Save", exact: true }).click();
-  const reauth = page.getByRole("region", { name: "Sign in again" });
+  const reauth = page.getByRole("dialog", { name: "Your session ended" });
   await expect(reauth).toBeVisible();
-  await expect(page.getByRole("alert")).toContainText("session expired");
+  // The dialog hides the page from assistive technology, so read the save bar directly.
+  await expect(page.locator(".editor-footer [role=alert]")).toContainText(
+    "session expired",
+  );
   await reauth.getByLabel("Administrator password").fill("browser fixture password");
   await reauth.getByRole("button", { name: "Sign in" }).click();
   await expect(reauth).toBeHidden();
+  await expect(page.locator(".editor-footer [role=alert]")).toHaveCount(0);
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByRole("status").filter({ hasText: "Saved ✓" })).toBeVisible();
   await editor.fill(
@@ -112,8 +116,20 @@ test("browser and external editor share ordinary Markdown without silent loss", 
   expect(readFileSync(file, "utf8")).toContain("status: published");
   await page.getByText("File options", { exact: true }).click();
   await page.getByLabel("Move / rename file").fill("../outside.md");
+  await expect(page.getByText("Use a path inside the content folder")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Move file", exact: true }),
+  ).toBeDisabled();
+  // A move onto an existing file names that file and overwrites nothing.
+  const taken = join(root, "repo/content/posts", `${slug}-taken.md`);
+  writeFileSync(taken, "taken\n");
+  await page.getByLabel("Move / rename file").fill(`posts/${slug}-taken.md`);
   await page.getByRole("button", { name: "Move file", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText("cannot be performed safely");
+  await expect(page.getByRole("alert")).toContainText(
+    `posts/${slug}-taken.md already exists. Nothing was overwritten`,
+  );
+  expect(readFileSync(taken, "utf8")).toBe("taken\n");
+  unlinkSync(taken);
   expect(existsSync(file)).toBe(true);
   expect(existsSync(join(root, "repo/outside.md"))).toBe(false);
   await page.getByLabel("Move / rename file").fill(`posts/${slug}-renamed.md`);

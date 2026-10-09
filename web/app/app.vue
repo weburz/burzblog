@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from "vue";
+import { nextTick, onMounted, onUnmounted, ref } from "vue";
 import type { Article, Session } from "./types";
 import { ApiError, request, errorMessage } from "./utils/api";
 
@@ -18,10 +18,32 @@ onMounted(async () => {
     ready.value = true;
   }
 });
+// Where the writer was when the session ran out, so signing in again returns there.
+// Busy controls drop focus to <body> while a request runs, so remember the last
+// focused control rather than reading document.activeElement at expiry time.
+let lastFocus: HTMLElement | null = null;
+let resumeFocus: HTMLElement | null = null;
+const remember = (event: FocusEvent) => {
+  const target = event.target;
+  if (target instanceof HTMLElement && !target.closest("[role=dialog]"))
+    lastFocus = target;
+};
 const signedIn = () => {
+  const resuming = reauthenticate.value;
   authenticated.value = true;
   reauthenticate.value = false;
   error.value = "";
+  if (!resuming) return;
+  window.dispatchEvent(new CustomEvent("burzblog:session-restored"));
+  const target = resumeFocus;
+  resumeFocus = null;
+  // The dialog returns focus as it closes; land on the interrupted control after it.
+  void nextTick(() =>
+    setTimeout(() => {
+      if (target?.isConnected && !(target as HTMLButtonElement).disabled)
+        target.focus({ preventScroll: true });
+    }, 250),
+  );
 };
 const editor = ref<{
   dirty: boolean;
@@ -29,12 +51,18 @@ const editor = ref<{
 } | null>(null);
 const confirmingLogout = ref(false);
 const showReauthenticate = () => {
+  if (!authenticated.value || reauthenticate.value) return;
+  resumeFocus = lastFocus;
   reauthenticate.value = true;
 };
-onMounted(() => window.addEventListener("burzblog:session-expired", showReauthenticate));
-onUnmounted(() =>
-  window.removeEventListener("burzblog:session-expired", showReauthenticate),
-);
+onMounted(() => {
+  window.addEventListener("burzblog:session-expired", showReauthenticate);
+  document.addEventListener("focusin", remember);
+});
+onUnmounted(() => {
+  window.removeEventListener("burzblog:session-expired", showReauthenticate);
+  document.removeEventListener("focusin", remember);
+});
 const show = (target: "posts" | "repository") => {
   article.value = null;
   repository.value = target === "repository";
@@ -70,12 +98,6 @@ const logout = () => {
   }
   return signOut();
 };
-const accountItems = [
-  [
-    { label: "Sign in again", icon: "i-lucide-key-round", onSelect: showReauthenticate },
-    { label: "Sign out", icon: "i-lucide-log-out", onSelect: logout },
-  ],
-];
 </script>
 
 <template>
@@ -103,16 +125,15 @@ const accountItems = [
               Repository
             </button>
           </nav>
-          <UDropdownMenu v-if="authenticated" :items="accountItems">
-            <UButton
-              color="neutral"
-              variant="ghost"
-              icon="i-lucide-user-round"
-              trailing-icon="i-lucide-chevron-down"
-              aria-label="Account"
-              ><span class="max-[600px]:hidden">Account</span></UButton
-            >
-          </UDropdownMenu>
+          <UButton
+            v-if="authenticated"
+            color="neutral"
+            variant="ghost"
+            icon="i-lucide-log-out"
+            aria-label="Sign out"
+            @click="logout"
+            ><span class="max-[600px]:hidden">Sign out</span></UButton
+          >
         </div>
       </header>
       <main id="main" class="content">
@@ -122,29 +143,6 @@ const accountItems = [
         </p>
         <LoginForm v-else-if="!authenticated" class="mt-16" @success="signedIn" />
         <template v-else>
-          <section
-            v-if="reauthenticate"
-            class="reauth"
-            role="region"
-            aria-label="Sign in again"
-          >
-            <h2 class="section-title">Your session ended</h2>
-            <p class="muted mt-1">
-              Sign in to continue. Unsaved writing stays in the editor below.
-            </p>
-            <LoginForm compact @success="signedIn">
-              <template #actions>
-                <UButton
-                  type="button"
-                  color="neutral"
-                  variant="ghost"
-                  size="lg"
-                  @click="reauthenticate = false"
-                  >Not now</UButton
-                >
-              </template>
-            </LoginForm>
-          </section>
           <ArticleEditor
             v-if="article"
             :key="article.path"
@@ -156,6 +154,30 @@ const accountItems = [
           <PostsView v-else @open="article = $event" />
         </template>
       </main>
+      <UModal
+        v-model:open="reauthenticate"
+        title="Your session ended"
+        :description="
+          article
+            ? 'Sign in to continue. Your unsaved writing stays in the editor.'
+            : 'Sign in to continue where you left off.'
+        "
+      >
+        <template #body>
+          <LoginForm compact @success="signedIn">
+            <template #actions>
+              <UButton
+                type="button"
+                color="neutral"
+                variant="ghost"
+                size="lg"
+                @click="reauthenticate = false"
+                >Not now</UButton
+              >
+            </template>
+          </LoginForm>
+        </template>
+      </UModal>
       <ConfirmDialog
         v-model:open="confirmingLogout"
         title="Sign out and close the editor?"
