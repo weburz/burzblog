@@ -12,6 +12,7 @@ import { pathProblem } from "../utils/posts";
 type Place = "top" | "footer" | "rename" | "archive";
 
 const props = defineProps<{ article: Article }>();
+const toast = useToast();
 const emit = defineEmits<{
   close: [];
   archived: [path: string];
@@ -35,6 +36,22 @@ const titleElement = ref<HTMLElement | null>(null);
 const conflictElement = ref<HTMLElement | null>(null);
 const conflictHeading = ref<HTMLElement | null>(null);
 const fileFailure = ref<HTMLElement | null>(null);
+const previewFrame = ref<HTMLIFrameElement | null>(null);
+// The preview grows with its content, so the page has one scrollbar. The frame
+// may be read because it is same-origin, but it still runs no scripts.
+const sizePreview = () => {
+  const frame = previewFrame.value;
+  const page = frame?.contentDocument?.documentElement;
+  if (frame && page) frame.style.height = `${page.scrollHeight}px`;
+};
+let previewWidth: ResizeObserver | undefined;
+watch(previewFrame, (frame) => {
+  previewWidth?.disconnect();
+  if (frame && typeof ResizeObserver !== "undefined") {
+    previewWidth = new ResizeObserver(sizePreview);
+    previewWidth.observe(frame);
+  }
+});
 const confirmingLeave = ref(false);
 const confirmingArchive = ref(false);
 const confirmingDisk = ref(false);
@@ -157,6 +174,7 @@ onUnmounted(() => {
   window.removeEventListener("beforeunload", guard);
   window.removeEventListener("burzblog:session-restored", restored);
   titleObserver?.disconnect();
+  previewWidth?.disconnect();
   clearTimeout(copiedTimer);
 });
 const perform = (
@@ -296,6 +314,11 @@ const rename = () =>
         }),
       );
       destination.value = current.value.path;
+      toast.add({
+        title: "File moved",
+        description: current.value.path,
+        color: "success",
+      });
     },
     "rename",
     "The file was not moved",
@@ -534,7 +557,14 @@ const useDisk = () => {
       <p class="meta mt-4">
         Safe preview. Raw HTML and remote images are left out. Nothing is written.
       </p>
-      <iframe class="preview" title="Article preview" sandbox="" :srcdoc="preview" />
+      <iframe
+        ref="previewFrame"
+        class="preview"
+        title="Article preview"
+        sandbox="allow-same-origin"
+        :srcdoc="preview"
+        @load="sizePreview"
+      />
     </div>
     <div class="editor-footer">
       <div
@@ -578,7 +608,7 @@ const useDisk = () => {
           >
         </p>
         <div class="actions">
-          <span class="editor-collapse"><UKbd value="Ctrl" /> <UKbd value="S" /> </span>
+          <span class="editor-collapse"><UKbd value="meta" /> <UKbd value="S" /> </span>
           <UTooltip v-if="articleStatus === 'draft'" text="Save first" :disabled="!dirty">
             <span class="inline-flex">
               <UButton

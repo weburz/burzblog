@@ -1,7 +1,9 @@
-// Filenames are ASCII only: letters, digits and single hyphens. Other characters
-// (including non-ASCII letters) are dropped, not transliterated.
+// Filenames are ASCII only: letters, digits and single hyphens. Accents are
+// removed from letters ("Café" → "cafe"); other non-ASCII characters are dropped.
 export const slugify = (title: string): string =>
   title
+    .normalize("NFKD")
+    .replace(/\p{Mark}/gu, "")
     .toLowerCase()
     .replace(/[^\p{ASCII}]/gu, "")
     .replace(/[^a-z0-9]+/g, "-")

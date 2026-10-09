@@ -1,5 +1,5 @@
 import { mount, flushPromises } from "@vue/test-utils";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ArticleEditor from "../../app/components/ArticleEditor.vue";
 import ConfirmDialog from "../../app/components/ConfirmDialog.vue";
 import StatusBadge from "../../app/components/StatusBadge.vue";
@@ -9,7 +9,11 @@ vi.mock("../../app/utils/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../app/utils/api")>()),
   request: vi.fn<() => Promise<unknown>>(),
 }));
-afterEach(() => vi.clearAllMocks());
+beforeEach(() => vi.stubGlobal("useToast", () => ({ add: vi.fn<() => void>() })));
+afterEach(() => {
+  vi.clearAllMocks();
+  vi.unstubAllGlobals();
+});
 
 const global = {
   components: { StatusBadge, ConfirmDialog },
