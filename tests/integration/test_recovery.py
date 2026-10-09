@@ -25,12 +25,19 @@ def test_replacement_at_capture_boundary_is_retained(content, monkeypatch):
         return rename(source, target, **kwargs)
 
     monkeypatch.setattr(os, "rename", replace_then_capture)
-    with pytest.raises(RecoveryError):
+    with pytest.raises(ConflictError) as refused:
         store.save("a.md", Document.new("Browser", "browser"), revision)
+    assert not isinstance(refused.value, RecoveryError)
     recovery = next(store.root.glob(".burzblog-recovery/*"))
-    assert (recovery / "original.md").read_text() == "external replacement"
+    # The captured external version is linked back to its own name, not lost and
+    # not left only in the journal; the browser's text stays in requested.md.
+    assert (store.root / "a.md").read_text() == "external replacement"
+    assert (store.root / "a.md").stat().st_nlink == 1
+    assert not (recovery / "original.md").exists()
+    assert (recovery / "restored").exists()
+    assert (recovery / "observed.md").read_text().startswith("---")
     assert "Browser" in (recovery / "requested.md").read_text()
-    assert store.discover() == []
+    assert store.discover() == ["a.md"]
 
 
 def test_open_external_descriptor_after_publication_remains_recoverable(content):
@@ -69,7 +76,9 @@ def test_external_creator_wins_publication_without_overwrite(
         return link(source, target, **kwargs)
 
     monkeypatch.setattr(os, "link", create_then_publish)
-    with pytest.raises(RecoveryError):
+    # A save's source name is the contested destination, so it stays in recovery;
+    # a move's source name is free, so the original goes back to it.
+    with pytest.raises(RecoveryError if operation == "save" else ConflictError):
         if operation == "save":
             store.save("a.md", Document.new("Browser", "browser"), revision)
         elif operation == "rename":
@@ -79,7 +88,8 @@ def test_external_creator_wins_publication_without_overwrite(
     recovery = next(store.root.glob(".burzblog-recovery/*"))
     target = json.loads((recovery / "intent.json").read_text())["destination"]
     assert (store.root / target).read_text() == "external destination"
-    assert "Initial" in (recovery / "original.md").read_text()
+    original = recovery / "original.md" if operation == "save" else store.root / "a.md"
+    assert "Initial" in original.read_text()
 
 
 @pytest.mark.parametrize("after", [False, True])
@@ -95,13 +105,17 @@ def test_publication_failure_keeps_original_and_requested(content, monkeypatch, 
         return link(source, target, **kwargs)
 
     monkeypatch.setattr(os, "link", fail)
-    with pytest.raises(RecoveryError):
+    with pytest.raises(RecoveryError if after else ConflictError):
         store.save("a.md", Document.new("Browser", "browser"), revision)
     recovery = next(store.root.glob(".burzblog-recovery/*"))
-    assert "Initial" in (recovery / "original.md").read_text()
     assert "Browser" in (recovery / "requested.md").read_text()
     if after:
+        # Published before the failure: never undone, the original stays retained.
+        assert "Initial" in (recovery / "original.md").read_text()
         assert "Browser" in (store.root / "a.md").read_text()
+    else:
+        assert "Initial" in (store.root / "a.md").read_text()
+        assert (recovery / "restored").exists()
 
 
 def test_source_changes_during_move_are_retained(content, monkeypatch):
@@ -113,12 +127,9 @@ def test_source_changes_during_move_are_retained(content, monkeypatch):
         return rename(source, target, **kwargs)
 
     monkeypatch.setattr(os, "rename", edit_then_move)
-    with pytest.raises(RecoveryError):
+    with pytest.raises(ConflictError):
         store.rename("a.md", "b.md", revision)
-    assert (
-        next(store.root.glob(".burzblog-recovery/*/original.md")).read_text()
-        == "external source"
-    )
+    assert (store.root / "a.md").read_text() == "external source"
     assert not (store.root / "b.md").exists()
 
 
@@ -182,4 +193,18 @@ def test_recovery_symlink_is_not_followed(content, tmp_path):
 def test_noop_has_no_recovery_artifacts(content):
     store, revision = content
     store.save("a.md", store.read("a.md").document, revision)
+    assert not (store.root / ".burzblog-recovery").exists()
+
+
+def test_unwritable_destination_is_refused_before_anything_moves(content):
+    store, revision = content
+    folder = store.root / "locked"
+    folder.mkdir()
+    folder.chmod(0o555)
+    try:
+        with pytest.raises(ContentError, match="cannot write to that folder"):
+            store.rename("a.md", "locked/a.md", revision)
+    finally:
+        folder.chmod(0o755)
+    assert store.read("a.md").document.metadata["title"] == "Initial"
     assert not (store.root / ".burzblog-recovery").exists()

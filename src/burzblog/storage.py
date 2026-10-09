@@ -56,6 +56,37 @@ def _revision(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _restore(recovery: int, parent: int, name: str) -> bool:
+    """Put a captured inode back at its source name after a failed publication.
+
+    No-clobber: the link fails if anything now holds the name. The journal name
+    is removed only once the inode has its source name again, so the captured
+    inode always keeps a name; the journal keeps observed.md and a marker.
+    """
+    try:
+        os.link(
+            "original.md",
+            name,
+            src_dir_fd=recovery,
+            dst_dir_fd=parent,
+            follow_symlinks=False,
+        )
+        os.fsync(parent)
+    except OSError:
+        return False
+    try:
+        os.unlink("original.md", dir_fd=recovery)
+        write_file(
+            recovery,
+            "restored",
+            b"Publication failed; original.md was linked back to its source path.\n",
+        )
+        os.fsync(recovery)
+    except OSError:
+        pass  # Two names are recoverable too; nothing is lost.
+    return True
+
+
 def validate_content_path(path: str) -> None:
     """Validate a caller's content-relative filename without touching disk."""
     _parts(path)
@@ -290,6 +321,14 @@ class ContentStore:
         mode: int,
     ) -> None:
         """Capture the exact prior inode, then publish without replacing any entry."""
+        # A folder BurzBlog cannot write would fail only after the capture has
+        # already taken the source out of its folder; refuse before anything moves.
+        for directory in (source_fd, target_fd):
+            if not os.access(".", os.W_OK | os.X_OK, dir_fd=directory):
+                raise ContentError(
+                    "BurzBlog cannot write to that folder; nothing was changed."
+                )
+        published = False
         with journal(root, source_path, destination_path, requested) as recovery:
             # A source recovery copy is also useful if the entry disappears externally.
             write_file(recovery, "observed.md", previous)
@@ -313,6 +352,7 @@ class ContentStore:
                     dst_dir_fd=target_fd,
                     follow_symlinks=False,
                 )
+                published = True
                 os.fsync(target_fd)
                 os.unlink("publish.md", dir_fd=recovery)
                 write_file(
@@ -322,6 +362,10 @@ class ContentStore:
                 )
                 os.fsync(recovery)
             except (OSError, ContentError):
+                if not published and _restore(recovery, source_fd, source):
+                    raise ConflictError(
+                        "The file changed or could not be written; nothing was changed and a copy is kept in .burzblog-recovery."
+                    ) from None
                 raise RecoveryError(
                     "Operation needs recovery; inspect .burzblog-recovery before retrying. No captured version was deleted."
                 ) from None

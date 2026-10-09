@@ -31,6 +31,9 @@ Every changing save, rename or archive keeps a journal in
 - `requested.md`: bytes BurzBlog intended to publish.
 - `original.md`: actual captured inode; may include late external-editor writes.
 - `complete`: publication completed, but the original is retained regardless.
+- `restored`: publication failed after capture and the captured inode was linked
+  back to its source name, so `original.md` is absent and the file is in place.
+  Such a journal needs no action beyond ordinary review.
 - `publish.md`: temporary publication inode if interrupted; may be hard-linked
   to the destination. It is not another canonical article.
 
