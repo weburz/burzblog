@@ -8,6 +8,10 @@ All notable changes are recorded here, following
 
 ### Fixed
 
+- Simultaneous correct logins wait for each other instead of failing with 429;
+  IPv6 literal origins are refused at start-up instead of rejecting every request;
+  404, 405, unreadable bodies and unexpected errors use the JSON error shape with
+  security headers; `Content-Type` is matched case-insensitively (#45).
 - Editor polish (#35): the preview grows with its content instead of scrolling
   inside the page, the save shortcut shows ⌘ on macOS, slugs keep accented letters
   without their accents ("Café" → `cafe`), and a successful move is confirmed.

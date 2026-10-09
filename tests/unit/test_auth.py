@@ -65,31 +65,48 @@ def test_unsafe_state_permissions_and_symlink_rejected(tmp_path):
         Authentication(state)
 
 
-def test_concurrent_logins_do_not_allocate_parallel_argon2_work(tmp_path, monkeypatch):
+def test_concurrent_logins_wait_instead_of_running_argon2_in_parallel(
+    tmp_path, monkeypatch
+):
     from argon2 import PasswordHasher
 
     auth = Authentication(tmp_path / "state")
     password = "concurrency fixture password"  # noqa: S105 - temporary fixture
     auth.initialize(password)
-    entered = Event()
     release = Event()
+    active = []
+    overlapped = []
     original = PasswordHasher.verify
 
     def held_verify(hasher, encoded, candidate):
-        entered.set()
-        assert release.wait(timeout=5)
-        return original(hasher, encoded, candidate)
+        active.append(1)
+        overlapped.append(len(active) > 1)
+        try:
+            assert release.wait(timeout=5)
+            return original(hasher, encoded, candidate)
+        finally:
+            active.pop()
 
     monkeypatch.setattr(PasswordHasher, "verify", held_verify)
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        pending = executor.submit(auth.login, password)
-        try:
-            assert entered.wait(timeout=5)
-            with pytest.raises(RateLimitError):
-                auth.login(password)
-        finally:
-            release.set()
-        assert auth.verify(pending.result(timeout=5).token)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(auth.login, password)
+        second = executor.submit(auth.login, password)
+        release.set()
+        assert first.result(timeout=10).token != second.result(timeout=10).token
+    assert overlapped == [False, False]
+
+
+def test_a_stuck_verification_still_bounds_waiting_logins(tmp_path):
+    auth = Authentication(tmp_path / "state")
+    password = "concurrency fixture password"  # noqa: S105 - temporary fixture
+    auth.initialize(password)
+    auth.hash_wait = 0.05
+    assert auth.hash_slot.acquire(blocking=False)
+    try:
+        with pytest.raises(RateLimitError):
+            auth.login(password)
+    finally:
+        auth.hash_slot.release()
 
 
 def test_reset_replaces_password_revokes_sessions_and_clears_lockout(tmp_path):

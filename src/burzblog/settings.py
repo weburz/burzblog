@@ -48,10 +48,15 @@ class Settings:
             or origin.fragment
         ):
             raise ContentError("Configure one exact HTTP(S) origin without a path.")
+        if ":" in origin.hostname:
+            # Starlette's host check cannot parse bracketed IPv6 Host headers,
+            # so such an origin would reject every request.
+            raise ContentError(
+                "Use a hostname or IPv4 address in the origin; IPv6 literals are unsupported."
+            )
         if origin.scheme == "http" and origin.hostname not in {
             "localhost",
             "127.0.0.1",
-            "::1",
         }:
             raise ContentError("Non-loopback deployments require an HTTPS origin.")
         boundary = self.validate_storage()
