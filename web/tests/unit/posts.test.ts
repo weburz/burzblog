@@ -12,9 +12,9 @@ describe("slugify", () => {
   });
   it("bounds long titles without a trailing hyphen", () => {
     const slug = slugify(`${"word ".repeat(40)}end`);
-    expect(slug.length).toBeLessThanOrEqual(128);
+    expect(slug.length).toBeLessThanOrEqual(125);
     expect(slug.endsWith("-")).toBe(false);
-    expect(slugify("a".repeat(127) + " b")).toBe("a".repeat(127));
+    expect(slugify("a".repeat(124) + " b")).toBe("a".repeat(124));
   });
   it("collapses separators and handles empty results", () => {
     expect(slugify("a --  b")).toBe("a-b");

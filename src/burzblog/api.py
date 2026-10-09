@@ -57,7 +57,8 @@ class Create(Input):
     """Portable draft fields."""
 
     title: str = Field(min_length=1, max_length=500)
-    slug: str = Field(min_length=1, max_length=128)
+    # 128-character filenames include ".md".
+    slug: str = Field(min_length=1, max_length=125)
     body: str = Field(default="", max_length=2 * 1024 * 1024)
 
 

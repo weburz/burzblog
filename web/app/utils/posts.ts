@@ -8,7 +8,8 @@ export const slugify = (title: string): string =>
     .replace(/[^\p{ASCII}]/gu, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 128)
+    // Filenames are at most 128 characters including ".md".
+    .slice(0, 125)
     .replace(/-+$/, "");
 
 // The same lexical rules the server applies to content paths (storage.SEGMENT), so a

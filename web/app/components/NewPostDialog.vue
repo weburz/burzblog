@@ -76,7 +76,7 @@ const create = () =>
             id="new-slug"
             v-model="slug"
             required
-            maxlength="128"
+            maxlength="125"
             pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
             title="Lowercase letters, numbers and single hyphens"
             class="w-full font-mono"

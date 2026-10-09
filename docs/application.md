@@ -81,6 +81,9 @@ local storage by this API.
   (`draft`/`published`/`unavailable`) and `q` (case-insensitive, title or path)
   filter every discovered file before paging; `sort=modified` lists the most
   recently changed first (default `path`). `modified` is the file's mtime.
+  `left_out` counts Markdown files with names the store refuses
+  (`unsupported_names`, not listed) and folders skipped because they are not
+  privately controlled (`unsafe_folders`); discovery stops at 50,000 entries.
 - `GET /api/post?path=posts/example.md`: path, revision, complete Markdown,
   title and status. `title` is empty when the frontmatter has none. A file whose
   frontmatter cannot be parsed is returned with `status: "unavailable"`, its exact

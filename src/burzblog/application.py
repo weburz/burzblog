@@ -126,7 +126,12 @@ class ContentApplication:
         needs every file's summary; unchanged files reuse the in-memory summary,
         so only new or changed files are parsed again.
         """
-        entries = self.store.inventory()
+        survey = self.store.survey()
+        entries = survey.entries
+        left_out = {
+            "unsupported_names": survey.unsupported_names,
+            "unsafe_folders": survey.unsafe_folders,
+        }
         if order == "modified":
             entries.sort(key=lambda entry: (-entry.modified, entry.path))
         needle = query.strip().casefold()
@@ -136,6 +141,7 @@ class ContentApplication:
                 "items": [self._summarized(entry) for entry in page],
                 "total": len(entries),
                 "files": len(entries),
+                "left_out": left_out,
             }
         present = {entry.path for entry in entries}
         with self._lock:
@@ -154,6 +160,7 @@ class ContentApplication:
             "items": matches[offset : offset + limit],
             "total": len(matches),
             "files": len(entries),
+            "left_out": left_out,
         }
 
     def create(self, title: str, slug: str, body: str) -> Article:

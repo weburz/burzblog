@@ -21,6 +21,8 @@ export interface PostList {
   total: number;
   // Every Markdown file discovered under the content folder.
   files: number;
+  // Markdown files with names BurzBlog cannot use, and folders it will not read.
+  left_out?: { unsupported_names: number; unsafe_folders: number };
 }
 export interface Session {
   authenticated: boolean;
