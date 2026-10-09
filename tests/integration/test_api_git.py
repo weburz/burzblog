@@ -101,3 +101,43 @@ def test_api_file_git_remote_roundtrip_and_divergence(tmp_path):
         )
         assert (content / article["path"]).read_text() == "local divergent\n"
         assert git(remote, "show", "main:content/posts/hello.md") == "remote divergent"
+
+
+def test_names_that_are_not_text_never_break_the_git_panel(tmp_path):
+    root = tmp_path / "repo"
+    root.mkdir()
+    git(root, "init", "--initial-branch=main")
+    git(root, "config", "user.name", "Fixture")
+    git(root, "config", "user.email", "fixture@example.invalid")
+    content = root / "content"
+    (content / "posts").mkdir(parents=True)
+    (content / "posts/hello.md").write_text("initial\n")
+    git(root, "add", "content/posts/hello.md")
+    git(root, "-c", "commit.gpgsign=false", "commit", "-m", "initial")
+    git(root, "branch", "line separated")
+    with open(bytes(root) + b"/caf\xe9.txt", "wb") as stream:
+        stream.write(b"latin-1 name\n")
+    with open(bytes(content) + b"/posts/caf\xe9.md", "wb") as stream:
+        stream.write(b"---\ntitle: x\n---\n")
+    settings = Settings(content, tmp_path / "state")
+    password = "fixture api git password"  # noqa: S105 - temporary fixture
+    Authentication(settings.state_directory).initialize(password)
+    with TestClient(create_app(settings), base_url=settings.origin) as client:
+        logged_in = client.post(
+            "/api/login",
+            json={"password": password},
+            headers={"origin": settings.origin},
+        )
+        client.headers.update(
+            {"origin": settings.origin, "x-csrf-token": logged_in.json()["csrf"]}
+        )
+        response = client.get("/api/git")
+        assert response.status_code == 200, response.text
+        state = response.json()["repository"]
+        assert "line separated" in state["branches"]
+        assert "caf�.txt" in [change["path"] for change in state["changes"]]
+        assert state["changed_markdown"] == []
+        created = client.post(
+            "/api/git", json={"action": "create_branch", "branch": "next"}
+        )
+        assert created.status_code == 200, created.text

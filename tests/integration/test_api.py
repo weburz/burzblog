@@ -547,3 +547,24 @@ def test_repair_mode_never_opens_unsafe_files_and_moves_still_report(
         "posts/moved.md",
         "unavailable",
     )
+
+
+def test_one_hostile_file_never_breaks_the_list(client, configured):
+    login(client)
+    root = configured[0].content_root
+    create(client)
+    (root / "posts/hostile.md").write_text("---\n? {a: [1]}\n: c\n---\n")
+    (root / "posts/surrogate.md").write_text('---\ntitle: "\\ud83d\\ude00 Hi"\n---\n')
+    response = client.get("/api/posts")
+    assert response.status_code == 200, response.text
+    statuses = {item["path"]: item["status"] for item in response.json()["items"]}
+    assert statuses == {
+        "posts/hello.md": "draft",
+        "posts/hostile.md": "unavailable",
+        "posts/surrogate.md": "unavailable",
+    }
+    opened = client.get("/api/post", params={"path": "posts/surrogate.md"})
+    assert opened.status_code == 200
+    assert opened.json()["problem"] == (
+        "Frontmatter contains text that is not valid Unicode."
+    )
