@@ -113,13 +113,42 @@ def validate(metadata: dict[str, Any]) -> None:
                 ) from None
 
 
+def _flow_depth(text: str) -> int:
+    """Deepest `[`/`{` nesting outside comments, in one linear pass.
+
+    ruamel's scanner is superlinear in flow nesting (64 KiB of "[" took over a
+    minute), so this cheap bound runs first. Brackets inside quoted or plain
+    scalars count too: that can only make the check stricter, and tracking
+    quotes would let an apostrophe in a plain scalar hide what follows.
+    """
+    depth = deepest = 0
+    for line in text.split("\n"):
+        previous = " "
+        for character in line:
+            if character == "#" and previous in " \t":
+                break
+            if character in "[{":
+                depth += 1
+                deepest = max(deepest, depth)
+            elif character in "]}":
+                depth = max(depth - 1, 0)
+            previous = character
+    return deepest
+
+
 def _load(text: str) -> dict[str, Any]:
     """Reject expensive or application-specific YAML before constructing values."""
     if len(text.encode("utf-8")) > MAX_FRONTMATTER:
         raise ContentError("Frontmatter exceeds 64 KiB.")
+    if _flow_depth(text) > 32:
+        raise ContentError("Frontmatter exceeds structural limits.")
     parser = _yaml()
     try:
-        for token in parser.scan(text):
+        for count, token in enumerate(parser.scan(text)):
+            # The event limit below is 10,000; stop scanning well before a
+            # pathological token stream is exhausted.
+            if count > 20000:
+                raise ContentError("Frontmatter exceeds structural limits.")
             if isinstance(token, (AliasToken, AnchorToken, DirectiveToken, TagToken)):
                 raise ContentError(
                     "YAML aliases, anchors, directives and tags are unsupported."

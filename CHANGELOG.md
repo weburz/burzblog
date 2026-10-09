@@ -8,6 +8,9 @@ All notable changes are recorded here, following
 
 ### Fixed
 
+- Preview and frontmatter parsing have bounded cost: rendering runs in a capped
+  worker process, a quadratic text join in markdown-it is replaced, and deeply
+  nested frontmatter is refused in milliseconds instead of minutes (#40).
 - A malformed or unencodable file, or a non-UTF-8 name in the repository, no
   longer turns the post list or the Git panel into a server error (#39).
 - Failures name their cause and appear beside the control that caused them: wrong

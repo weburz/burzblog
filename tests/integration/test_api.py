@@ -568,3 +568,16 @@ def test_one_hostile_file_never_breaks_the_list(client, configured):
     assert opened.json()["problem"] == (
         "Frontmatter contains text that is not valid Unicode."
     )
+
+
+def test_preview_is_bounded_and_recovers(client, monkeypatch):
+    from burzblog import preview
+
+    login(client)
+    monkeypatch.setattr(preview, "TIMEOUT_SECONDS", 1.0)
+    slow = client.post("/api/preview", json={"markdown": "[" * 400000})
+    assert slow.status_code == 400
+    assert "time and memory limits" in slow.json()["error"]["detail"]
+    fine = client.post("/api/preview", json={"markdown": "# Back *again*"})
+    assert fine.status_code == 200
+    assert fine.json()["html"] == "<h1>Back <em>again</em></h1>\n"

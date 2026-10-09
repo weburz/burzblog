@@ -74,3 +74,10 @@ Branch transitions apply only scoped Markdown through the recovery-aware store.
 Unfinished transitions leave a persistent marker and block further Git writes.
 Concurrent hostile changes to `.git` or local remote metadata are outside the
 OS trust boundary; coordinate other Git clients during mutations.
+
+Preview rendering runs in one long-lived worker process (`python -I -m
+burzblog.render`, empty environment) capped at 1 GiB of address space and 10
+seconds per render. markdown-it has inputs whose cost grows quadratically; a
+render that exceeds either limit kills the worker, the request gets a 400 and the
+next preview starts a new one. Frontmatter is refused before YAML scanning when
+its flow nesting exceeds 32 levels or it produces more than 20,000 tokens.
