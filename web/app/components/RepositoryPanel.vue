@@ -358,7 +358,7 @@ onUnmounted(() => window.removeEventListener("burzblog:session-restored", restor
             Everything in the content folder is committed.
           </p>
         </div>
-        <aside class="repo-side">
+        <div class="repo-side">
           <section class="side-card" aria-labelledby="sync-heading">
             <h2 id="sync-heading" class="section-title">Sync</h2>
             <div class="sync-state">
@@ -478,7 +478,7 @@ onUnmounted(() => window.removeEventListener("burzblog:session-restored", restor
               Creates the branch at the current commit without switching.
             </p>
           </section>
-        </aside>
+        </div>
       </div>
       <details class="file-options mt-10">
         <summary class="muted cursor-pointer">
