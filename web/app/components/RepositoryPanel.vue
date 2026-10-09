@@ -7,6 +7,7 @@ import { withRetainedFocus } from "../utils/focus";
 const toast = useToast();
 const notifySuccess = (title: string) => toast.add({ title, color: "success" });
 const state = ref<GitState | null>(null);
+const loading = ref(false);
 const error = ref("");
 const remoteFailure = ref(false);
 const lastAction = ref("");
@@ -15,22 +16,26 @@ const invalidFailure = ref(false);
 const busy = ref(false);
 const selected = ref<string[]>([]);
 const message = ref("");
-const branch = ref("");
+const newBranch = ref("");
+const switchTarget = ref<string | undefined>(undefined);
 const titleElement = ref<HTMLElement | null>(null);
-const remoteLabel = computed(() => {
-  const remote = state.value?.remote;
-  if (!remote) {
-    return "";
-  }
-  if (remote.transport === "file") {
-    return `${remote.name} · local repository`;
-  }
-  return `${remote.name} · HTTPS${remote.authenticated ? " with operator credentials" : ", no credentials"}`;
-});
 const plural = (count: number, noun: string) =>
   `${count} ${noun}${count === 1 ? "" : "s"}`;
 const repository = computed(() => state.value?.repository ?? null);
+const remote = computed(() => state.value?.remote ?? null);
+const remoteLabel = computed(() => {
+  const value = remote.value;
+  if (!value) return "";
+  if (value.transport === "file") return `${value.name} · local repository`;
+  return `${value.name} · HTTPS${value.authenticated ? " with operator credentials" : ", no credentials"}`;
+});
 const changed = computed(() => repository.value?.changed_markdown ?? []);
+const unsupported = computed(() => repository.value?.unsupported_markdown ?? []);
+// Changes Git sees that BurzBlog cannot commit: other files and unsupported names.
+const outside = computed(() => {
+  const changes = repository.value?.changes.length ?? 0;
+  return Math.max(changes - changed.value.length, 0);
+});
 const heading = computed(() => {
   if (!repository.value) return "";
   if (repository.value.operation) return "Repository needs attention";
@@ -38,22 +43,58 @@ const heading = computed(() => {
     return `${plural(changed.value.length, "Markdown file")} changed`;
   return repository.value.clean ? "No local changes" : "Changes outside Markdown";
 });
-const ahead = computed(() => repository.value?.ahead ?? 0);
-const behind = computed(() => repository.value?.behind ?? 0);
-const applyPrimary = computed(
-  () => behind.value > 0 && ahead.value === 0 && !!repository.value?.clean,
+// Counts are null when there is nothing to compare with yet.
+const ahead = computed(() => repository.value?.ahead ?? null);
+const behind = computed(() => repository.value?.behind ?? null);
+const diverged = computed(() => (ahead.value ?? 0) > 0 && (behind.value ?? 0) > 0);
+const clean = computed(() => !!repository.value?.clean);
+const upstreamName = computed(() => repository.value?.upstream ?? "the remote");
+const branchName = computed(() => repository.value?.branch ?? "this branch");
+const blockedByOutside = computed(() => !clean.value && !changed.value.length);
+const canUpdate = computed(
+  () =>
+    !!state.value?.remote_configured &&
+    clean.value &&
+    !diverged.value &&
+    behind.value !== 0,
 );
-const pushPrimary = computed(() => ahead.value > 0 && behind.value === 0);
+const canPush = computed(
+  () =>
+    !!state.value?.remote_configured &&
+    !repository.value?.detached &&
+    !diverged.value &&
+    ahead.value !== 0,
+);
+const applyPrimary = computed(() => canUpdate.value && (behind.value ?? 0) > 0);
+const pushPrimary = computed(() => canPush.value && (ahead.value ?? 0) > 0);
 const syncNote = computed(() => {
-  const upstream = repository.value?.upstream ?? "the remote";
-  if (ahead.value > 0 && behind.value > 0)
-    return `Both this branch and ${upstream} have new commits. Apply safe update and Push commits will both be refused until the histories are reconciled with ordinary Git.`;
-  if (behind.value > 0 && repository.value?.clean)
-    return `${upstream} has ${plural(behind.value, "new commit")}. Apply safe update brings them in.`;
-  if (behind.value > 0)
-    return `${upstream} has ${plural(behind.value, "new commit")}. Commit your Markdown changes first; a safe update needs a clean working tree.`;
-  if (ahead.value > 0) return `${plural(ahead.value, "commit")} waiting to be pushed.`;
+  if (diverged.value)
+    return `Both this branch and ${upstreamName.value} have new commits. Apply safe update and Push commits will both be refused until the histories are reconciled with ordinary Git.`;
+  if ((behind.value ?? 0) > 0 && clean.value)
+    return `${upstreamName.value} has ${plural(behind.value!, "new commit")}. Apply safe update brings them in.`;
+  if ((behind.value ?? 0) > 0 && blockedByOutside.value)
+    return `${upstreamName.value} has ${plural(behind.value!, "new commit")}, but changes outside Markdown block a safe update. They need ordinary Git; see All changes.`;
+  if ((behind.value ?? 0) > 0)
+    return `${upstreamName.value} has ${plural(behind.value!, "new commit")}. Commit your Markdown changes first; a safe update needs a clean working tree.`;
+  if ((ahead.value ?? 0) > 0)
+    return `${plural(ahead.value!, "commit")} waiting to be pushed.`;
   return "";
+});
+const updateNote = computed(() => {
+  if (blockedByOutside.value)
+    return "Blocked by changes outside Markdown; see All changes.";
+  if (!clean.value) return "Needs a clean working tree. Commit local changes first.";
+  if (diverged.value) return "Refused while both sides have new commits.";
+  if (behind.value === 0) return "Nothing to apply as of the last check.";
+  return "Fast-forwards this branch only if nothing local would be overwritten.";
+});
+const pushNote = computed(() => {
+  if (repository.value?.detached) return "Choose a branch before pushing.";
+  if (diverged.value)
+    return `Refused while ${upstreamName.value} has commits this branch lacks.`;
+  if (ahead.value === 0) return "Nothing to push as of the last check.";
+  const count = ahead.value ? `${plural(ahead.value, "commit")} on` : "Your commits on";
+  return `Sends ${count} ${branchName.value} to ${remote.value?.name ?? "the remote"}.`;
 });
 const syncAction = computed(() => ["fetch", "update", "push"].includes(lastAction.value));
 const errorHeading = computed(() => {
@@ -62,9 +103,23 @@ const errorHeading = computed(() => {
     ? "Sync needs attention"
     : "That did not work";
 });
+const otherBranches = computed(() =>
+  (repository.value?.branches ?? []).filter((name) => name !== repository.value?.branch),
+);
 const allSelected = computed(
   () => changed.value.length > 0 && selected.value.length === changed.value.length,
 );
+// Short change labels from Git's two status letters, for the file list.
+const kind = (path: string) => {
+  const change = repository.value?.changes.find(
+    (entry) => entry.path === path || entry.path.endsWith(`/${path}`),
+  );
+  const code = change ? `${change.index}${change.worktree}` : "";
+  if (code.includes("?") || code.includes("A")) return "New";
+  if (code.includes("D")) return "Deleted";
+  if (code.includes("R")) return "Renamed";
+  return "Modified";
+};
 const toggleAll = () => {
   selected.value = allSelected.value ? [] : [...changed.value];
 };
@@ -76,11 +131,17 @@ const refresh = (keep: string[] = [], track = true) =>
       invalidFailure.value = false;
       error.value = "";
     }
+    loading.value = true;
     try {
       state.value = await request<GitState>("/api/git");
       selected.value = keep.filter((path) => changed.value.includes(path));
+      if (switchTarget.value && !otherBranches.value.includes(switchTarget.value))
+        switchTarget.value = undefined;
     } catch (cause) {
       error.value = errorMessage(cause);
+      lastCode.value = cause instanceof ApiError ? cause.code : "";
+    } finally {
+      loading.value = false;
     }
   });
 const action = (name: string) =>
@@ -93,23 +154,40 @@ const action = (name: string) =>
       lastAction.value = name;
       lastCode.value = "";
       const committed = selected.value.length;
+      const pushed = ahead.value;
+      const current = repository.value?.branch ?? "";
+      const branch =
+        name === "push" || name === "update"
+          ? current
+          : name === "switch"
+            ? (switchTarget.value ?? "")
+            : newBranch.value.trim();
       try {
         state.value = await request<GitState>("/api/git", "POST", {
           action: name,
-          branch:
-            name === "push" || name === "update"
-              ? (state.value?.repository?.branch ?? "")
-              : branch.value,
+          branch,
           paths: selected.value,
           message: message.value,
         });
         selected.value = [];
-        const remote = state.value?.remote?.name ?? "remote";
+        const remoteName = state.value?.remote?.name ?? "remote";
         if (name === "commit") {
           message.value = "";
           notifySuccess(`Committed ${plural(committed, "file")}`);
-        } else if (name === "push") notifySuccess(`Pushed to ${remote}`);
-        else if (name === "update") notifySuccess(`Updated from ${remote}`);
+        } else if (name === "push")
+          notifySuccess(
+            pushed
+              ? `Pushed ${plural(pushed, "commit")} to ${remoteName}`
+              : `Pushed to ${remoteName}`,
+          );
+        else if (name === "update") notifySuccess(`Updated from ${remoteName}`);
+        else if (name === "create_branch") {
+          notifySuccess(`Created branch ${branch}`);
+          newBranch.value = "";
+        } else if (name === "switch") {
+          notifySuccess(`Switched to ${branch}`);
+          switchTarget.value = undefined;
+        }
       } catch (cause) {
         error.value = errorMessage(cause);
         lastCode.value = cause instanceof ApiError ? cause.code : "";
@@ -144,7 +222,7 @@ onUnmounted(() => window.removeEventListener("burzblog:session-restored", restor
         variant="ghost"
         icon="i-lucide-refresh-cw"
         aria-label="Refresh"
-        :loading="busy"
+        :loading="loading || busy"
         @click="refresh()"
       />
     </div>
@@ -184,190 +262,234 @@ onUnmounted(() => window.removeEventListener("burzblog:session-restored", restor
         remote configuration.
       </p>
     </div>
-    <p v-if="state && !state.repository" class="quiet-block">
+    <div v-if="!state && !error" class="repo-grid mt-8" aria-busy="true">
+      <p class="sr-only" role="status">Loading repository…</p>
+      <div>
+        <USkeleton class="h-6 w-1/2" />
+        <USkeleton class="mt-4 h-32 w-full" />
+      </div>
+      <USkeleton class="h-48 w-full" />
+    </div>
+    <p v-else-if="state && !state.repository" class="quiet-block">
       This content folder is not a Git repository. Writing works normally without it.
     </p>
-    <template v-if="state?.repository">
-      <div class="state-strip">
-        <span class="chip mono"
-          ><UIcon name="i-lucide-git-branch" class="size-4" />{{
-            state.repository.branch ?? "Detached HEAD"
-          }}</span
-        >
-        <span class="mono muted">{{
-          state.repository.upstream ? `→ ${state.repository.upstream}` : "No upstream"
-        }}</span>
-        <span v-if="remoteLabel" class="mono muted">Remote: {{ remoteLabel }}</span>
-        <span v-if="state.repository.ahead !== null" class="strip-counts">
-          <span class="chip mono"
-            >↑ {{ state.repository.ahead
-            }}<span class="sr-only"
-              >{{ state.repository.ahead }} commits ahead</span
-            ></span
-          >
-          <span class="chip mono"
-            >↓ {{ state.repository.behind
-            }}<span class="sr-only"
-              >{{ state.repository.behind }} commits behind</span
-            ></span
-          >
-          <span class="meta">as of last check</span>
-        </span>
-      </div>
-      <h2 class="section-title mt-6">{{ heading }}</h2>
-      <p v-if="state.repository.operation" class="mt-2 text-[var(--bb-warn)]">
-        Unfinished {{ state.repository.operation }}. Ask the operator to review the
-        repository before further changes.
-      </p>
-      <p v-if="syncNote" class="muted mt-2">{{ syncNote }}</p>
-      <h2 class="section-title mt-10">Sync</h2>
-      <ul class="sync-list">
-        <li>
-          <UButton
-            color="neutral"
-            variant="outline"
-            :disabled="busy || !state.remote_configured"
-            @click="action('fetch')"
-            >Check for updates</UButton
-          >
-          <span class="meta"
-            >Contacts the remote and refreshes the counts. Changes nothing on disk.</span
-          >
-        </li>
-        <li>
-          <UButton
-            :color="applyPrimary ? 'primary' : 'neutral'"
-            :variant="applyPrimary ? 'solid' : 'outline'"
-            :data-primary="applyPrimary ? 'true' : 'false'"
-            :disabled="busy || !state.remote_configured || !state.repository.clean"
-            @click="action('update')"
-            >Apply safe update</UButton
-          >
-          <span class="meta">{{
-            state.repository.clean
-              ? "Fast-forwards this branch only if nothing local would be overwritten."
-              : "Needs a clean working tree. Commit local changes first."
-          }}</span>
-        </li>
-        <li>
-          <UButton
-            :color="pushPrimary ? 'secondary' : 'neutral'"
-            :variant="pushPrimary ? 'solid' : 'outline'"
-            :disabled="busy || !state.remote_configured"
-            @click="action('push')"
-            >Push commits</UButton
-          >
-          <span class="meta"
-            >Sends your commits on {{ state.repository.branch ?? "this branch" }} to
-            {{ state.remote?.name ?? "the remote" }}.</span
-          >
-        </li>
-      </ul>
-      <p v-if="!state.remote_configured" class="meta mt-3">
-        No remote endpoint configured by the operator. Local branches and commits still
-        work. Operators set <code>BURZBLOG_REMOTE_URL</code> (and, for private
-        repositories, a username and token file) before starting BurzBlog.
-      </p>
-      <form class="mt-10 max-w-xl" @submit.prevent="action('commit')">
-        <h2 class="section-title mb-2">Commit</h2>
-        <div v-if="changed.length" class="file-panel">
-          <div class="file-panel-head">
-            <span class="meta">{{ plural(changed.length, "file") }}</span>
-            <div class="actions">
-              <UButton
-                type="button"
-                color="neutral"
-                variant="ghost"
-                size="sm"
-                :disabled="allSelected"
-                @click="toggleAll"
-                >Select all</UButton
+    <template v-if="repository">
+      <div class="repo-grid mt-8">
+        <div class="repo-main">
+          <h2 class="section-title">{{ heading }}</h2>
+          <p v-if="repository.operation" class="mt-2 text-[var(--bb-warn)]">
+            Unfinished {{ repository.operation }}. Ask the operator to review the
+            repository before further changes.
+          </p>
+          <p v-if="outside" class="muted mt-2">
+            {{ plural(outside, "other change") }} BurzBlog cannot commit (files outside
+            Markdown or with unsupported names); they are listed under All changes and
+            need ordinary Git.
+          </p>
+          <form v-if="changed.length" class="mt-4" @submit.prevent="action('commit')">
+            <div class="file-panel">
+              <div class="file-panel-head">
+                <span class="meta"
+                  >{{ selected.length }} of
+                  {{ plural(changed.length, "file") }} selected</span
+                >
+                <div class="actions">
+                  <UButton
+                    type="button"
+                    color="neutral"
+                    variant="ghost"
+                    size="sm"
+                    :disabled="allSelected"
+                    @click="toggleAll"
+                    >Select all</UButton
+                  >
+                  <UButton
+                    type="button"
+                    color="neutral"
+                    variant="ghost"
+                    size="sm"
+                    :disabled="!selected.length"
+                    @click="selected = []"
+                    >Clear</UButton
+                  >
+                </div>
+              </div>
+              <div class="file-list">
+                <div v-for="path in changed" :key="path" class="file-row">
+                  <label class="file-label mono"
+                    ><input v-model="selected" type="checkbox" :value="path" />{{
+                      path
+                    }}</label
+                  >
+                  <span class="change-kind" :data-kind="kind(path)">{{
+                    kind(path)
+                  }}</span>
+                </div>
+              </div>
+            </div>
+            <p v-if="unsupported.length" class="meta mt-2">
+              Not offered: {{ unsupported.join(", ") }}. BurzBlog only commits filenames
+              made of letters, numbers, dots, hyphens and underscores.
+            </p>
+            <div class="field mt-5">
+              <label for="commit-message">Commit message</label
+              ><UInput
+                id="commit-message"
+                v-model="message"
+                class="w-full"
+                maxlength="4000"
+                placeholder="Describe the change"
+                required
+              />
+            </div>
+            <UButton
+              type="submit"
+              :color="selected.length ? 'primary' : 'neutral'"
+              :variant="selected.length ? 'solid' : 'outline'"
+              :disabled="busy || !selected.length"
+              >Commit selected files</UButton
+            >
+            <p class="meta mt-2">
+              Only the files ticked above are committed. Other staged changes stay as they
+              are.
+            </p>
+          </form>
+          <p v-else-if="repository.clean" class="muted mt-2">
+            Everything in the content folder is committed.
+          </p>
+        </div>
+        <aside class="repo-side">
+          <section class="side-card" aria-labelledby="sync-heading">
+            <h2 id="sync-heading" class="section-title">Sync</h2>
+            <div class="sync-state">
+              <span class="chip mono"
+                ><UIcon name="i-lucide-git-branch" class="size-4" />{{
+                  repository.branch ?? "Detached HEAD"
+                }}</span
               >
+              <span class="mono muted">{{
+                repository.upstream ? `→ ${repository.upstream}` : "No upstream"
+              }}</span>
+              <span v-if="ahead !== null" class="strip-counts">
+                <span class="chip mono"
+                  >↑ {{ ahead }}<span class="sr-only"> commits ahead</span></span
+                >
+                <span class="chip mono"
+                  >↓ {{ behind }}<span class="sr-only"> commits behind</span></span
+                >
+                <span class="meta">as of last check</span>
+              </span>
+            </div>
+            <p v-if="remoteLabel" class="mono muted text-[13px]">
+              Remote: {{ remoteLabel }}
+            </p>
+            <p v-if="syncNote" class="sync-note">{{ syncNote }}</p>
+            <template v-if="state?.remote_configured">
+              <div class="sync-action">
+                <UButton
+                  block
+                  color="neutral"
+                  variant="outline"
+                  :disabled="busy"
+                  @click="action('fetch')"
+                  >Check for updates</UButton
+                >
+                <p class="meta">
+                  Contacts the remote and refreshes the counts. Changes nothing on disk.
+                </p>
+              </div>
+              <div class="sync-action">
+                <UButton
+                  block
+                  :color="applyPrimary ? 'primary' : 'neutral'"
+                  :variant="applyPrimary ? 'solid' : 'outline'"
+                  :data-primary="applyPrimary ? 'true' : 'false'"
+                  :disabled="busy || !canUpdate"
+                  @click="action('update')"
+                  >Apply safe update</UButton
+                >
+                <p class="meta">{{ updateNote }}</p>
+              </div>
+              <div class="sync-action">
+                <UButton
+                  block
+                  :color="pushPrimary ? 'secondary' : 'neutral'"
+                  :variant="pushPrimary ? 'solid' : 'outline'"
+                  :disabled="busy || !canPush"
+                  @click="action('push')"
+                  >Push commits</UButton
+                >
+                <p class="meta">{{ pushNote }}</p>
+              </div>
+            </template>
+            <p v-else class="meta">
+              No remote endpoint configured by the operator, so there is nothing to sync.
+              Local branches and commits still work. Operators set
+              <code>BURZBLOG_REMOTE_URL</code> (and, for private repositories, a username
+              and token file) before starting BurzBlog.
+            </p>
+          </section>
+          <section class="side-card" aria-labelledby="branches-heading">
+            <h2 id="branches-heading" class="section-title">Branches</h2>
+            <div v-if="otherBranches.length" class="branch-row">
+              <label for="switch-branch" class="sr-only">Branch to switch to</label>
+              <USelect
+                id="switch-branch"
+                v-model="switchTarget"
+                :items="otherBranches"
+                placeholder="Switch to…"
+                class="min-w-0 flex-1"
+              />
               <UButton
-                type="button"
                 color="neutral"
-                variant="ghost"
-                size="sm"
-                :disabled="!selected.length"
-                @click="selected = []"
-                >Clear</UButton
+                variant="outline"
+                :disabled="busy || !switchTarget || !repository.clean"
+                @click="action('switch')"
+                >Switch</UButton
               >
             </div>
-          </div>
-          <div class="file-list">
-            <label v-for="path in changed" :key="path" class="file-row mono"
-              ><input v-model="selected" type="checkbox" :value="path" />{{ path }}</label
-            >
-          </div>
-        </div>
-        <p v-if="!changed.length" class="muted mb-4">No changed Markdown files.</p>
-        <div v-if="changed.length" class="field mt-5">
-          <label for="commit-message">Commit message</label
-          ><UInput
-            id="commit-message"
-            v-model="message"
-            class="w-full"
-            maxlength="4000"
-            placeholder="Describe the change"
-            required
-          />
-        </div>
-        <template v-if="changed.length"
-          ><UButton
-            type="submit"
-            :color="selected.length ? 'primary' : 'neutral'"
-            :variant="selected.length ? 'solid' : 'outline'"
-            :disabled="busy || !selected.length"
-            >Commit selected files</UButton
-          >
-          <p class="meta mt-2">
-            Only the files ticked above are committed. Other staged changes stay as they
-            are.
-          </p></template
-        >
-      </form>
+            <p v-if="otherBranches.length" class="meta">
+              {{
+                repository.clean
+                  ? "Switching rewrites the content folder to that branch."
+                  : "Switching needs a clean working tree."
+              }}
+            </p>
+            <p v-else class="meta">
+              {{ repository.branch ?? "HEAD" }} is the only branch.
+            </p>
+            <form class="branch-row mt-3" @submit.prevent="action('create_branch')">
+              <label for="new-branch" class="sr-only">New branch name</label>
+              <UInput
+                id="new-branch"
+                v-model="newBranch"
+                placeholder="New branch name"
+                class="min-w-0 flex-1"
+              />
+              <UButton
+                type="submit"
+                color="neutral"
+                variant="outline"
+                :disabled="busy || !newBranch.trim()"
+                >Create</UButton
+              >
+            </form>
+            <p class="meta">
+              Creates the branch at the current commit without switching.
+            </p>
+          </section>
+        </aside>
+      </div>
       <details class="file-options mt-10">
         <summary class="muted cursor-pointer">
-          Branches and file details
+          All changes
           <UIcon name="i-lucide-chevron-down" class="file-options-chevron size-4" />
         </summary>
-        <p class="my-4 flex flex-wrap gap-2">
-          <span
-            v-for="name in state.repository.branches"
-            :key="name"
-            class="chip mono"
-            :class="{ 'chip-current': name === state.repository.branch }"
-            :aria-current="name === state.repository.branch ? 'true' : undefined"
-            >{{ name }}</span
-          >
-        </p>
-        <div class="field max-w-md">
-          <label for="branch">Branch name</label><UInput id="branch" v-model="branch" />
-        </div>
-        <div class="actions">
-          <UButton
-            color="neutral"
-            variant="outline"
-            :disabled="busy || !branch"
-            @click="action('create_branch')"
-            >Create branch</UButton
-          ><UButton
-            color="neutral"
-            variant="outline"
-            :disabled="busy || !branch || !state.repository.clean"
-            @click="action('switch')"
-            >Switch branch</UButton
-          >
-        </div>
-        <p class="meta mt-2">Switching needs a clean working tree.</p>
-        <h3 class="mt-6 font-semibold">All changes</h3>
-        <p class="meta">
+        <p class="meta mt-3">
           Raw Git status for everything under the repository, including non-Markdown
           files.
         </p>
-        <p v-if="!state.repository.changes.length" class="meta mt-2">
-          Nothing has changed.
-        </p>
+        <p v-if="!repository.changes.length" class="meta mt-2">Nothing has changed.</p>
         <div
           v-else
           class="file-panel file-list change-list mt-2"
@@ -377,7 +499,7 @@ onUnmounted(() => window.removeEventListener("burzblog:session-restored", restor
         >
           <ul>
             <li
-              v-for="change in state.repository.changes"
+              v-for="change in repository.changes"
               :key="change.path"
               class="change-row"
             >

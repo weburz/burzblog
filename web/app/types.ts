@@ -32,6 +32,8 @@ export interface Repository {
   clean: boolean;
   branches: string[];
   changed_markdown: string[];
+  // Changed Markdown whose names the content store refuses, so cannot be committed.
+  unsupported_markdown?: string[];
   changes: { path: string; index: string; worktree: string }[];
   upstream: string | null;
   ahead: number | null;
