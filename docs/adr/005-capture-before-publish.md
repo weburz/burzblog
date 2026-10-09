@@ -32,3 +32,15 @@ filesystem/power-loss guarantees still depend on fsync support and the OS.
 Recovery files are ordinary files, not a canonical database. Hidden journals are
 excluded from post discovery and must be excluded from application Git commits.
 No directory tree, mount or same-user adversary sandbox is claimed.
+
+## Amendment (2026-10-09, #42)
+
+Before capturing, both the source and destination folders must be writable by
+the service user; otherwise the operation is refused with nothing moved. If
+publication still fails after capture and before the destination link exists,
+the captured inode is linked back to its source name with a no-clobber hard link
+and only then is its `original.md` name removed, so the inode always keeps a
+name. The journal keeps `observed.md`, `requested.md` and a `restored` marker,
+and the request fails as an ordinary conflict. When the source name is taken
+(an external creator, or a save whose destination is the source), nothing is
+linked back and the journal is left as described above.

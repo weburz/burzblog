@@ -8,6 +8,9 @@ All notable changes are recorded here, following
 
 ### Fixed
 
+- A save or move that fails after capture no longer takes the post out of its
+  folder: unwritable folders are refused first, and a failed publication links
+  the captured file back to its own name (#42).
 - Publish refuses a file whose opening frontmatter BurzBlog cannot read (BOM,
   leading blank lines, `--- ` or TOML) instead of adding a second block above it;
   the editor explains the opening lines (#41).
