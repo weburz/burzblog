@@ -96,6 +96,8 @@ local storage by this API.
 - `POST /api/preview`: markdown; sanitized HTML returned, images omitted.
 - `GET /api/git`: safe repository state without absolute root/remote URLs;
   `remote` is `null` or `{name, transport: "https"|"file", authenticated}`.
+  `repository.unsupported_markdown` lists changed Markdown the store cannot
+  commit (unsupported names); `changed_markdown` holds only committable paths.
 - `POST /api/git`: action `create_branch`, `switch`, `commit`, `fetch`, `update`
   or `push`; branch, paths and message as relevant. Explicit content-relative
   paths only for commit. Existing Git safety restrictions apply.

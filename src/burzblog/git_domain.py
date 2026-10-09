@@ -25,11 +25,20 @@ SAFE_KEYS = frozenset(
         "pull.rebase",
         "pull.ff",
         "push.default",
+        # Written by ordinary tools; BurzBlog's Git commands never act on them
+        # (commits pass -c commit.gpgsign=false, fetches give explicit refspecs).
+        "fetch.prune",
+        "commit.gpgsign",
+        "status.showuntrackedfiles",
     }
 )
 SAFE_SECTION = re.compile(
-    r"(?:remote\..+\.(?:url|pushurl|fetch)|branch\..+\.(?:remote|merge|rebase))\Z"
+    r"(?:remote\..+\.(?:url|pushurl|fetch|prune)"
+    r"|branch\..+\.(?:remote|merge|rebase|description|vscode-merge-base)"
+    r"|advice\.[a-z]+|color\.[a-z.]+)\Z"
 )
+# Configuration keys simple enough to name in an error (URL-bearing keys are not).
+NAMEABLE_KEY = re.compile(r"[a-z0-9-]+(?:\.[a-z0-9_-]+){1,2}\Z")
 
 
 @dataclass(frozen=True)
@@ -172,8 +181,13 @@ class GitRepository:
             key, _, value = entry.partition(b"\n")
             name = key.decode("utf-8", errors="replace").lower()
             if name not in SAFE_KEYS and not SAFE_SECTION.fullmatch(name):
+                shown = (
+                    f" ({name})"
+                    if len(name) <= 80 and NAMEABLE_KEY.fullmatch(name)
+                    else ""
+                )
                 raise GitError(
-                    "Repository configuration requires review; includes, helpers and custom commands are unsupported."
+                    f"Repository configuration requires review{shown}; includes, helpers and custom commands are unsupported."
                 )
             if (name == "core.bare" and value.lower() != b"false") or (
                 name == "core.repositoryformatversion" and value != b"0"
@@ -183,7 +197,7 @@ class GitRepository:
                 )
         return root
 
-    def status(self) -> RepositoryState | None:
+    def status(self, remote: str | None = None) -> RepositoryState | None:
         """Read state without network access, index refresh writes or URL disclosure."""
         if self.discover() is None:
             return None
@@ -243,6 +257,22 @@ class GitRepository:
                     behind_match = re.search(r"behind (\d+)", counts)
                     ahead = int(ahead_match[1]) if ahead_match else 0
                     behind = int(behind_match[1]) if behind_match else 0
+        if branch and upstream is None and remote:
+            # Without tracking configuration, compare with the configured remote's
+            # tracking ref, which fetch and push keep current.
+            reference = f"refs/remotes/{remote}/{branch}"
+            if run_git(
+                root, ["rev-parse", "--verify", "--quiet", reference], accepted=(0, 1)
+            ).strip():
+                left, right = (
+                    run_git(
+                        root,
+                        ["rev-list", "--left-right", "--count", f"HEAD...{reference}"],
+                    )
+                    .decode()
+                    .split()
+                )
+                upstream, ahead, behind = f"{remote}/{branch}", int(left), int(right)
         remotes = tuple(
             run_git(root, ["remote"])
             .decode("utf-8", errors="surrogateescape")
@@ -268,7 +298,12 @@ class GitRepository:
             for change in changes
             if change.path.endswith(".md")
             and Path(change.path).is_relative_to(scope)
-            and not any(part.startswith(".") for part in Path(change.path).parts)
+            # Hidden parts below the content root only; the root may itself sit
+            # in a dot-directory such as .site/.
+            and not any(
+                part.startswith(".")
+                for part in Path(change.path).relative_to(scope).parts
+            )
         )
         return RepositoryState(
             str(root),

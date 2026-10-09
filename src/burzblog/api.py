@@ -34,7 +34,7 @@ from burzblog.git_process import RemoteError
 from burzblog.http_security import RequestBoundary
 from burzblog.preview import render_preview
 from burzblog.settings import Settings
-from burzblog.storage import ContentStore
+from burzblog.storage import ContentStore, validate_content_path
 from burzblog.web_shell import FingerprintedAssets, WebShell
 
 COOKIE = "burzblog_session"
@@ -102,6 +102,16 @@ def failure(
     if detail is not None:
         error["detail"] = detail
     return JSONResponse({"error": error}, status_code=status)
+
+
+def _content_path(path: str) -> bool:
+    """Whether the content store accepts `path` (and it is valid text)."""
+    try:
+        path.encode("utf-8")
+        validate_content_path(path)
+    except (ContentError, UnicodeEncodeError):
+        return False
+    return True
 
 
 def create_app(settings: Settings) -> FastAPI:
@@ -298,7 +308,9 @@ def create_app(settings: Settings) -> FastAPI:
         return text.encode("utf-8", "surrogateescape").decode("utf-8", "replace")
 
     def git_status() -> dict[str, object]:
-        state = GitRepository(settings.content_root).status()
+        state = GitRepository(settings.content_root).status(
+            settings.remote.name if settings.remote else None
+        )
         if state is None:
             return {"repository": None, "remote_configured": False, "remote": None}
         result = asdict(state)
@@ -319,11 +331,14 @@ def create_app(settings: Settings) -> FastAPI:
             for change in result["changes"]
         ]
         scope = settings.content_root.relative_to(Path(state.root))
-        # A name that is not UTF-8 can never be a content path, so it is not offered.
-        result["changed_markdown"] = [
-            str(Path(path).relative_to(scope))
-            for path in state.changed_markdown
-            if shown(path) == path
+        relative = [
+            str(Path(path).relative_to(scope)) for path in state.changed_markdown
+        ]
+        # Only names the content store accepts can be committed here; the rest
+        # (spaces, non-ASCII, long names, leading "_") are reported separately.
+        result["changed_markdown"] = [path for path in relative if _content_path(path)]
+        result["unsupported_markdown"] = [
+            shown(path) for path in relative if not _content_path(path)
         ]
         return {
             "repository": result | {"clean": state.clean},

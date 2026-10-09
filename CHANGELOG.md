@@ -8,6 +8,11 @@ All notable changes are recorded here, following
 
 ### Fixed
 
+- Git panel: fetch follows force-pushed remotes, dotted branch names work,
+  ahead/behind appear without tracking configuration, nothing-to-commit and
+  duplicate branches are explained conflicts, pushing a branch without commits is
+  no longer reported as a remote failure, uncommittable names are listed apart,
+  and inert tool-written config keys are accepted (#43).
 - A save or move that fails after capture no longer takes the post out of its
   folder: unwritable folders are refused first, and a failed publication links
   the captured file back to its own name (#42).
