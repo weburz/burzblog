@@ -11,7 +11,9 @@ production requires a same-origin HTTPS proxy with timeouts and connection
 limits. The production process serves the static interface itself with a
 hash-based CSP and runs no Node.js (ADR-011). No browser/public-deployment security assurance is claimed.
 Preview disables raw HTML and sanitizes allowed tags/URLs; images are omitted.
-The browser adds an empty-sandbox iframe and deny-by-default preview CSP. Unsent
+The browser adds a sandboxed iframe (`allow-same-origin` only, so the editor can
+size it to its content; no scripts, forms, popups or navigation of the app) and a
+deny-by-default preview CSP. Unsent
 writing exists in memory only. See [dependency review](dependencies.md) for
 the known build-tool advisory and the enforced production-artifact boundary.
 

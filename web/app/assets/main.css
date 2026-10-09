@@ -485,7 +485,7 @@ textarea:focus-visible {
 .preview {
   display: block;
   width: 100%;
-  height: clamp(420px, 70vh, 900px);
+  min-height: 420px;
   border: 1px solid var(--bb-border);
   border-radius: 8px;
   background: var(--bb-surface);

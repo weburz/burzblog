@@ -8,6 +8,9 @@ All notable changes are recorded here, following
 
 ### Fixed
 
+- Editor polish (#35): the preview grows with its content instead of scrolling
+  inside the page, the save shortcut shows ⌘ on macOS, slugs keep accented letters
+  without their accents ("Café" → `cafe`), and a successful move is confirmed.
 - Repository page: changes and commit on the left, sync and branches beside them;
   no-op push and update are disabled with the reason, changes outside Markdown are
   named as the blocker, branches switch from a list, files show their change type,

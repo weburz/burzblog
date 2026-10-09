@@ -142,7 +142,8 @@ test("browser and external editor share ordinary Markdown without silent loss", 
   // Scrolled to File options, the compact context bar shows the title rather than the
   // path on phones; the path returns once the heading is back in view.
   await page.evaluate(() => window.scrollTo(0, 0));
-  await expect(page.getByText(`posts/${slug}-renamed.md`, { exact: true })).toBeVisible();
+  await expect(page.locator(".editor-path")).toHaveText(`posts/${slug}-renamed.md`);
+  await expect(page.locator(".editor-path")).toBeVisible();
   expect(existsSync(file)).toBe(false);
   await page.getByRole("button", { name: "Archive post" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Archive post" }).click();

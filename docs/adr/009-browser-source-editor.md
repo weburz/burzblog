@@ -28,7 +28,9 @@ offline persistence or hidden localStorage content store. Tab/browser terminatio
 can lose unsent writing; an unload warning is best-effort only.
 
 Preview is backend-sanitized and additionally displayed in a sandboxed iframe
-with a deny-by-default content policy. Fonts/icons have no third-party runtime
+with a deny-by-default content policy. (2026-10-09: the sandbox allows only
+`allow-same-origin`, so the editor can read the frame's height and avoid a nested
+scroll area; scripts stay disabled.) Fonts/icons have no third-party runtime
 fetches. Repository operations are deliberately separate from ordinary writing.
 Publish updates frontmatter only; commit/push remain explicit.
 

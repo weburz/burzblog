@@ -5,8 +5,10 @@ describe("slugify", () => {
   it("lowercases and hyphenates", () => {
     expect(slugify("Hello, World! 2027")).toBe("hello-world-2027");
   });
-  it("drops non-ASCII letters and trims", () => {
-    expect(slugify("  café ‑ crème ")).toBe("caf-crme");
+  it("removes accents, drops other non-ASCII characters and trims", () => {
+    expect(slugify("  café ‑ crème ")).toBe("cafe-creme");
+    expect(slugify("Naïve résumé ☕")).toBe("naive-resume");
+    expect(slugify("Ångström Ⅻ")).toBe("angstrom-xii");
   });
   it("bounds long titles without a trailing hyphen", () => {
     const slug = slugify(`${"word ".repeat(40)}end`);
