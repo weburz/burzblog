@@ -11,6 +11,9 @@ from typing import Any, Protocol, TextIO, cast
 
 from ruamel.yaml import YAML
 from ruamel.yaml.events import CollectionEndEvent, CollectionStartEvent
+from ruamel.yaml.nodes import ScalarNode
+from ruamel.yaml.resolver import VersionedResolver
+from ruamel.yaml.scalarstring import DoubleQuotedScalarString
 from ruamel.yaml.tokens import AliasToken, AnchorToken, DirectiveToken, TagToken
 
 from burzblog.errors import ContentError
@@ -48,14 +51,55 @@ def _yaml() -> _YamlParser:
     return cast(_YamlParser, parser)
 
 
+# YAML 1.1 readers (PyYAML, Ruby's Psych, many site generators) read plain `On`,
+# `no`, `10:30` or `2026-10-09` as booleans, numbers or dates.
+class _Resolver(Protocol):
+    """Typed boundary for ruamel's unannotated resolver."""
+
+    def resolve(self, kind: type, value: str, implicit: tuple[bool, bool]) -> str: ...
+
+
+_YAML_11 = cast(_Resolver, VersionedResolver(version=(1, 1)))
+_INVISIBLE = "\u200b\u200c\u200d\u2060\ufeff"
+
+
+def _portable(value: Any) -> Any:
+    """Quote plain strings a YAML 1.1 reader would not read back as strings."""
+    if isinstance(value, dict):
+        mapping = cast(dict[str, Any], value)
+        for key, item in mapping.items():
+            mapping[key] = _portable(item)
+        return mapping
+    if isinstance(value, list):
+        items = cast(list[Any], value)  # type: ignore[redundant-cast]
+        for index, item in enumerate(items):
+            items[index] = _portable(item)
+        return items
+    if (
+        type(value) is str
+        and _YAML_11.resolve(ScalarNode, value, (True, False))
+        != "tag:yaml.org,2002:str"
+    ):
+        return DoubleQuotedScalarString(value)
+    return value
+
+
 def _text(value: str) -> None:
-    """Refuse lone surrogates, such as JSON-style surrogate escapes: not text."""
+    """Refuse text a YAML reader would not return unchanged."""
     try:
         value.encode("utf-8")
     except UnicodeEncodeError:
         raise ContentError(
             "Frontmatter contains text that is not valid Unicode."
         ) from None
+    # NEL and the Unicode line separators are folded by YAML readers.
+    if any(
+        character in "\x85\u2028\u2029"
+        or (ord(character) < 32 and character not in "\t\n\r")
+        or ord(character) == 127
+        for character in value
+    ):
+        raise ContentError("Frontmatter text contains control characters.")
 
 
 def _tree(value: Any, depth: int = 0) -> None:
@@ -87,7 +131,7 @@ def validate(metadata: dict[str, Any]) -> None:
     for field in ("title", "slug", "status", "description", "image"):
         if field in metadata and not isinstance(metadata[field], str):
             raise ContentError(f"{field} must be a string.")
-    if "title" in metadata and not metadata["title"].strip():
+    if "title" in metadata and not metadata["title"].strip(f" \t\n\r{_INVISIBLE}"):
         raise ContentError("title must not be empty.")
     if "slug" in metadata and not SLUG.fullmatch(metadata["slug"]):
         raise ContentError("slug must contain lowercase words separated by hyphens.")
@@ -212,7 +256,12 @@ def parse(source: str) -> Document:
     """Read UTF-8 Markdown without altering body, delimiters or whitespace."""
     if len(source.encode("utf-8")) > MAX_BYTES:
         raise ContentError("Document exceeds 2 MiB.")
-    lines = source.splitlines(keepends=True)
+    # Only "\n" (with an optional "\r") ends a line here; splitlines() would also
+    # split on NEL, U+2028 and other separators inside values.
+    pieces = source.split("\n")
+    lines = [piece + "\n" for piece in pieces[:-1]] + (
+        [pieces[-1]] if pieces[-1] else []
+    )
     if not lines or lines[0] not in ("---\n", "---\r\n"):
         return Document({}, source, source)
     for index, line in enumerate(lines[1:], 1):
@@ -272,7 +321,7 @@ def serialize(document: Document) -> str:
                 metadata[key] = document.metadata[key]
         stream = io.StringIO()
         try:
-            _yaml().dump(metadata, stream)
+            _yaml().dump(_portable(metadata), stream)
         except Exception:  # noqa: BLE001 - emitter failures are unsupported content
             raise ContentError("Frontmatter cannot be written back safely.") from None
         newline = (

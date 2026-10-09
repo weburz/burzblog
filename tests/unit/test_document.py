@@ -177,3 +177,42 @@ def test_nesting_check_ignores_comments_and_allows_ordinary_flow():
         "custom: [a, [b, {c: d}]]\n---\nx"
     )
     assert document.metadata["custom"][1][1] == {"c": "d"}
+
+
+@pytest.mark.parametrize("title", ["On", "No", "yes", "10:30", "2026-10-09", "~"])
+def test_titles_yaml_11_readers_would_misread_are_quoted(title):
+    # PyYAML is a YAML 1.1 reader; it arrives with the development tools.
+    yaml = pytest.importorskip("yaml")
+
+    source = serialize(Document.new(title, "post"))
+    assert f'title: "{title}"' in source
+    assert yaml.safe_load(source.split("---")[1])["title"] == title
+    assert parse(source).metadata["title"] == title
+
+
+def test_publishing_quotes_an_ambiguous_plain_title_and_keeps_the_rest():
+    document = parse("---\ntitle: On\ntags: [a, b]\n---\nBody\n")
+    document.metadata["status"] = "published"
+    source = serialize(document)
+    assert 'title: "On"' in source
+    assert source.endswith("---\nBody\n")
+
+
+@pytest.mark.parametrize("character", ["\x85", " ", " ", "\x07"])
+def test_text_readers_would_fold_is_refused(character):
+    with pytest.raises(ContentError, match="control characters"):
+        Document.new(f"a{character}b", "post")
+
+
+def test_delimiters_are_found_on_newlines_only():
+    source = "---\ntitle: Hello\ndescription: a\x85---\nz: 1\n---\nBody\n"
+    try:
+        document = parse(source)
+    except ContentError:
+        return
+    assert document.body == "Body\n"
+
+
+def test_invisible_titles_count_as_empty():
+    with pytest.raises(ContentError, match="title must not be empty"):
+        Document.new("\u200b⁠", "post")
