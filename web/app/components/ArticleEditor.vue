@@ -493,7 +493,7 @@ const useDisk = () => {
       <p>{{ current.problem }}</p>
       <p class="mt-1">
         Fix it in the source below and save. The current file is kept as a recovery copy,
-        and nothing is saved until the frontmatter is valid.
+        and Publish stays off until BurzBlog can read the frontmatter.
       </p>
     </div>
     <div v-show="preview === null" class="editor-column">

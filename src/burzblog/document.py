@@ -193,6 +193,21 @@ class Document:
         return cls(metadata, body.rstrip("\n") + "\n")
 
 
+def unread_opening(source: str) -> bool:
+    """Whether a file seems to open with frontmatter that `parse` does not read.
+
+    A byte-order mark, leading blank lines, a delimiter with trailing spaces or
+    TOML `+++` make the block plain body text; editing metadata must then refuse
+    rather than add a second block above it.
+    """
+    if source.startswith(("---\n", "---\r\n")):
+        return False
+    for line in source.removeprefix("\ufeff").splitlines():
+        if line.strip():
+            return line.rstrip() in ("---", "+++")
+    return False
+
+
 def parse(source: str) -> Document:
     """Read UTF-8 Markdown without altering body, delimiters or whitespace."""
     if len(source.encode("utf-8")) > MAX_BYTES:

@@ -581,3 +581,28 @@ def test_preview_is_bounded_and_recovers(client, monkeypatch):
     fine = client.post("/api/preview", json={"markdown": "# Back *again*"})
     assert fine.status_code == 200
     assert fine.json()["html"] == "<h1>Back <em>again</em></h1>\n"
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "﻿---\ntitle: Café\n---\nBody\n",
+        "\n---\ntitle: Late\n---\nBody\n",
+        "--- \ntitle: Spaced\n---\nBody\n",
+        "+++\ntitle = 'TOML'\n+++\nBody\n",
+    ],
+)
+def test_publish_never_stacks_frontmatter_on_an_unread_block(
+    client, configured, source
+):
+    login(client)
+    path = configured[0].content_root / "posts/odd.md"
+    path.write_text(source)
+    article = client.get("/api/post", params={"path": "posts/odd.md"}).json()
+    assert article["problem"].startswith("This file opens with frontmatter")
+    response = client.post(
+        "/api/publish", json={"path": "posts/odd.md", "revision": article["revision"]}
+    )
+    assert response.status_code == 400
+    assert response.json()["error"]["detail"].startswith("This file opens with")
+    assert path.read_text() == source

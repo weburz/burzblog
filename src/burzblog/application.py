@@ -5,9 +5,15 @@ from datetime import UTC, datetime
 from threading import Lock
 from typing import Literal
 
-from burzblog.document import Document, parse, serialize
+from burzblog.document import Document, parse, serialize, unread_opening
 from burzblog.errors import ConflictError, ContentError, public_message
 from burzblog.storage import ContentStore, Listed
+
+UNREAD_OPENING = (
+    "This file opens with frontmatter BurzBlog cannot read (a byte-order mark, "
+    "blank lines before ---, spaces after --- or TOML +++). Fix the opening lines; "
+    "until then it is treated as body text and cannot be published."
+)
 
 
 @dataclass(frozen=True)
@@ -56,6 +62,8 @@ class ContentApplication:
         except ContentError as error:
             problem = public_message(error) or "The frontmatter cannot be read."
             return Article(path, revision, text, "", "unavailable", problem)
+        if not document.metadata and unread_opening(text):
+            return Article(path, revision, text, "", "unavailable", UNREAD_OPENING)
         return self._article(path, revision, document)
 
     @staticmethod
@@ -163,6 +171,9 @@ class ContentApplication:
     def publish(self, path: str, revision: str) -> Article:
         """Publish portable metadata only; no implicit deployment or Git push."""
         snapshot = self.store.read(path)
+        source = snapshot.document.source or ""
+        if not snapshot.document.metadata and unread_opening(source):
+            raise ContentError(UNREAD_OPENING)
         snapshot.document.metadata["status"] = "published"
         written = self.store.save(path, snapshot.document, revision)
         return self._verified_read(path, written)

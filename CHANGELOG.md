@@ -8,6 +8,9 @@ All notable changes are recorded here, following
 
 ### Fixed
 
+- Publish refuses a file whose opening frontmatter BurzBlog cannot read (BOM,
+  leading blank lines, `--- ` or TOML) instead of adding a second block above it;
+  the editor explains the opening lines (#41).
 - Preview and frontmatter parsing have bounded cost: rendering runs in a capped
   worker process, a quadratic text join in markdown-it is replaced, and deeply
   nested frontmatter is refused in milliseconds instead of minutes (#40).
