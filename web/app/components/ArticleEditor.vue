@@ -5,14 +5,22 @@ import { ApiError, request, errorMessage } from "../utils/api";
 import { diffTooLong, lineDiff } from "../utils/diff";
 import { editorText, previewDocument, savedSource } from "../utils/editor";
 import { withRetainedFocus } from "../utils/focus";
+import { pathProblem } from "../utils/posts";
+
+// Each failure is shown beside the control that caused it: the mode row (top), the
+// sticky save bar (footer) or the file option itself.
+type Place = "top" | "footer" | "rename" | "archive";
 
 const props = defineProps<{ article: Article }>();
 const emit = defineEmits<{ close: [] }>();
 const current = ref<Article>(props.article);
 const text = ref(editorText(props.article.markdown));
-const error = ref("");
-const errorHeading = ref("That did not work");
-const errorCode = ref("");
+const failure = ref<{
+  place: Place;
+  heading: string;
+  message: string;
+  code: string;
+} | null>(null);
 const busy = ref(false);
 const preview = ref<string | null>(null);
 const external = ref<Article | null>(null);
@@ -20,6 +28,9 @@ const destination = ref(props.article.path);
 const saved = ref(false);
 const source = ref<HTMLTextAreaElement | null>(null);
 const titleElement = ref<HTMLElement | null>(null);
+const conflictElement = ref<HTMLElement | null>(null);
+const conflictHeading = ref<HTMLElement | null>(null);
+const fileFailure = ref<HTMLElement | null>(null);
 const confirmingLeave = ref(false);
 const confirmingArchive = ref(false);
 const confirmingDisk = ref(false);
@@ -33,8 +44,22 @@ const state = computed<"busy" | "dirty" | "saved" | "clean">(() =>
   busy.value ? "busy" : dirty.value ? "dirty" : saved.value ? "saved" : "clean",
 );
 const errorIcon = computed(() =>
-  errorHeading.value === "That did not work" ? "i-lucide-info" : "i-lucide-octagon-alert",
+  failure.value?.heading === "That did not work"
+    ? "i-lucide-info"
+    : "i-lucide-octagon-alert",
 );
+const failureHint = computed(() => {
+  const value = failure.value;
+  if (!value || value.code === "network") return "";
+  if (value.code === "authentication") return "Your text is still here.";
+  return value.place === "footer"
+    ? "Your text is still here. Use Check disk to see what is on disk."
+    : "";
+});
+const moveProblem = computed(() => {
+  const target = destination.value.trim();
+  return target === current.value.path ? "" : pathProblem(target);
+});
 const diskDiff = computed(() =>
   external.value ? lineDiff(text.value, editorText(external.value.markdown)) : [],
 );
@@ -61,6 +86,32 @@ watch(text, () => nextTick(grow));
 watch(preview, (value) => {
   if (value === null) nextTick(grow);
 });
+// A comparison that opens far from where the writer is (a refused save from the sticky
+// bar) is brought into view and focused, because it needs a decision.
+watch(external, async (value, previous) => {
+  if (!value || previous) return;
+  await nextTick();
+  const heading = conflictHeading.value;
+  if (!heading) return;
+  const { top } = heading.getBoundingClientRect();
+  if (top < 72 || top > window.innerHeight - 120) {
+    const smooth = !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    conflictElement.value?.scrollIntoView({
+      block: "start",
+      behavior: smooth ? "smooth" : "auto",
+    });
+  }
+  heading.focus({ preventScroll: true });
+});
+// File options sit below the sticky save bar; keep their refusal visible.
+watch(
+  () => failure.value?.place,
+  async (place) => {
+    if (place !== "rename" && place !== "archive") return;
+    await nextTick();
+    fileFailure.value?.scrollIntoView({ block: "nearest" });
+  },
+);
 const accept = (article: Article, saves = true) => {
   const previous = current.value.revision;
   current.value = article;
@@ -75,9 +126,13 @@ const guard = (event: BeforeUnloadEvent) => {
     event.returnValue = "";
   }
 };
+const restored = () => {
+  if (failure.value?.code === "authentication") failure.value = null;
+};
 onMounted(() => {
   titleElement.value?.focus();
   window.addEventListener("beforeunload", guard);
+  window.addEventListener("burzblog:session-restored", restored);
   grow();
   if (titleElement.value && typeof IntersectionObserver !== "undefined") {
     titleObserver = new IntersectionObserver(([entry]) => {
@@ -88,21 +143,30 @@ onMounted(() => {
 });
 onUnmounted(() => {
   window.removeEventListener("beforeunload", guard);
+  window.removeEventListener("burzblog:session-restored", restored);
   titleObserver?.disconnect();
   clearTimeout(copiedTimer);
 });
-const perform = (operation: () => Promise<void>, heading = "That did not work") =>
+const perform = (
+  operation: () => Promise<void>,
+  place: Place = "top",
+  heading = "That did not work",
+  describe: (cause: unknown) => string = errorMessage,
+) =>
   withRetainedFocus(
     async () => {
       if (busy.value) return;
       busy.value = true;
-      error.value = "";
+      failure.value = null;
       try {
         await operation();
       } catch (cause) {
-        error.value = errorMessage(cause);
-        errorCode.value = cause instanceof ApiError ? cause.code : "";
-        errorHeading.value = heading;
+        failure.value = {
+          place,
+          heading,
+          message: describe(cause),
+          code: cause instanceof ApiError ? cause.code : "",
+        };
       } finally {
         busy.value = false;
       }
@@ -110,46 +174,54 @@ const perform = (operation: () => Promise<void>, heading = "That did not work") 
     () => [source.value, titleElement.value],
   );
 const save = () =>
-  perform(async () => {
-    saved.value = false;
-    const markdown = savedSource(current.value.markdown, text.value);
-    try {
-      const article = await request<Article>("/api/post", "PUT", {
-        path: current.value.path,
-        revision: current.value.revision,
-        markdown,
-      });
-      accept(article);
-    } catch (cause) {
-      // A refused save compares at once when the file really changed on disk, or
-      // simply loads it when nothing here was edited; any other failure keeps the
-      // error block.
-      if (cause instanceof ApiError && cause.code === "conflict") {
-        const onDisk = await request<Article>(
-          `/api/post?path=${encodeURIComponent(current.value.path)}`,
-        ).catch(() => null);
-        if (onDisk && onDisk.revision !== current.value.revision) {
-          if (dirty.value) external.value = onDisk;
-          else accept(onDisk, false);
-          return;
+  perform(
+    async () => {
+      saved.value = false;
+      const markdown = savedSource(current.value.markdown, text.value);
+      try {
+        const article = await request<Article>("/api/post", "PUT", {
+          path: current.value.path,
+          revision: current.value.revision,
+          markdown,
+        });
+        accept(article);
+      } catch (cause) {
+        // A refused save compares at once when the file really changed on disk, or
+        // simply loads it when nothing here was edited; any other failure keeps the
+        // error block.
+        if (cause instanceof ApiError && cause.code === "conflict") {
+          const onDisk = await request<Article>(
+            `/api/post?path=${encodeURIComponent(current.value.path)}`,
+          ).catch(() => null);
+          if (onDisk && onDisk.revision !== current.value.revision) {
+            if (dirty.value) external.value = onDisk;
+            else accept(onDisk, false);
+            return;
+          }
         }
+        throw cause;
       }
-      throw cause;
-    }
-  }, "Save did not happen");
+    },
+    "footer",
+    "Save did not happen",
+  );
 const publish = () =>
-  perform(async () => {
-    if (dirty.value) {
-      throw new Error("Save your writing before publishing.");
-    }
-    saved.value = false;
-    accept(
-      await request<Article>("/api/publish", "POST", {
-        path: current.value.path,
-        revision: current.value.revision,
-      }),
-    );
-  }, "Publish did not happen");
+  perform(
+    async () => {
+      if (dirty.value) {
+        throw new Error("Save your writing before publishing.");
+      }
+      saved.value = false;
+      accept(
+        await request<Article>("/api/publish", "POST", {
+          path: current.value.path,
+          revision: current.value.revision,
+        }),
+      );
+    },
+    "footer",
+    "Publish did not happen",
+  );
 const showPreview = () =>
   perform(async () => {
     const rendered = await request<{ html: string }>("/api/preview", "POST", {
@@ -168,32 +240,58 @@ const checkDisk = () =>
       accept(article, false);
     }
   });
+const folderOf = (path: string) => path.slice(0, path.lastIndexOf("/") + 1);
+const describeMove = (cause: unknown) => {
+  const target = destination.value.trim();
+  if (cause instanceof ApiError && cause.code === "exists")
+    return `${target} already exists. Nothing was overwritten; choose another name.`;
+  if (cause instanceof ApiError && cause.code === "not_found")
+    return folderOf(target)
+      ? `Nothing was moved. The folder ${folderOf(target)} does not exist, or this file is no longer on disk. BurzBlog does not create folders.`
+      : "Nothing was moved. This file is no longer on disk.";
+  return errorMessage(cause);
+};
 const rename = () =>
-  perform(async () => {
-    if (dirty.value) {
-      throw new Error("Save or copy unsaved writing before moving the file.");
-    }
-    saved.value = false;
-    accept(
-      await request<Article>("/api/rename", "POST", {
-        path: current.value.path,
-        revision: current.value.revision,
-        destination: destination.value,
-      }),
-    );
-  });
+  perform(
+    async () => {
+      if (dirty.value) {
+        throw new Error("Save or copy unsaved writing before moving the file.");
+      }
+      if (moveProblem.value) throw new Error(moveProblem.value);
+      saved.value = false;
+      accept(
+        await request<Article>("/api/rename", "POST", {
+          path: current.value.path,
+          revision: current.value.revision,
+          destination: destination.value.trim(),
+        }),
+      );
+      destination.value = current.value.path;
+    },
+    "rename",
+    "The file was not moved",
+    describeMove,
+  );
 const archive = () => {
   confirmingArchive.value = false;
-  return perform(async () => {
-    if (dirty.value) {
-      throw new Error("Save or copy unsaved writing before archiving.");
-    }
-    await request("/api/archive", "POST", {
-      path: current.value.path,
-      revision: current.value.revision,
-    });
-    emit("close");
-  });
+  return perform(
+    async () => {
+      if (dirty.value) {
+        throw new Error("Save or copy unsaved writing before archiving.");
+      }
+      await request("/api/archive", "POST", {
+        path: current.value.path,
+        revision: current.value.revision,
+      });
+      emit("close");
+    },
+    "archive",
+    "The post was not archived",
+    (cause) =>
+      cause instanceof ApiError && cause.code === "not_found"
+        ? "This file is no longer on disk; it may have been moved or deleted outside BurzBlog."
+        : errorMessage(cause),
+  );
 };
 let onLeave: (() => void) | null = null;
 const requestLeave = (proceed: () => void) => {
@@ -293,18 +391,23 @@ const useDisk = () => {
         </UTooltip>
       </div>
     </div>
-    <div v-if="error" class="alert editor-column" role="alert">
+    <div v-if="failure?.place === 'top'" class="alert editor-column" role="alert">
       <p class="alert-title">
         <UIcon :name="errorIcon" class="size-4 align-text-bottom" />
-        {{ errorHeading }}
+        {{ failure.heading }}
       </p>
-      <p>{{ error }}</p>
-      <p v-if="!['authentication', 'network'].includes(errorCode)" class="mt-1">
-        Your text is still here. Use Check disk to see what is on disk.
-      </p>
+      <p>{{ failure.message }}</p>
+      <p v-if="failureHint" class="mt-1">{{ failureHint }}</p>
     </div>
-    <div v-if="external" class="alert alert-warn editor-column conflict" role="alert">
-      <h2 class="alert-title">This file changed outside BurzBlog.</h2>
+    <div
+      v-if="external"
+      ref="conflictElement"
+      class="alert alert-warn editor-column conflict"
+      role="alert"
+    >
+      <h2 ref="conflictHeading" tabindex="-1" class="alert-title">
+        This file changed outside BurzBlog.
+      </h2>
       <p>
         Your unsaved text is still in the editor and nothing on disk was overwritten.
         Compare the two versions, then decide.
@@ -371,6 +474,28 @@ const useDisk = () => {
       <iframe class="preview" title="Article preview" sandbox="" :srcdoc="preview" />
     </div>
     <div class="editor-footer">
+      <div
+        v-if="failure?.place === 'footer'"
+        class="alert editor-column footer-alert"
+        role="alert"
+      >
+        <div>
+          <p class="alert-title">
+            <UIcon :name="errorIcon" class="size-4 align-text-bottom" />
+            {{ failure.heading }}
+          </p>
+          <p>{{ failure.message }}</p>
+          <p v-if="failureHint" class="mt-1">{{ failureHint }}</p>
+        </div>
+        <UButton
+          color="neutral"
+          variant="ghost"
+          size="sm"
+          icon="i-lucide-x"
+          aria-label="Dismiss"
+          @click="failure = null"
+        />
+      </div>
       <div class="editor-column editor-bar">
         <p role="status" aria-live="polite" class="editor-state" :data-state="state">
           <template v-if="state === 'busy'"
@@ -419,19 +544,41 @@ const useDisk = () => {
       <form class="mt-5" @submit.prevent="rename">
         <label for="destination" class="font-semibold">Move / rename file</label>
         <div class="file-options-row mt-1">
-          <UInput id="destination" v-model="destination" class="w-full mono" required />
+          <UInput
+            id="destination"
+            v-model="destination"
+            class="w-full mono"
+            required
+            :aria-invalid="moveProblem ? 'true' : undefined"
+            aria-describedby="destination-hint"
+            @update:model-value="failure?.place === 'rename' && (failure = null)"
+          />
           <UButton
             type="submit"
             color="neutral"
             variant="outline"
-            :disabled="busy || dirty"
+            :disabled="
+              busy || dirty || !!moveProblem || destination.trim() === current.path
+            "
             >Move file</UButton
           >
         </div>
-        <p class="meta mt-2">
+        <p v-if="moveProblem" class="meta mt-2 text-[var(--bb-danger)]">
+          {{ moveProblem }}
+        </p>
+        <p id="destination-hint" class="meta mt-2">
           Changes the filename only; the slug inside frontmatter stays. Existing files are
           never overwritten.
         </p>
+        <div
+          v-if="failure?.place === 'rename'"
+          ref="fileFailure"
+          class="alert file-failure"
+          role="alert"
+        >
+          <p class="alert-title">{{ failure.heading }}</p>
+          <p>{{ failure.message }}</p>
+        </div>
       </form>
       <div class="file-options-row file-options-archive">
         <p class="muted">
@@ -445,6 +592,15 @@ const useDisk = () => {
           @click="confirmingArchive = true"
           >Archive post</UButton
         >
+      </div>
+      <div
+        v-if="failure?.place === 'archive'"
+        ref="fileFailure"
+        class="alert file-failure"
+        role="alert"
+      >
+        <p class="alert-title">{{ failure.heading }}</p>
+        <p>{{ failure.message }}</p>
       </div>
     </details>
     <ConfirmDialog

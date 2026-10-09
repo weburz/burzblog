@@ -34,6 +34,14 @@ class RateLimitError(AuthenticationError):
     """A bounded login window has exhausted its attempts."""
 
 
+class CredentialsError(AuthenticationError):
+    """A login attempt supplied a password that did not verify."""
+
+
+class OriginError(AuthenticationError):
+    """A mutation arrived from a page that is not the configured origin."""
+
+
 @dataclass(frozen=True)
 class Session:
     """An opaque cookie credential and separate CSRF token."""
@@ -174,7 +182,7 @@ class Authentication:
                 "SELECT password_hash FROM administrator WHERE id=1"
             ).fetchone()
         if row is None or not 1 <= len(password) <= 1024:
-            raise AuthenticationError("Login failed.")
+            raise CredentialsError("Login failed.")
         verified_hash = self._verified_hash(row[0], password)
         session = Session(secrets.token_urlsafe(32), secrets.token_urlsafe(32))
         with self.connection() as connection:
@@ -202,7 +210,7 @@ class Authentication:
             try:
                 self.hasher.verify(password_hash, password)
             except VerificationError:
-                raise AuthenticationError("Login failed.") from None
+                raise CredentialsError("Login failed.") from None
             return (
                 self.hasher.hash(password)
                 if self.hasher.check_needs_rehash(password_hash)

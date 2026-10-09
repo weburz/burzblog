@@ -65,9 +65,11 @@ repeatedly retry a recovery error.
 
 If connectivity fails, the editor keeps unsent text in memory and reports it as
 unsaved. It is not an offline application. Reloading/closing the tab can lose
-unsaved input. When a request finds the session expired, a sign-in panel appears
-above the editor; Sign in again is also in the Account menu. Neither closes the
-editor. Credentials and article drafts are not stored in localStorage.
+unsaved input. When a request finds the session expired, a sign-in dialog opens
+over the current view; signing in returns focus to the control you were using and
+never closes the editor. Errors appear beside the control that caused them: save
+and publish in the save bar, move and archive inside File options, a failed open
+on its row in Posts. Credentials and article drafts are not stored in localStorage.
 
 ## Git
 

@@ -5,6 +5,8 @@ export class ApiError extends Error {
     public readonly status: number,
     public readonly code: string,
     message: string,
+    // The server's curated, content-free cause ("title must not be empty."), when known.
+    public readonly detail = "",
   ) {
     super(message);
   }
@@ -31,7 +33,7 @@ export const request = async <T>(
         throw new ApiError(
           401,
           "authentication",
-          "Your session expired. Use Sign in again above, then retry. Your writing is still here.",
+          "Your session expired. Sign in again, then retry.",
         );
       }
       headers["X-CSRF-Token"] = session.csrf;
@@ -55,20 +57,29 @@ export const request = async <T>(
   }
   if (!response.ok) {
     const value = (await response.json().catch(() => null)) as {
-      error?: { code?: string; message?: string };
+      error?: { code?: string; message?: string; detail?: string };
     } | null;
-    if (response.status === 401) sessionExpired();
+    const code = value?.error?.code ?? "request";
+    // A wrong password or a foreign origin is a 401 too, but not an expired session.
+    if (response.status === 401 && !["credentials", "origin"].includes(code))
+      sessionExpired();
     throw new ApiError(
       response.status,
-      value?.error?.code ?? "request",
+      code,
       value?.error?.message ??
         "The request failed. Your changes may not be saved; review the current file before retrying.",
+      value?.error?.detail ?? "",
     );
   }
   return response.json() as Promise<T>;
 };
 
-export const errorMessage = (error: unknown): string =>
-  error instanceof Error
+const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
+// The specific cause when the server named one, otherwise its general guidance.
+export const errorMessage = (error: unknown): string => {
+  if (error instanceof ApiError && error.detail) return sentence(error.detail);
+  return error instanceof Error
     ? error.message
     : "The operation failed. Keep unsaved writing and review the file before retrying.";
+};

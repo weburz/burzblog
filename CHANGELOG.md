@@ -4,6 +4,16 @@ All notable changes are recorded here, following
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- Failures name their cause and appear beside the control that caused them: wrong
+  passwords, existing destinations, missing folders, invalid paths and titles, and
+  files removed outside BurzBlog each get their own message (#28).
+- The session dialog no longer claims a valid session ended; Sign out is a direct
+  button (#34).
+
 ## [1.0.0] - 2026-10-06
 
 ### Added

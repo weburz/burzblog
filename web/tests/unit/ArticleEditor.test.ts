@@ -231,3 +231,110 @@ describe("a refused save", () => {
     wrapper.unmount();
   });
 });
+
+describe("failures beside their controls", () => {
+  const article = {
+    path: "posts/a.md",
+    revision: "a".repeat(64),
+    markdown: "disk body\n",
+    title: "A",
+    status: "draft",
+  };
+  const withInputs = {
+    ...global,
+    stubs: {
+      ...global.stubs,
+      UInput: {
+        props: ["modelValue"],
+        emits: ["update:modelValue"],
+        template:
+          "<input :value='modelValue' @input='$emit(\"update:modelValue\", $event.target.value)' />",
+      },
+    },
+  };
+  const press = (wrapper: ReturnType<typeof mount>, name: string) =>
+    wrapper
+      .findAll("button")
+      .find((button) => button.text() === name)
+      ?.trigger("click");
+
+  it("shows a refused save in the sticky save bar", async () => {
+    vi.mocked(request).mockRejectedValue(
+      new ApiError(0, "network", "Cannot reach BurzBlog."),
+    );
+    const wrapper = mount(ArticleEditor, { props: { article }, global });
+    await wrapper.get("textarea").setValue("unsaved");
+    await press(wrapper, "Save");
+    await flushPromises();
+    const alert = wrapper.get(".editor-footer [role='alert']");
+    expect(alert.text()).toContain("Save did not happen");
+    expect(alert.text()).toContain("Cannot reach BurzBlog.");
+    expect(wrapper.findAll("[role='alert']")).toHaveLength(1);
+    wrapper.unmount();
+  });
+
+  it("names an existing destination inside File options", async () => {
+    vi.mocked(request).mockRejectedValue(
+      new ApiError(409, "exists", "A file already exists at that path."),
+    );
+    const wrapper = mount(ArticleEditor, { props: { article }, global: withInputs });
+    await wrapper.get("#destination").setValue("posts/b.md");
+    await wrapper.get(".file-options form").trigger("submit");
+    await flushPromises();
+    const alert = wrapper.get(".file-options [role='alert']");
+    expect(alert.text()).toContain("The file was not moved");
+    expect(alert.text()).toContain("posts/b.md already exists. Nothing was overwritten");
+    expect(wrapper.findAll("[role='alert']")).toHaveLength(1);
+    await wrapper.get("#destination").setValue("posts/c.md");
+    expect(wrapper.find(".file-options [role='alert']").exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("explains a missing folder instead of a filesystem failure", async () => {
+    vi.mocked(request).mockRejectedValue(
+      new ApiError(404, "not_found", "That file or folder is not on disk."),
+    );
+    const wrapper = mount(ArticleEditor, { props: { article }, global: withInputs });
+    await wrapper.get("#destination").setValue("drafts/new.md");
+    await wrapper.get(".file-options form").trigger("submit");
+    await flushPromises();
+    expect(wrapper.get(".file-options [role='alert']").text()).toContain(
+      "The folder drafts/ does not exist",
+    );
+    wrapper.unmount();
+  });
+
+  it("refuses an unsupported path before sending it", async () => {
+    const wrapper = mount(ArticleEditor, { props: { article }, global: withInputs });
+    await wrapper.get("#destination").setValue("../outside.md");
+    expect(wrapper.text()).toContain("Use a path inside the content folder");
+    const move = wrapper
+      .findAll("button")
+      .find((button) => button.text() === "Move file");
+    expect(move?.attributes("disabled")).toBeDefined();
+    await wrapper.get(".file-options form").trigger("submit");
+    await flushPromises();
+    expect(request).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("clears an expired-session failure once the session is restored", async () => {
+    vi.mocked(request).mockRejectedValue(
+      new ApiError(
+        401,
+        "authentication",
+        "Your session expired. Sign in again, then retry.",
+      ),
+    );
+    const wrapper = mount(ArticleEditor, { props: { article }, global });
+    await wrapper.get("textarea").setValue("unsaved");
+    await press(wrapper, "Save");
+    await flushPromises();
+    expect(wrapper.get(".editor-footer").text()).toContain("Your text is still here.");
+    window.dispatchEvent(new CustomEvent("burzblog:session-restored"));
+    await flushPromises();
+    expect(wrapper.find("[role='alert']").exists()).toBe(false);
+    expect(wrapper.get("textarea").element.value).toBe("unsaved");
+    wrapper.unmount();
+  });
+});

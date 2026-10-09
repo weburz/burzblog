@@ -311,3 +311,78 @@ def test_external_replacement_after_save_does_not_report_false_success(
         path.read_text() == "browser requested\n"
         for path in configured[0].content_root.glob(".burzblog-recovery/*/requested.md")
     )
+
+
+def test_failures_name_their_cause_without_echoing_input(client, configured):
+    content = configured[0].content_root
+    wrong = client.post(
+        "/api/login", json={"password": "not the password"}, headers={"origin": ORIGIN}
+    )
+    assert wrong.status_code == 401
+    assert wrong.json()["error"]["code"] == "credentials"
+    assert "not the password" not in wrong.text
+    foreign = client.post(
+        "/api/login",
+        json={"password": PASSWORD},
+        headers={"origin": "https://x.invalid"},
+    )
+    assert foreign.status_code == 401
+    assert foreign.json()["error"]["code"] == "origin"
+    login(client)
+    article = create(client)
+    duplicate = client.post("/api/posts", json={"title": "Again", "slug": "hello"})
+    assert duplicate.status_code == 409
+    assert duplicate.json()["error"] == {
+        "code": "exists",
+        "message": "A file already exists at that path; nothing was overwritten.",
+        "detail": "Destination already exists; nothing was overwritten.",
+    }
+    blank = client.post("/api/posts", json={"title": "   ", "slug": "blank"})
+    assert blank.status_code == 400
+    assert blank.json()["error"]["detail"] == "title must not be empty."
+    (content / "posts/taken.md").write_text("---\ntitle: Taken\n---\n")
+    moves = {
+        "posts/taken.md": (409, "exists"),
+        "missing/folder/new.md": (404, "not_found"),
+        "posts/Bad Name.md": (400, "invalid"),
+        "posts/no-extension": (400, "invalid"),
+    }
+    for destination, (status, code) in moves.items():
+        moved = client.post(
+            "/api/rename",
+            json={
+                "path": article["path"],
+                "revision": article["revision"],
+                "destination": destination,
+            },
+        )
+        assert (moved.status_code, moved.json()["error"]["code"]) == (status, code)
+        assert destination not in moved.text
+    assert (content / article["path"]).read_text() == article["markdown"]
+    missing = client.get("/api/post", params={"path": "posts/gone.md"})
+    assert missing.status_code == 404
+    assert missing.json()["error"]["code"] == "not_found"
+    stale = client.put(
+        "/api/post",
+        json={
+            "path": article["path"],
+            "revision": "0" * 64,
+            "markdown": "browser text\n",
+        },
+    )
+    assert stale.json()["error"]["code"] == "conflict"
+    assert "browser text" not in stale.text
+    assert stale.json()["error"]["detail"].startswith("File changed externally")
+
+
+def test_error_detail_refuses_path_like_messages(client, monkeypatch):
+    login(client)
+
+    def leaky(*_args):
+        raise ContentError("Cannot read /srv/operator/private.md")
+
+    monkeypatch.setattr("burzblog.application.ContentApplication.create", leaky)
+    response = client.post("/api/posts", json={"title": "A", "slug": "a"})
+    assert response.status_code == 400
+    assert "detail" not in response.json()["error"]
+    assert "/srv" not in response.text and "private.md" not in response.text

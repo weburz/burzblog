@@ -92,12 +92,20 @@ local storage by this API.
   or `push`; branch, paths and message as relevant. Explicit content-relative
   paths only for commit. Existing Git safety restrictions apply.
 
-Errors have `{error: {code, message}}`. Status 409 means conflict/recovery or
-filesystem attention: preserve unsent input, do not automatically resubmit.
-Status 502 (`remote`) means the configured Git remote was unreachable, untrusted
-or refused the credentials; no local content changed and retrying cannot help
-until the operator fixes it. 401 requires login/request verification; 429 is login throttling; 413/422
-reject oversized/invalid requests. Validation responses never echo input values.
+Errors have `{error: {code, message, detail?}}`. `message` is general guidance
+for the code; `detail`, when present, is the specific curated domain cause (for
+example `title must not be empty.`). Domain messages are fixed, content-free
+sentences, and the API drops any that contains a path separator, so neither
+field echoes paths or input. Status 409 means conflict (`conflict`), an existing
+destination (`exists`), recovery (`recovery`) or filesystem attention
+(`filesystem`): preserve unsent input, do not automatically resubmit. 404
+(`not_found`) means the file or a destination folder is not on disk. Status 502
+(`remote`) means the configured Git remote was unreachable, untrusted or refused
+the credentials; no local content changed and retrying cannot help until the
+operator fixes it. 401 is `authentication` (log in or verify the request again),
+`credentials` (wrong password at login) or `origin` (the request did not come
+from `BURZBLOG_ORIGIN`); 429 is login throttling; 413/422 reject
+oversized/invalid requests. Validation responses never echo input values.
 Markdown is limited to 2 MiB; the entire JSON request to 3 MiB.
 
 ## Operational limits
