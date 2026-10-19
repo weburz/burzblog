@@ -17,6 +17,16 @@ while deployment uses only the generated static files in `.output/public`, not
 and the container image contains no Node.js at all. Font discovery and
 remote icon fetching are disabled; installed fonts/icons are bundled locally.
 
+Playwright is held at 1.61.1 (Chromium 149) for browser acceptance tests.
+Playwright 1.62.1's Chromium 151 does not deliver `requestAnimationFrame`
+callbacks on the supported WSL2 development host, even on an otherwise empty
+page. Because Playwright uses animation frames to establish that a control is
+stable before clicking it, every pointer interaction then waits until the test
+timeout; the sign-in button was simply the first click in the suite. Chromium
+149 delivers frames normally and the complete desktop, tablet and mobile flows
+pass without forced clicks. Re-test the empty-page frame probe and the full E2E
+suite before lifting this pin.
+
 Audit on 2026-10-02 found two transitive advisories. A narrow `fontless>esbuild`
 override uses 0.28.1 for [GHSA-g7r4-m6w7-qqqr](https://github.com/advisories/GHSA-g7r4-m6w7-qqqr).
 [GHSA-86w9-cpqp-85rv](https://github.com/advisories/GHSA-86w9-cpqp-85rv) affects

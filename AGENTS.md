@@ -15,6 +15,9 @@ Read `docs/architecture/foundation.md` and `docs/security.md` before storage cha
 - `task hooks:install`: optional pre-commit and Crisp commit-message hooks.
 - Follow UniBurz tooling: uv, Ruff, mypy, Pyright, pre-commit and Crisp.
   Frontend in web/ uses pinned pnpm 11, Nuxt UI, Oxlint and Oxfmt.
+- Keep Playwright at 1.61.1 until its Chromium 151+ headless regression on the
+  supported WSL2 development host is resolved; those browsers stop delivering
+  animation frames, so every real pointer click times out waiting for stability.
 - Keep domain parsing independent of filesystem and application interfaces.
 - Preserve original bytes on no-op saves and Markdown bodies on metadata edits.
 - Never follow symlinks or overwrite a destination during create/rename.
