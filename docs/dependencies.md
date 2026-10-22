@@ -54,6 +54,10 @@ advertising a clean audit. No dependency versions or audit suppressions were
 changed during publication-contract preparation.
 Follow-up: [issue #61](https://github.com/weburz/burzblog/issues/61), with the
 existing node-forge finding tracked separately in issue #11.
+GitHub's open Dependabot alerts additionally report two critical advisories for
+the test dependency tinypool (GHSA-5gmw-xhrv-c9v3 and GHSA-85c8-ppgw-ccpr).
+The production-only pnpm audit above excludes that development dependency;
+review it as part of the same tooling follow-up before claiming a clean audit.
 
 ## Authenticated application additions
 
