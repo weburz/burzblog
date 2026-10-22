@@ -16,6 +16,8 @@ BurzBlog fields. When present:
 New content requires title and slug and defaults to draft. Filename and slug
 are independent: renaming does not silently modify metadata. Duplicate slugs
 across files are not currently indexed or prohibited.
+The publication exporter requires title/slug and rejects duplicate published
+slugs before emitting public output; see [publishing.md](publishing.md).
 
 Unknown string-key fields with ordinary YAML scalars/lists/maps are preserved,
 including dates. Duplicate keys, tags, aliases/anchors, directives, non-finite

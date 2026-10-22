@@ -1,9 +1,36 @@
 # BurzBlog
 
-A lightweight, file-first Markdown CMS. Your files remain the source of truth.
-The browser application offers a focused Markdown editor with explicit
-draft/publish metadata and explicit Git operations. Version 1.0.0; see [release process](docs/release.md) for how
-releases and images are published.
+A self-hosted, file-first Markdown CMS for a single editor. Write in your browser,
+keep articles as ordinary files, and deliver published content to your own website.
+Git is optional; your files remain the source of truth.
+
+BurzBlog runs independently of your reader website. Its application image, your
+content directory, and its private SQLite login state are separate, so replacing
+the application does not replace your articles. The editor's Publish button marks
+an article for publication; deployment is an explicit separate step.
+
+**Release status:** preparing the first 1.0.0 release. No public image is available
+yet; build from source using the [container guide](docs/containers.md). See
+[launch readiness](docs/launch.md) for the remaining verification gates.
+
+## From writing to a website
+
+1. Install the editor with the [container guide](docs/containers.md) or
+   [non-container setup](docs/self-hosting.md).
+2. Store your articles in a separate content directory, optionally backed by a
+   private content-only Git repository. Keep application code out of that repo.
+3. Write and mark articles published; explicitly commit and push if using Git.
+4. Export a stable copy with `burzblog --root /path/to/content export`, build your
+   reader, and deploy only its public output.
+
+The [publication guide](docs/publishing.md) defines the validated JSON contract
+and includes a working static reader example. Drafts and unknown frontmatter
+fields are excluded. Invalid exports stop the build before any JSON is emitted.
+
+Media uploads and automatic website deployment are not included. Use hosted
+HTTPS image/video URLs; private preview omits images. BurzBlog supplies an editor,
+file recovery, optional Git operations, and a publication boundary—not website
+themes, hosting, or multi-user collaboration.
 
 ```text
 Browser / CLI → authenticated application → ordinary Markdown ←→ external editors

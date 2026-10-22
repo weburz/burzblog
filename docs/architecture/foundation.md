@@ -26,6 +26,8 @@ authentication and sanitized preview; see ADR-008 and `docs/application.md`.
 - `cli.py`: local operator interface; errors without private document dumps.
 - Application/authentication, Git and preview layers call this core.
   Provider credentials never belong in this package's document model.
+- `publication.py`: a read-only, versioned public projection for reader builds;
+  see ADR-012. No deployment credentials or public HTTP route are introduced.
 
 SQLite holds authentication state, never canonical article bodies. Reads consult disk;
 polling/watch-based browser updates wait until a browser interface exists.

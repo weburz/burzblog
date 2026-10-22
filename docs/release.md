@@ -4,6 +4,9 @@ Maintainer procedure for cutting a BurzBlog release.
 
 ## Preconditions
 
+- Review the product scope and public-distribution gates in [launch.md](launch.md).
+- Verify the publication example and draft exclusion from [publishing.md](publishing.md).
+
 - `LICENSE` (Apache-2.0) is present and `pyproject.toml` carries the release version.
 - `task check` and `task docker:check` pass on the release commit.
 - The production-host validation from [production-runbook.md](production-runbook.md)

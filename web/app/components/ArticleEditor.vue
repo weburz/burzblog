@@ -609,7 +609,14 @@ const useDisk = () => {
         </p>
         <div class="actions">
           <span class="editor-collapse"><UKbd value="meta" /> <UKbd value="S" /> </span>
-          <UTooltip v-if="articleStatus === 'draft'" text="Save first" :disabled="!dirty">
+          <UTooltip
+            v-if="articleStatus === 'draft'"
+            :text="
+              dirty
+                ? 'Save first'
+                : 'Mark for publication. Deploy your website separately.'
+            "
+          >
             <span class="inline-flex">
               <UButton
                 color="secondary"

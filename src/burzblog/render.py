@@ -55,7 +55,7 @@ def _renderer() -> MarkdownIt:
     return renderer
 
 
-def render_html(body: str) -> str:
+def render_html(body: str, *, images: bool = False) -> str:
     """Render CommonMark without raw HTML, then allow only plain structural tags."""
     rendered = _renderer().render(body)
     return nh3.clean(
@@ -86,8 +86,9 @@ def render_html(body: str) -> str:
             "tr",
             "th",
             "td",
-        },
-        attributes={"a": {"href", "title"}},
+        }
+        | ({"img"} if images else set()),
+        attributes={"a": {"href", "title"}, "img": {"src", "alt", "title"}},
         url_schemes={"https", "http", "mailto"},
         link_rel="noopener noreferrer",
     )

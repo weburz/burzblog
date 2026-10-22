@@ -6,6 +6,15 @@ All notable changes are recorded here, following
 
 ## [Unreleased]
 
+### Added
+
+- Versioned publication export (`burzblog export`) with draft exclusion, public
+  metadata allowlisting, duplicate-slug validation, empty-release protection,
+  and a bounded output size. A static reader example demonstrates sanitized
+  rendering and hosted images without exposing the private content directory.
+- Public-facing launch guidance covering separate application/content storage,
+  upgrade boundaries, reader integration, media limitations, and release gates.
+
 ### Fixed
 
 - Frontmatter BurzBlog writes reads the same elsewhere: strings a YAML 1.1 reader

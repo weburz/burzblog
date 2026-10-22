@@ -47,6 +47,8 @@ hardened multi-tenant Internet service.
 Sign in → New post → title and filename → Create draft → Markdown → Save.
 Preview never writes content. Publish sets `status: published` and Unpublish sets it
 back to `draft`; neither deploys a site or pushes Git. External tools can read/edit the same file at any time.
+Use the [publication guide](publishing.md) to export eligible articles and build
+a separate reader site. A Published label is not confirmation of a live deployment.
 Refresh the list or choose Check disk in the editor to load external changes.
 No file watcher or autosave is claimed. The address names the current view
 (`?post=posts/x.md`, `?view=repository`, list filters and page), so Back,

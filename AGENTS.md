@@ -43,5 +43,9 @@ Read `docs/architecture/foundation.md` and `docs/security.md` before storage cha
   where a Docker daemon exists; otherwise report the runtime checks as unrun.
   Keep content/state/secrets outside images and preserve host UID/GID; see
   `docs/containers.md` and ADR-011.
+- Publication: read `docs/publishing.md`. `burzblog export` emits only explicit
+  published content and allowlisted metadata; never expose the editorial root.
+  Reader builds use stable copies and promote new output only on success.
+  Launch gates and unverified hosting platforms are tracked in `docs/launch.md`.
 
 The pre-existing `admin-panel/` cache is unrelated and must not be incorporated.

@@ -11,6 +11,7 @@ from burzblog.errors import ContentError
 from burzblog.git_credentials import RemoteCredential
 from burzblog.git_domain import GitRepository
 from burzblog.git_mutations import GitChanges, Remote
+from burzblog.publication import export_publication
 from burzblog.storage import ContentStore
 
 
@@ -35,6 +36,14 @@ def main() -> int:
     )
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("list", help="Discover content paths")
+    export = commands.add_parser(
+        "export", help="Validate and emit published articles as schema-v1 JSON"
+    )
+    export.add_argument(
+        "--allow-empty",
+        action="store_true",
+        help="Allow deliberately removing all public articles",
+    )
     commands.add_parser(
         "git-status", help="Inspect Git without changing files or contacting remotes"
     )
@@ -65,6 +74,8 @@ def main() -> int:
     try:
         if args.command == "list":
             print(json.dumps(store.discover()))
+        elif args.command == "export":
+            print(export_publication(store, allow_empty=args.allow_empty))
         elif args.command == "git-status":
             state = GitRepository(args.root).status()
             print(
