@@ -43,21 +43,29 @@ Re-audit on 2026-10-06 (`pnpm audit --prod`): six advisories, all in build- or d
 
 ## Launch audit
 
-Launch audit on 2026-10-22 (`pnpm audit --prod --json`) exits 1 with
+The initial launch audit on 2026-10-22 (`pnpm audit --prod --json`) exited 1 with
 15 advisories: 2 critical, 6 high, 6 moderate, and 1 low. In addition to the
 previously recorded packages, Vite 8.3.1 and launch-editor 2.14.1 have development
 server/editor advisories. These are not Python runtime dependencies. The
 supported production topology still serves generated static assets without a
 Node.js server; that boundary does not make the development dependency audit
-clean. Review patched tooling and rerun the complete browser gates before
-advertising a clean audit. No dependency versions or audit suppressions were
-changed during publication-contract preparation.
-Follow-up: [issue #61](https://github.com/weburz/burzblog/issues/61), with the
-existing node-forge finding tracked separately in issue #11.
-GitHub's open Dependabot alerts additionally report two critical advisories for
-the test dependency tinypool (GHSA-5gmw-xhrv-c9v3 and GHSA-85c8-ppgw-ccpr).
-The production-only pnpm audit above excludes that development dependency;
-review it as part of the same tooling follow-up before claiming a clean audit.
+clean. Auditing development dependencies additionally identified two critical
+tinypool findings and two moderate Vitest mocker findings.
+
+Launch preparation pins compatible fixes: Vite 8.3.3, launch-editor 2.14.2,
+tinypool 2.1.2, and Vitest 4.1.12. Transitive pins live in
+`web/pnpm-workspace.yaml`; pnpm regenerates the lockfile. TypeScript, Vue,
+vue-tsc, and Playwright versions are unchanged. No audit suppression is added.
+
+The final full `pnpm audit --json` still exits 1: six advisories, two critical
+and four high, in node-forge, braces, simple-git and its argv-parser. Registry
+queries for node-forge 1.4.1, braces 3.0.4, and simple-git 3.36.1 returned no
+matching version. A trial simple-git 4.0.1 override failed the default-export
+API used by Nuxt DevTools (`Git(root)` was not callable), so it was removed.
+DevTools remains disabled; a compatible upstream integration is required rather
+than forcing that major version. These findings are tracked in
+[issue #61](https://github.com/weburz/burzblog/issues/61) and existing issue #11.
+This is an improved tooling tree, not a clean security audit.
 
 ## Authenticated application additions
 

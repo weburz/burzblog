@@ -17,6 +17,10 @@ All notable changes are recorded here, following
 
 ### Fixed
 
+- Apply compatible Vite, launch-editor, tinypool, and Vitest security patches
+  for launch tooling. Remaining unavailable/incompatible upstream fixes are
+  documented in the dependency review; no clean audit is claimed.
+
 - Frontmatter BurzBlog writes reads the same elsewhere: strings a YAML 1.1 reader
   would take as booleans, numbers or dates (`On`, `No`, `10:30`) are quoted;
   control and line-separator characters in values are refused; delimiters are
