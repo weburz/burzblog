@@ -79,7 +79,9 @@ func (p *panel) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/")
-	if p.files != nil && name != "" && name != "index.html" && name != "200.html" && name != "404.html" {
+	// Every HTML document is the app shell, served with its CSP; generated
+	// copies such as settings/index.html are never served as plain files.
+	if p.files != nil && name != "" && !strings.HasSuffix(name, ".html") {
 		if data, err := fs.ReadFile(p.files, name); err == nil {
 			if ct := mime.TypeByExtension(path.Ext(name)); ct != "" {
 				w.Header().Set("Content-Type", ct)

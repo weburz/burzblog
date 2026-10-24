@@ -1,153 +1,171 @@
-import { readFileSync, writeFileSync, statSync, existsSync, unlinkSync } from "node:fs";
-import { join } from "node:path";
-import { expect, test } from "@playwright/test";
+import { gunzipSync } from "node:zlib";
+import { expect, test, type Page } from "@playwright/test";
 
-test("browser and external editor share ordinary Markdown without silent loss", async ({
+const password = "browser fixture password";
+
+const signIn = async (page: Page) => {
+  await page.goto("/");
+  await page.getByLabel("Username").fill("e2e");
+  await page.getByLabel("Password").fill(password);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Posts", exact: true })).toBeVisible();
+};
+
+test("writing in the browser and the terminal never loses work", async ({
   page,
   context,
   request,
 }, info) => {
-  const root = info.config.metadata.fixtureRoot as string;
   // The production shell ships a strict CSP; any violation is a regression.
   const violations: string[] = [];
   page.on("console", (message) => {
-    if (message.type() === "error" && /Content Security Policy/i.test(message.text())) {
+    if (message.type() === "error" && /Content Security Policy/i.test(message.text()))
       violations.push(message.text());
-    }
   });
-  const slug = `article-${info.project.name}`;
-  const file = join(root, "repo/content/posts", `${slug}.md`);
-  const outbound: string[] = [];
-  page.on("request", (outgoing) => {
-    if (
-      !outgoing.url().startsWith("http://127.0.0.1:3000") &&
-      !outgoing.url().startsWith("data:")
-    )
-      outbound.push(outgoing.url());
-  });
+  const slug = `quiet-workflow-${info.project.name}`;
   expect((await request.get("/api/posts")).status()).toBe(401);
-  await page.goto("/");
-  await page.getByLabel("Administrator password").fill("browser fixture password");
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Posts", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "New post", exact: true }).click();
-  await page.getByLabel("Title", { exact: true }).fill("A quieter writing workflow");
-  await page.getByLabel("Filename / slug").fill(slug);
-  await page.getByRole("button", { name: "Create draft" }).click();
-  const editor = page.getByLabel("Markdown source, including frontmatter");
-  await expect(editor).toBeVisible();
-  expect(readFileSync(file, "utf8")).toContain("status: draft");
-  const original = readFileSync(file, "utf8");
-  await editor.fill(
-    `${original}\n# A quieter writing workflow\n\nWritten in the browser.\n`,
+
+  await signIn(page);
+  await page.getByRole("button", { name: "New post", exact: true }).first().click();
+  const dialog = page.getByRole("dialog", { name: "New post" });
+  await dialog.getByLabel("Title").fill("A quieter writing workflow");
+  await dialog.getByLabel("Slug").fill(slug);
+  await dialog.getByRole("button", { name: "Create draft" }).click();
+  await expect(page).toHaveURL(new RegExp(`/posts/${slug}$`));
+  const body = page.getByLabel("Post body in Markdown");
+  await expect(page.getByLabel("Title", { exact: true })).toHaveValue(
+    "A quieter writing workflow",
   );
+
+  await body.fill("# Hello\n\nWritten in the browser.\n");
+  await expect(
+    page.getByRole("status").filter({ hasText: "Unsaved changes" }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Saved ✓" })).toBeVisible();
-  expect(readFileSync(file, "utf8")).toContain("Written in the browser.");
-  // The open post lives in the address: reload returns to it and the tab names it.
-  await expect(page).toHaveURL(new RegExp(`post=posts%2F${slug}\\.md`));
+  await expect(page.getByRole("status").filter({ hasText: /^\s*Saved/ })).toBeVisible();
   await page.reload();
-  await expect(editor).toHaveValue(/Written in the browser\./);
+  await expect(body).toHaveValue("# Hello\n\nWritten in the browser.\n");
   await expect(page).toHaveTitle("A quieter writing workflow · BurzBlog");
-  const externallyEdited =
-    "---\r\ntitle: 'External title' # keep\r\ncustom_field: retained\r\nstatus: draft\r\n---\r\nExternal body";
-  writeFileSync(file, externallyEdited);
-  await page.getByRole("button", { name: "Check disk" }).click();
-  await expect(editor).toHaveValue(externallyEdited.replace(/\r\n/g, "\n"));
-  const before = statSync(file);
+
+  // The terminal saves a newer version while the browser has unsaved edits.
+  const token = await (
+    await request.post("/api/auth/token", {
+      data: { username: "e2e", password, name: "e2e terminal" },
+    })
+  ).json();
+  const auth = { Authorization: `Bearer ${token.secret}` };
+  const current = await request.get(`/api/posts/${slug}/markdown`, { headers: auth });
+  const doc = (await current.text()).replace(
+    "Written in the browser.",
+    "Rewritten in vim.",
+  );
+  const put = await request.put(`/api/posts/${slug}/markdown`, {
+    headers: { ...auth, "If-Match": current.headers().etag! },
+    data: doc,
+  });
+  expect(put.status()).toBe(200);
+
+  await body.fill("# Hello\n\nMy browser edit.\n");
   await page.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Saved ✓" })).toBeVisible();
-  expect(readFileSync(file, "utf8")).toBe(externallyEdited);
-  expect(statSync(file).mtimeMs).toBe(before.mtimeMs);
-  await editor.fill("unsaved browser writing");
-  await page.getByRole("button", { name: "Check disk" }).click();
-  await expect(editor).toHaveValue("unsaved browser writing");
-  await page.getByRole("button", { name: "← Posts" }).click();
-  await expect(page.getByRole("dialog")).toContainText("Leave without saving?");
-  await page.getByRole("dialog").getByRole("button", { name: "Cancel" }).click();
-  await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(editor).toHaveValue("unsaved browser writing");
-  writeFileSync(file, "external conflicting writing\n");
-  await page.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText("changed");
-  await expect(editor).toHaveValue("unsaved browser writing");
-  expect(readFileSync(file, "utf8")).toBe("external conflicting writing\n");
-  await page.getByRole("button", { name: "Check disk" }).click();
-  await expect(page.getByText("This file changed outside BurzBlog.")).toBeVisible();
-  await page.getByRole("button", { name: "Use disk version" }).first().click();
-  await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "Use disk version" })
-    .click();
-  await expect(editor).toHaveValue("external conflicting writing\n");
-  await context.setOffline(true);
-  await editor.fill("keep this during network failure");
-  await page.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText("not saved");
-  await expect(editor).toHaveValue("keep this during network failure");
-  await context.setOffline(false);
+  const conflict = page.getByRole("alert").filter({ hasText: "saved a newer version" });
+  await expect(conflict).toBeVisible();
+  await expect(body).toHaveValue("# Hello\n\nMy browser edit.\n");
+  await conflict.getByRole("button", { name: "Compare" }).click();
+  await expect(conflict.getByRole("region", { name: "Differences" })).toContainText(
+    "Rewritten in vim.",
+  );
+  await conflict.getByRole("button", { name: "Use theirs" }).click();
+  await expect(body).toHaveValue("# Hello\n\nRewritten in vim.\n");
+  await expect(conflict).toHaveCount(0);
+
+  // Leaving with unsaved writing asks first; the writing stays.
+  await body.fill("# Hello\n\nUnsaved thought.\n");
+  await page.getByRole("link", { name: "All posts" }).click();
+  const leave = page.getByRole("dialog", { name: "Leave without saving?" });
+  await expect(leave).toBeVisible();
+  await leave.getByRole("button", { name: "Cancel" }).click();
+  await expect(leave).toHaveCount(0);
+  await expect(body).toHaveValue("# Hello\n\nUnsaved thought.\n");
+
+  // A second tab finds the unsaved writing kept in this browser.
+  await page.waitForTimeout(800);
+  const second = await context.newPage();
+  await second.goto(`/posts/${slug}`);
+  const recovered = second
+    .getByRole("alert")
+    .filter({ hasText: "still in this browser" });
+  await expect(recovered).toBeVisible();
+  await recovered.getByRole("button", { name: "Bring them back" }).click();
+  await expect(second.getByLabel("Post body in Markdown")).toHaveValue(
+    "# Hello\n\nUnsaved thought.\n",
+  );
+  await second.close();
+
+  // An ended session keeps the writing and resumes after signing in.
   await context.clearCookies();
-  await editor.fill("after session loss");
   await page.getByRole("button", { name: "Save", exact: true }).click();
   const reauth = page.getByRole("dialog", { name: "Your session ended" });
   await expect(reauth).toBeVisible();
-  // The dialog hides the page from assistive technology, so read the save bar directly.
-  await expect(page.locator(".editor-footer [role=alert]")).toContainText(
-    "session expired",
-  );
-  await reauth.getByLabel("Administrator password").fill("browser fixture password");
+  await reauth.getByLabel("Password").fill(password);
   await reauth.getByRole("button", { name: "Sign in" }).click();
   await expect(reauth).toBeHidden();
-  await expect(page.locator(".editor-footer [role=alert]")).toHaveCount(0);
+  await expect(body).toHaveValue("# Hello\n\nUnsaved thought.\n");
   await page.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Saved ✓" })).toBeVisible();
-  await editor.fill(
-    '# Safe preview\n<script>window.parent.xss=true</script>\n<img src=x onerror="window.parent.xss=true">\n[bad](javascript:alert(1))\n![pixel](https://tracker.invalid/pixel)',
+  await expect(page.getByRole("status").filter({ hasText: /^\s*Saved/ })).toBeVisible();
+
+  // The preview never runs scripts from a post.
+  await body.fill(
+    '# Safe preview\n\n<script>window.parent.xss=true</script>\n<img src=x onerror="window.parent.xss=true">\n\n[bad](javascript:alert(1))\n',
   );
-  await page.getByRole("button", { name: "Preview", exact: true }).click();
-  const frame = page.frameLocator('iframe[title="Article preview"]');
+  // Narrow screens show one pane at a time.
+  const narrow = (await page.getByRole("button", { name: "Split" }).count()) === 0;
+  if (narrow) await page.getByRole("button", { name: "Preview" }).click();
+  const frame = page.frameLocator('iframe[title="Preview of the published post"]');
   await expect(frame.getByRole("heading", { name: "Safe preview" })).toBeVisible();
-  expect(await frame.locator("script, img, iframe").count()).toBe(0);
+  expect(
+    await frame.locator("article script, article img, a[href^=javascript]").count(),
+  ).toBe(0);
   expect(await page.evaluate(() => Object.hasOwn(window, "xss"))).toBe(false);
-  await page.screenshot({ path: info.outputPath("editor.png"), fullPage: true });
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
   ).toBe(true);
-  await page.getByRole("button", { name: "Markdown", exact: true }).click();
-  await page.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Saved ✓" })).toBeVisible();
+  await page.screenshot({ path: info.outputPath("editor.png") });
+  if (narrow) await page.getByRole("button", { name: "Write" }).click();
+
+  // Publishing saves first, then reader builds can download it.
   await page.getByRole("button", { name: "Publish", exact: true }).click();
-  await expect(page.getByText("Published", { exact: true })).toBeVisible();
-  expect(readFileSync(file, "utf8")).toContain("status: published");
-  await page.getByText("File options", { exact: true }).click();
-  await page.getByLabel("Move / rename file").fill("../outside.md");
-  await expect(page.getByText("Use a path inside the content folder")).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Move file", exact: true }),
-  ).toBeDisabled();
-  // A move onto an existing file names that file and overwrites nothing.
-  const taken = join(root, "repo/content/posts", `${slug}-taken.md`);
-  writeFileSync(taken, "taken\n");
-  await page.getByLabel("Move / rename file").fill(`posts/${slug}-taken.md`);
-  await page.getByRole("button", { name: "Move file", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText(
-    `posts/${slug}-taken.md already exists. Nothing was overwritten`,
-  );
-  expect(readFileSync(taken, "utf8")).toBe("taken\n");
-  unlinkSync(taken);
-  expect(existsSync(file)).toBe(true);
-  expect(existsSync(join(root, "repo/outside.md"))).toBe(false);
-  await page.getByLabel("Move / rename file").fill(`posts/${slug}-renamed.md`);
-  await page.getByRole("button", { name: "Move file", exact: true }).click();
-  // Scrolled to File options, the compact context bar shows the title rather than the
-  // path on phones; the path returns once the heading is back in view.
-  await page.evaluate(() => window.scrollTo(0, 0));
-  await expect(page.locator(".editor-path")).toHaveText(`posts/${slug}-renamed.md`);
-  await expect(page.locator(".editor-path")).toBeVisible();
-  expect(existsSync(file)).toBe(false);
-  await page.getByRole("button", { name: "Archive post" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "Archive post" }).click();
-  await expect(page.getByRole("heading", { name: "Posts", exact: true })).toBeVisible();
-  expect(outbound).toEqual([]);
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Save and publish" })
+    .click();
+  await expect(page.getByRole("button", { name: "Publish", exact: true })).toHaveCount(0);
+  const published = await request.get(`/api/posts/${slug}`, { headers: auth });
+  expect((await published.json()).status).toBe("published");
+  const exported = await request.get("/api/export.tar.gz", { headers: auth });
+  expect(exported.status()).toBe(200);
+  expect(gunzipSync(await exported.body()).toString("latin1")).toContain(`${slug}.md`);
+
   expect(violations).toEqual([]);
+});
+
+test("posts list filters, searches and is usable by keyboard", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "Keyboard shortcuts are for desktop.");
+  await signIn(page);
+  await page.keyboard.press("n");
+  const dialog = page.getByRole("dialog", { name: "New post" });
+  await dialog.getByLabel("Title").fill("Keyboard first");
+  await expect(dialog.getByLabel("Slug")).toHaveValue("keyboard-first");
+  await dialog.getByLabel("Title").press("Enter");
+  await expect(page).toHaveURL(/\/posts\/keyboard-first$/);
+  await page.getByRole("link", { name: "All posts" }).click();
+  await expect(page.locator(".post-row").first()).toBeVisible();
+  await page.keyboard.press("/");
+  await expect(page.getByLabel("Search posts")).toBeFocused();
+  await page.keyboard.type("keyboard");
+  await expect(page.locator(".post-row")).toHaveCount(1);
+  await expect(page).toHaveURL(/q=keyboard/);
+  await page.getByRole("button", { name: /^Published/ }).click();
+  await expect(page.getByText("No published posts match")).toBeVisible();
+  await page.getByRole("button", { name: "Show all posts" }).click();
+  await expect(page.getByLabel("Search posts")).toHaveValue("");
 });

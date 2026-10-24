@@ -35,7 +35,16 @@ const (
 	MaxExtra       = 64 << 10
 )
 
-var slugPattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
+var (
+	slugPattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
+	wordPattern = regexp.MustCompile(`[\p{L}\p{N}][\p{L}\p{N}'’-]*`)
+)
+
+// CountWords counts words the way the editor does: runs of letters and
+// digits, so Markdown symbols are not words.
+func CountWords(text string) int {
+	return len(wordPattern.FindAllStringIndex(text, -1))
+}
 
 // Post is one article. Body is Markdown. Extra holds frontmatter keys that
 // BurzBlog does not model, as a YAML mapping, so they survive round trips.

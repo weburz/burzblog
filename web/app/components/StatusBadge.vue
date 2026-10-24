@@ -1,29 +1,15 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import type { PostStatus } from "../types";
 
-const props = withDefaults(
-  defineProps<{ status: "draft" | "published" | "unavailable"; pill?: boolean }>(),
-  { pill: false },
-);
+const props = defineProps<{ status: PostStatus }>();
 const label = computed(
-  () =>
-    ({ draft: "Draft", published: "Published", unavailable: "Needs attention" })[
-      props.status
-    ],
+  () => ({ draft: "Draft", published: "Published", archived: "Archived" })[props.status],
 );
 </script>
 
 <template>
-  <span
-    class="badge"
-    :class="[`badge-${status}`, { 'badge-pill': pill || status === 'unavailable' }]"
-  >
-    <UIcon v-if="status === 'published'" name="i-lucide-check" class="size-3" />
-    <UIcon
-      v-else-if="status === 'unavailable'"
-      name="i-lucide-triangle-alert"
-      class="size-3"
-    />
-    {{ label }}
+  <span class="badge" :class="`badge-${status}`">
+    <span class="badge-dot" aria-hidden="true" />{{ label }}
   </span>
 </template>

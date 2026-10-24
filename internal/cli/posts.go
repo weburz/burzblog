@@ -59,7 +59,7 @@ func (a *App) listCmd() *cobra.Command {
 					ago(p.UpdatedAt)+" by "+p.UpdatedBy)
 			}
 			w.Flush()
-			fmt.Fprintf(a.Out, "\n%s\n", a.paint(dim, fmt.Sprintf("%d drafts · %d published · %d archived",
+			fmt.Fprintf(a.Out, "\n%s\n", a.paint(dim, fmt.Sprintf("%d drafts, %d published, %d archived",
 				l.Counts["draft"], l.Counts["published"], l.Counts["archived"])))
 			return nil
 		},

@@ -217,7 +217,7 @@ func TestPostLifecycle(t *testing.T) {
 
 	_, list := h.do("GET", "/api/posts?q=hello", nil)
 	items := list["items"].([]any)
-	if len(items) != 1 || items[0].(map[string]any)["words"] != 2.0 {
+	if len(items) != 1 || items[0].(map[string]any)["words"] != 1.0 {
 		t.Errorf("list = %v", list)
 	}
 	if counts := list["counts"].(map[string]any); counts["published"] != 1.0 {
@@ -406,6 +406,11 @@ func TestPanelAndHeaders(t *testing.T) {
 	}
 	if resp.Header.Get("X-Frame-Options") != "DENY" || resp.Header.Get("X-Content-Type-Options") != "nosniff" {
 		t.Errorf("security headers = %v", resp.Header)
+	}
+	resp, _ = http.Get(h.ts.URL + "/settings/index.html")
+	resp.Body.Close()
+	if resp.Header.Get("Content-Security-Policy") == "" {
+		t.Error("a generated HTML file was served without the CSP")
 	}
 	resp, _ = http.Get(h.ts.URL + "/_nuxt/a.js")
 	resp.Body.Close()

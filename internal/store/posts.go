@@ -156,7 +156,7 @@ func (s *Store) ListPosts(ctx context.Context, f Filter) ([]Summary, Counts, err
 			return nil, counts, fmt.Errorf("list posts: %w", err)
 		}
 		sm.Status = post.Status(status)
-		sm.Words = len(strings.Fields(body))
+		sm.Words = post.CountWords(body)
 		sm.PublishedOn = timePtr(publishedOn)
 		sm.UpdatedAt = parseStamp(updated)
 		list = append(list, sm)

@@ -179,3 +179,12 @@ func TestDecodeKeepsBodyExactly(t *testing.T) {
 		t.Errorf("frontmatter only: %v %q", err, d.Body)
 	}
 }
+
+func TestCountWords(t *testing.T) {
+	if n := CountWords("## Hello, *world* — it's 2026! Привет"); n != 5 {
+		t.Errorf("CountWords = %d, want 5 (same as the editor)", n)
+	}
+	if n := CountWords(""); n != 0 {
+		t.Errorf("CountWords(empty) = %d", n)
+	}
+}

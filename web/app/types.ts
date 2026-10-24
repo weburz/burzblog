@@ -1,54 +1,91 @@
-export interface Article {
-  path: string;
-  revision: string;
-  markdown: string;
+export type PostStatus = "draft" | "published" | "archived";
+
+export interface Post {
+  slug: string;
   title: string;
-  status: string;
-  // Why the frontmatter cannot be read; `markdown` is then the file's exact text.
-  problem?: string | null;
+  description: string;
+  status: PostStatus;
+  body: string;
+  coverUrl: string;
+  coverAlt: string;
+  // Frontmatter keys BurzBlog does not model, as YAML, kept on every round trip.
+  extra: string;
+  publishedOn: string | null;
+  updatedOn: string | null;
+  createdAt: string;
+  updatedAt: string;
+  updatedBy: string;
+  version: number;
 }
+
+// The fields the editor can change; status changes go through post actions.
+export type PostDraft = Pick<
+  Post,
+  | "slug"
+  | "title"
+  | "description"
+  | "body"
+  | "coverUrl"
+  | "coverAlt"
+  | "extra"
+  | "publishedOn"
+  | "updatedOn"
+>;
+
 export interface PostSummary {
-  path: string;
-  // Empty when the file has no title in its frontmatter.
+  slug: string;
   title: string;
-  status: string;
-  // ISO 8601 time the file last changed on disk.
-  modified: string;
+  description: string;
+  status: PostStatus;
+  words: number;
+  publishedOn: string | null;
+  updatedAt: string;
+  updatedBy: string;
+  version: number;
 }
+
 export interface PostList {
   items: PostSummary[];
-  // Files matching the current filter and search.
-  total: number;
-  // Every Markdown file discovered under the content folder.
-  files: number;
-  // Markdown files with names BurzBlog cannot use, and folders it will not read.
-  left_out?: { unsupported_names: number; unsafe_folders: number };
+  counts: Record<PostStatus, number>;
 }
+
 export interface Session {
   authenticated: boolean;
+  username?: string;
   csrf?: string;
 }
-export interface Repository {
-  branch: string | null;
-  detached: boolean;
-  clean: boolean;
-  branches: string[];
-  changed_markdown: string[];
-  // Changed Markdown whose names the content store refuses, so cannot be committed.
-  unsupported_markdown?: string[];
-  changes: { path: string; index: string; worktree: string }[];
-  upstream: string | null;
-  ahead: number | null;
-  behind: number | null;
-  operation: string | null;
+
+export interface Revision {
+  version: number;
+  title: string;
+  status: PostStatus;
+  savedAt: string;
+  savedBy: string;
+  post?: Post;
 }
-export interface Remote {
+
+export interface Token {
+  id: number;
   name: string;
-  transport: "https" | "file";
-  authenticated: boolean;
+  scope: "write" | "export";
+  username: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+  // Only present in the response that creates the token.
+  secret?: string;
 }
-export interface GitState {
-  repository: Repository | null;
-  remote_configured: boolean;
-  remote: Remote | null;
+
+export interface DeployStatus {
+  configured: boolean;
+  pending: boolean;
+  lastAt: string | null;
+  lastStatus: "" | "ok" | "failed";
+  lastError: string;
+}
+
+export interface Settings {
+  username: string;
+  origin: string;
+  version: string;
+  deploy: DeployStatus;
 }

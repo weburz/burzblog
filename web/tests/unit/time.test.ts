@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { editedLabel, exactTime } from "../../app/utils/time";
+import {
+  editedLabel,
+  exactTime,
+  fromLocalInput,
+  toLocalInput,
+} from "../../app/utils/time";
 
 describe("editedLabel", () => {
   const now = Date.parse("2026-10-09T12:00:00Z");
@@ -19,5 +24,17 @@ describe("editedLabel", () => {
     expect(editedLabel(new Date(now + 60_000).toISOString(), now)).toBe("Just now");
     expect(editedLabel("not a date", now)).toBe("");
     expect(exactTime("not a date")).toBe("");
+  });
+});
+
+describe("datetime-local conversion", () => {
+  it("round-trips through local input values", () => {
+    const iso = "2026-04-25T01:46:00Z";
+    expect(fromLocalInput(toLocalInput(iso))).toBe(iso);
+  });
+  it("keeps empty values empty", () => {
+    expect(toLocalInput(null)).toBe("");
+    expect(fromLocalInput("")).toBeNull();
+    expect(toLocalInput("nonsense")).toBe("");
   });
 });

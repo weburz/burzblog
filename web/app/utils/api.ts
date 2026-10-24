@@ -1,47 +1,38 @@
-import type { Session } from "../types";
+import type { Post, Session } from "../types";
 
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
     public readonly code: string,
     message: string,
-    // The server's curated, content-free cause ("title must not be empty."), when known.
+    // The server's specific cause ("title must not be empty."), when known.
     public readonly detail = "",
+    // On a save conflict, the post as it is on the server now.
+    public readonly current: Post | null = null,
   ) {
     super(message);
   }
 }
 
-const sessionExpired = () => {
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(new CustomEvent("burzblog:session-expired"));
-  }
+// The CSRF token of the signed-in session. It lives only in memory: a reload
+// asks the server again.
+let csrf = "";
+export const rememberSession = (session: Session) => {
+  csrf = session.authenticated ? (session.csrf ?? "") : "";
 };
 
-export const request = async <T>(
-  path: string,
-  method = "GET",
-  body?: unknown,
-): Promise<T> => {
+const sessionExpired = () => {
+  csrf = "";
+  if (typeof window !== "undefined")
+    window.dispatchEvent(new CustomEvent("burzblog:session-expired"));
+};
+
+const send = async (path: string, method: string, body: unknown): Promise<Response> => {
   const headers: Record<string, string> = {};
-  if (method !== "GET") {
-    headers["Content-Type"] = "application/json";
-    if (path !== "/api/login") {
-      const session = await request<Session>("/api/session");
-      if (!session.authenticated || !session.csrf) {
-        sessionExpired();
-        throw new ApiError(
-          401,
-          "authentication",
-          "Your session expired. Sign in again, then retry.",
-        );
-      }
-      headers["X-CSRF-Token"] = session.csrf;
-    }
-  }
-  let response: Response;
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  if (method !== "GET" && csrf) headers["X-CSRF-Token"] = csrf;
   try {
-    response = await fetch(path, {
+    return await fetch(path, {
       method,
       headers,
       credentials: "same-origin",
@@ -52,23 +43,52 @@ export const request = async <T>(
     throw new ApiError(
       0,
       "network",
-      "Cannot reach BurzBlog. Your changes are not saved. Keep this tab open and try again.",
+      "Cannot reach BurzBlog. Nothing was saved. Check your connection and try again.",
     );
+  }
+};
+
+const refreshCsrf = async (): Promise<boolean> => {
+  const response = await send("/api/session", "GET", undefined);
+  if (!response.ok) return false;
+  const session = (await response.json()) as Session;
+  rememberSession(session);
+  return Boolean(csrf);
+};
+
+export const request = async <T>(
+  path: string,
+  method = "GET",
+  body?: unknown,
+): Promise<T> => {
+  if (method !== "GET" && !csrf && path !== "/api/login") await refreshCsrf();
+  let response = await send(path, method, body);
+  if (response.status === 403 && method !== "GET") {
+    // A token rotated by another tab: fetch the current one and retry once.
+    const value = (await response
+      .clone()
+      .json()
+      .catch(() => null)) as {
+      error?: { code?: string };
+    } | null;
+    if (value?.error?.code === "csrf" && (await refreshCsrf()))
+      response = await send(path, method, body);
   }
   if (!response.ok) {
     const value = (await response.json().catch(() => null)) as {
       error?: { code?: string; message?: string; detail?: string };
+      current?: Post;
     } | null;
     const code = value?.error?.code ?? "request";
-    // A wrong password or a foreign origin is a 401 too, but not an expired session.
-    if (response.status === 401 && !["credentials", "origin"].includes(code))
-      sessionExpired();
+    // A wrong password is a 401 too, but not an expired session.
+    if (response.status === 401 && code !== "credentials") sessionExpired();
     throw new ApiError(
       response.status,
       code,
       value?.error?.message ??
-        "The request failed. Your changes may not be saved; review the current file before retrying.",
+        "The request failed. Your changes may not be saved; reload the post before trying again.",
       value?.error?.detail ?? "",
+      value?.current ?? null,
     );
   }
   return response.json() as Promise<T>;
@@ -81,5 +101,5 @@ export const errorMessage = (error: unknown): string => {
   if (error instanceof ApiError && error.detail) return sentence(error.detail);
   return error instanceof Error
     ? error.message
-    : "The operation failed. Keep unsaved writing and review the file before retrying.";
+    : "That did not work. Your writing is still here; try again.";
 };

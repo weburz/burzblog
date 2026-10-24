@@ -1,70 +1,78 @@
 <script setup lang="ts">
 import { nextTick, ref } from "vue";
-import { request, errorMessage } from "../utils/api";
-import { withRetainedFocus } from "../utils/focus";
+import { errorMessage } from "../utils/api";
 
-defineProps<{ compact?: boolean }>();
+const props = defineProps<{ compact?: boolean; username?: string }>();
 const emit = defineEmits<{ success: [] }>();
+const { signIn } = useCurrentSession();
+const name = ref(props.username ?? "");
 const password = ref("");
 const busy = ref(false);
 const error = ref("");
+
 const submit = async () => {
-  const signedIn = await withRetainedFocus(async () => {
-    busy.value = true;
-    error.value = "";
-    try {
-      await request("/api/login", "POST", { password: password.value });
-      password.value = "";
-      emit("success");
-      return true;
-    } catch (cause) {
-      error.value = errorMessage(cause);
-      return false;
-    } finally {
-      busy.value = false;
-    }
-  });
-  if (signedIn) return;
-  // Put the writer straight back into the field to retype the password.
-  await nextTick();
-  const field = document.getElementById("password") as HTMLInputElement | null;
-  field?.focus();
-  field?.select();
+  busy.value = true;
+  error.value = "";
+  try {
+    await signIn(name.value.trim(), password.value);
+    password.value = "";
+    emit("success");
+  } catch (cause) {
+    error.value = errorMessage(cause);
+    // Put the writer straight back into the password to retype it.
+    await nextTick();
+    const field = document.getElementById("login-password") as HTMLInputElement | null;
+    field?.focus();
+    field?.select();
+  } finally {
+    busy.value = false;
+  }
 };
 </script>
 
 <template>
-  <form
-    class="login"
-    :class="{ 'login-compact': compact, panel: !compact }"
-    @submit.prevent="submit"
-  >
-    <div v-if="!compact">
-      <h1 class="login-title mb-3">A quiet place to write.</h1>
-      <p class="muted">Your words, in Markdown files you own.</p>
+  <form class="login" :class="{ 'login-compact': compact }" @submit.prevent="submit">
+    <div v-if="!compact" class="login-intro">
+      <h1 class="login-title">A quiet place to write.</h1>
+      <p class="muted">
+        Sign in to write in the browser. Prefer your own editor? Run
+        <code class="mono">burzblog login</code> in a terminal.
+      </p>
     </div>
-    <div class="field !mb-0 login-field">
-      <label for="password">Administrator password</label>
+    <div class="field">
+      <label for="login-username">Username</label>
       <UInput
-        id="password"
+        id="login-username"
+        v-model="name"
+        autocomplete="username"
+        autocapitalize="none"
+        spellcheck="false"
+        required
+        :autofocus="!props.username"
+        class="w-full"
+        size="xl"
+      />
+    </div>
+    <div class="field">
+      <label for="login-password">Password</label>
+      <UInput
+        id="login-password"
         v-model="password"
         type="password"
         autocomplete="current-password"
         required
-        autofocus
+        :autofocus="Boolean(props.username)"
         class="w-full"
-        :size="compact ? 'lg' : 'xl'"
+        size="xl"
         :aria-describedby="error ? 'login-error' : undefined"
       />
     </div>
-    <p v-if="error" id="login-error" class="alert login-error !my-0" role="alert">
-      {{ error }}
-    </p>
+    <p v-if="error" id="login-error" class="alert" role="alert">{{ error }}</p>
     <div class="login-actions">
       <UButton
         type="submit"
         color="primary"
-        size="lg"
+        size="xl"
         class="justify-center"
         :class="{ 'w-full': !compact }"
         :loading="busy"
