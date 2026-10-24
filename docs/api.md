@@ -11,8 +11,9 @@ There are no unauthenticated content routes.
 | CLI | `Authorization: Bearer bzb_...` write token from `POST /api/auth/token` | nothing else |
 | Website build | `Authorization: Bearer bzb_...` export token created in Settings | can only call `GET /api/export.tar.gz` |
 
-Sessions last 12 hours. Ten failed sign-ins for one username in 15 minutes, or
-200 across the instance, block further attempts for that window.
+Sessions last 12 hours. Each username gets ten sign-in attempts per 15 minutes;
+a successful sign-in resets the count. There is no instance-wide limit, so one
+attacker cannot lock every author out.
 
 ## Errors
 

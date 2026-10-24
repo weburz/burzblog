@@ -8,7 +8,8 @@ to it; they read the website your build produces.
 **Accounts.** Passwords are hashed with Argon2id (19 MiB, 2 passes), at least
 12 characters. At most two hashes run at once, so a burst of sign-ins cannot
 exhaust a Pi's memory. Unknown usernames take as long as known ones. Failed
-sign-ins are limited per username and per instance (see [API](api.md)). There
+sign-ins are limited per username, counted before the password is checked so
+parallel guesses cannot slip past (see [API](api.md)). There
 is no self sign-up; accounts are created on the host with `burzblog user add`.
 
 **Browser sessions.** A random 256-bit session id in an `HttpOnly`,
