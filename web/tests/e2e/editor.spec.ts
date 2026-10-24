@@ -37,12 +37,15 @@ test("writing in the browser and the terminal never loses work", async ({
     "A quieter writing workflow",
   );
 
+  // The server trims the title; the editor must not stay "unsaved" after.
+  await page.getByLabel("Title", { exact: true }).fill("A quieter writing workflow ");
   await body.fill("# Hello\n\nWritten in the browser.\n");
   await expect(
     page.getByRole("status").filter({ hasText: "Unsaved changes" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.getByRole("status").filter({ hasText: /^\s*Saved/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
   await page.reload();
   await expect(body).toHaveValue("# Hello\n\nWritten in the browser.\n");
   await expect(page).toHaveTitle("A quieter writing workflow · BurzBlog");
@@ -87,8 +90,16 @@ test("writing in the browser and the terminal never loses work", async ({
   await expect(leave).toHaveCount(0);
   await expect(body).toHaveValue("# Hello\n\nUnsaved thought.\n");
 
-  // A second tab finds the unsaved writing kept in this browser.
+  // Another tab finds the unsaved writing kept in this browser, and the
+  // backup survives a visit that does not restore it.
   await page.waitForTimeout(800);
+  const glance = await context.newPage();
+  await glance.goto(`/posts/${slug}`);
+  await expect(
+    glance.getByRole("alert").filter({ hasText: "still in this browser" }),
+  ).toBeVisible();
+  await glance.waitForTimeout(1000);
+  await glance.close();
   const second = await context.newPage();
   await second.goto(`/posts/${slug}`);
   const recovered = second

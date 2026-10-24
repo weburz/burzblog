@@ -254,20 +254,21 @@ func TestLoginAttempts(t *testing.T) {
 	now := time.Unix(1_800_000_000, 0)
 	s.SetClock(func() time.Time { return now })
 	for i := 0; i < 3; i++ {
-		if ok, _ := s.LoginAllowed(ctx, "k", 3, time.Minute); !ok {
-			t.Fatalf("blocked after %d failures", i)
+		if ok, err := s.ReserveLoginAttempt(ctx, "k", 3, time.Minute); !ok || err != nil {
+			t.Fatalf("attempt %d refused: %v", i+1, err)
 		}
-		s.RecordLoginFailure(ctx, time.Minute, "k")
 	}
-	if ok, _ := s.LoginAllowed(ctx, "k", 3, time.Minute); ok {
+	if ok, _ := s.ReserveLoginAttempt(ctx, "k", 3, time.Minute); ok {
 		t.Error("allowed after reaching the limit")
 	}
 	now = now.Add(time.Minute)
-	if ok, _ := s.LoginAllowed(ctx, "k", 3, time.Minute); !ok {
+	if ok, _ := s.ReserveLoginAttempt(ctx, "k", 3, time.Minute); !ok {
 		t.Error("still blocked after the window passed")
 	}
-	s.RecordLoginFailure(ctx, time.Minute, "k")
-	if ok, _ := s.LoginAllowed(ctx, "k", 3, time.Minute); !ok {
-		t.Error("failures did not reset with the new window")
+	s.ClearLoginFailures(ctx, "k")
+	for i := 0; i < 3; i++ {
+		if ok, _ := s.ReserveLoginAttempt(ctx, "k", 3, time.Minute); !ok {
+			t.Fatalf("attempt %d after clearing refused", i+1)
+		}
 	}
 }

@@ -305,6 +305,14 @@ func TestCLITokenAndMarkdown(t *testing.T) {
 	if code := put(`"1"`); code != 409 {
 		t.Errorf("stale PUT markdown = %d", code)
 	}
+	req, _ = http.NewRequest("PUT", h.ts.URL+"/api/posts/terminal/markdown", strings.NewReader(strings.Replace(edited, "title:", "slug: other\ntitle:", 1)))
+	req.Header.Set("Authorization", "Bearer "+h.token)
+	req.Header.Set("If-Match", `"2"`)
+	resp, _ = http.DefaultClient.Do(req)
+	resp.Body.Close()
+	if resp.StatusCode != 422 {
+		t.Errorf("mismatched frontmatter slug = %d", resp.StatusCode)
+	}
 	if resp, out := h.do("PUT", "/api/posts/terminal/markdown", "no frontmatter"); resp.StatusCode != 422 {
 		t.Errorf("invalid document = %d %v", resp.StatusCode, out)
 	}
@@ -457,4 +465,33 @@ func mustURL(raw string) *url.URL {
 
 func jsonInt(f float64) string {
 	return strconv.FormatInt(int64(f), 10)
+}
+
+func TestMarkdownStatusRules(t *testing.T) {
+	h := newHarness(t, nil)
+	h.login()
+	h.do("POST", "/api/posts", map[string]string{"title": "Live"})
+	h.do("POST", "/api/posts/live/publish", map[string]any{"version": 1})
+	put := func(doc, version string) *http.Response {
+		req, _ := http.NewRequest("PUT", h.ts.URL+"/api/posts/live/markdown", strings.NewReader(doc))
+		req.Header.Set("Origin", h.ts.URL)
+		req.Header.Set("X-CSRF-Token", h.csrf)
+		req.Header.Set("If-Match", version)
+		resp, err := h.client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp
+	}
+	if resp := put("---\ntitle: Live\n---\n\nNo status line.\n", `"2"`); resp.StatusCode != 200 {
+		t.Fatalf("save without status = %d", resp.StatusCode)
+	}
+	if _, out := h.do("GET", "/api/posts/live", nil); out["status"] != "published" {
+		t.Errorf("a file without a status line unpublished the post: %v", out["status"])
+	}
+	h.do("POST", "/api/posts/live/archive", map[string]any{"version": 3})
+	if resp := put("---\ntitle: Live\nstatus: published\n---\n", `"4"`); resp.StatusCode != 422 {
+		t.Errorf("archived to published from a file = %d, want 422", resp.StatusCode)
+	}
 }

@@ -163,8 +163,6 @@ func (a *App) edit(cl *client.Client, cfg *Config, slug string) error {
 		return fmt.Errorf("%q is not a post slug; run `burzblog list` to see them", slug)
 	}
 	docPath, metaPath := a.draftPaths(cfg, slug)
-	c, cancel := ctx()
-	defer cancel()
 
 	var original string
 	var version int64
@@ -181,7 +179,11 @@ func (a *App) edit(cl *client.Client, cfg *Config, slug string) error {
 		}
 	}
 	if !resumed {
+		// Each request gets its own deadline: time spent in the editor must
+		// not count against the save.
+		c, cancel := ctx()
 		doc, v, err := cl.Markdown(c, slug)
+		cancel()
 		if err != nil {
 			return err
 		}
@@ -212,11 +214,12 @@ func (a *App) edit(cl *client.Client, cfg *Config, slug string) error {
 			fmt.Fprintln(a.Out, "No changes.")
 			return nil
 		}
+		c, cancel := ctx()
 		saved, err := cl.SaveMarkdown(c, slug, string(edited), version)
+		cancel()
 		if err == nil {
 			os.Remove(docPath)
 			os.Remove(metaPath)
-			a.rememberBase(cfg.Server, slug, saved.Version)
 			if saved.Version == version {
 				fmt.Fprintln(a.Out, "No changes.")
 			} else {
@@ -278,8 +281,9 @@ func (a *App) runEditor(path string) error {
 	return nil
 }
 
-// Base versions remember which server version a pulled file came from, so
-// push can refuse to overwrite newer work.
+// Base versions remember which server version each pulled file came from,
+// keyed by server and the file's absolute path, so push can refuse to
+// overwrite newer work even if the post was edited elsewhere meanwhile.
 func (a *App) basePath() string {
 	return filepath.Join(a.CacheDir, "base.json")
 }
@@ -292,9 +296,16 @@ func (a *App) bases() map[string]int64 {
 	return m
 }
 
-func (a *App) rememberBase(server, slug string, version int64) {
+func baseKey(server, file string) string {
+	if abs, err := filepath.Abs(file); err == nil {
+		file = abs
+	}
+	return server + " " + file
+}
+
+func (a *App) rememberBase(server, file string, version int64) {
 	m := a.bases()
-	m[server+" "+slug] = version
+	m[baseKey(server, file)] = version
 	raw, _ := json.Marshal(m)
 	if os.MkdirAll(a.CacheDir, 0o700) == nil {
 		_ = writeFileAtomic(a.basePath(), raw, 0o600)
@@ -339,7 +350,7 @@ func (a *App) pullCmd() *cobra.Command {
 			if err := writeFileAtomic(out, []byte(doc), 0o644); err != nil {
 				return err
 			}
-			a.rememberBase(cfg.Server, slug, version)
+			a.rememberBase(cfg.Server, out, version)
 			fmt.Fprintf(a.Out, "%s Wrote %s (version %d). Send it back with: burzblog push %s\n", a.paint(green, "✓"), out, version, out)
 			return nil
 		},
@@ -377,7 +388,7 @@ If the post changed on the server since you pulled it, push refuses; use
 			}
 			c, cancel := ctx()
 			defer cancel()
-			version, known := a.bases()[cfg.Server+" "+slug]
+			version, known := a.bases()[baseKey(cfg.Server, path)]
 			if !known || force {
 				current, err := cl.Post(c, slug)
 				switch {
@@ -400,7 +411,7 @@ If the post changed on the server since you pulled it, push refuses; use
 			if err != nil {
 				return err
 			}
-			a.rememberBase(cfg.Server, slug, saved.Version)
+			a.rememberBase(cfg.Server, path, saved.Version)
 			verb := "Saved"
 			if version == 0 {
 				verb = "Created"

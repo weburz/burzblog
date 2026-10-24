@@ -199,9 +199,15 @@ func Normalize(p *Post) {
 // save can skip creating a new version.
 func SameContent(a, b *Post) bool {
 	return a.Slug == b.Slug && a.Title == b.Title && a.Description == b.Description &&
-		a.Status == b.Status && a.Body == b.Body && a.CoverURL == b.CoverURL &&
+		a.Status == b.Status && sameBody(a.Body, b.Body) && a.CoverURL == b.CoverURL &&
 		a.CoverAlt == b.CoverAlt && a.Extra == b.Extra &&
 		sameTime(a.PublishedOn, b.PublishedOn) && sameTime(a.UpdatedOn, b.UpdatedOn)
+}
+
+// sameBody ignores one trailing newline: files always end with one, the
+// browser editor usually does not, and neither is a change worth a version.
+func sameBody(a, b string) bool {
+	return strings.TrimSuffix(a, "\n") == strings.TrimSuffix(b, "\n")
 }
 
 func sameTime(a, b *time.Time) bool {

@@ -119,13 +119,13 @@ func randomToken(prefix string) (string, error) {
 // TokenPrefix marks BurzBlog API tokens so secret scanners can find them.
 const TokenPrefix = "bzb_"
 
-// Sign-in limits: per username and across the whole instance.
+// Sign-in limits per username. There is deliberately no instance-wide
+// limit: anyone could exhaust it and lock every author out. The gate below
+// bounds how much password hashing runs at once instead.
 const (
-	window      = 15 * time.Minute
-	userLimit   = 10
-	globalLimit = 200
-	globalKey   = "*"
-	SessionTTL  = 12 * time.Hour
+	window     = 15 * time.Minute
+	userLimit  = 10
+	SessionTTL = 12 * time.Hour
 )
 
 // Service signs people in against the store.
@@ -153,17 +153,13 @@ func (a *Service) Authenticate(ctx context.Context, username, password string) (
 		return nil, ErrCredentials
 	}
 	userKey := "user:" + strings.ToLower(username)
-	for _, k := range []struct {
-		key   string
-		limit int
-	}{{userKey, userLimit}, {globalKey, globalLimit}} {
-		ok, err := a.store.LoginAllowed(ctx, k.key, k.limit, window)
-		if err != nil {
-			return nil, err
-		}
-		if !ok {
-			return nil, ErrRateLimited
-		}
+	// Reserve the attempt before hashing so parallel guesses cannot all pass.
+	ok, err := a.store.ReserveLoginAttempt(ctx, userKey, userLimit, window)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, ErrRateLimited
 	}
 	select {
 	case a.gate <- struct{}{}:
@@ -178,11 +174,8 @@ func (a *Service) Authenticate(ctx context.Context, username, password string) (
 	} else if !errors.Is(err, store.ErrNotFound) {
 		return nil, err
 	}
-	ok, stale := verifyPassword(hash, password)
-	if err != nil || !ok {
-		if rerr := a.store.RecordLoginFailure(ctx, window, userKey, globalKey); rerr != nil {
-			return nil, rerr
-		}
+	verified, stale := verifyPassword(hash, password)
+	if err != nil || !verified {
 		return nil, ErrCredentials
 	}
 	if err := a.store.ClearLoginFailures(ctx, userKey); err != nil {

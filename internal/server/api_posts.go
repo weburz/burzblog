@@ -274,6 +274,11 @@ func (s *Server) putMarkdown(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slug := r.PathValue("slug")
+	if doc.Slug != "" && doc.Slug != slug {
+		s.postError(w, r, &post.FieldError{Field: "slug", Message: fmt.Sprintf(
+			"in the frontmatter is %q but the post is %q; remove the slug line or make them match.", doc.Slug, slug)}, nil)
+		return
+	}
 	if r.Header.Get("If-None-Match") == "*" {
 		p := &post.Post{Slug: slug}
 		doc.Apply(p)
@@ -295,7 +300,14 @@ func (s *Server) putMarkdown(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.update(w, r, slug, version, func(p *post.Post) error {
-		if p.Status == post.Archived && doc.Status == post.Draft {
+		switch {
+		case !doc.HasStatus:
+			// A file without a status line keeps the post's status; it must
+			// not quietly unpublish anything.
+			doc.Status = p.Status
+		case p.Status == post.Archived && doc.Status == post.Published:
+			return &post.FieldError{Field: "status", Message: "cannot go from archived to published in one step; restore the post first."}
+		case p.Status == post.Archived:
 			// Saving an archived post from a file keeps it archived.
 			doc.Status = post.Archived
 		}

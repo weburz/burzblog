@@ -106,9 +106,15 @@ func timestamp(t time.Time) *yaml.Node {
 
 // Document is what Decode reads from a frontmatter document.
 type Document struct {
+	// Slug is set only when the frontmatter names one; the file name or URL
+	// decides the post, so callers check that the two agree.
+	Slug        string
 	Title       string
 	Description string
 	Status      Status
+	// HasStatus is false when the frontmatter has no status key, so a save
+	// can keep the post's current status instead of assuming draft.
+	HasStatus   bool
 	CoverURL    string
 	CoverAlt    string
 	PublishedOn *time.Time
@@ -172,6 +178,10 @@ func Decode(doc string) (*Document, error) {
 	if err != nil {
 		return nil, err
 	}
+	if root == nil {
+		// Only comments: there is no title.
+		return nil, &FieldError{"title", "must not be empty."}
+	}
 	extra := &yaml.Node{Kind: yaml.MappingNode}
 	for i := 0; i+1 < len(root.Content); i += 2 {
 		key, value := root.Content[i], root.Content[i+1]
@@ -183,6 +193,7 @@ func Decode(doc string) (*Document, error) {
 			d.Description, err = text(key.Value, value)
 		case "status":
 			var s string
+			d.HasStatus = true
 			if s, err = text(key.Value, value); err == nil {
 				d.Status = Status(s)
 				if d.Status != Draft && d.Status != Published {
@@ -190,7 +201,7 @@ func Decode(doc string) (*Document, error) {
 				}
 			}
 		case "slug":
-			err = &FieldError{"slug", fmt.Sprintf("(line %d) comes from the file name; remove it from the frontmatter.", key.Line)}
+			d.Slug, err = text(key.Value, value)
 		case "timestamps":
 			err = d.readTimestamps(value)
 		case "coverImage":

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/weburz/burzblog/internal/store"
@@ -147,5 +148,41 @@ func TestChangePassword(t *testing.T) {
 	}
 	if _, err := a.Authenticate(ctx, "jarmos", "a brand new password"); err != nil {
 		t.Errorf("new password rejected: %v", err)
+	}
+}
+
+func TestAuthenticateRateLimitHoldsUnderConcurrency(t *testing.T) {
+	a, _, _ := setup(t)
+	ctx := context.Background()
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	checked := 0
+	for i := 0; i < 30; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := a.Authenticate(ctx, "jarmos", "wrong"); errors.Is(err, ErrCredentials) {
+				mu.Lock()
+				checked++
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+	if checked > userLimit {
+		t.Errorf("%d parallel guesses were checked, want at most %d", checked, userLimit)
+	}
+}
+
+func TestOtherAccountsUnaffectedByOneLockedAccount(t *testing.T) {
+	a, s, _ := setup(t)
+	ctx := context.Background()
+	hash, _ := HashPassword("another long password")
+	s.CreateUser(ctx, "sagar", hash)
+	for i := 0; i < userLimit+5; i++ {
+		a.Authenticate(ctx, "jarmos", "wrong")
+	}
+	if _, err := a.Authenticate(ctx, "sagar", "another long password"); err != nil {
+		t.Errorf("another account was locked out: %v", err)
 	}
 }

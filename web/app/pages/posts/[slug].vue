@@ -72,6 +72,8 @@ watch(
     const value = { draft: draft.value, version: post.value.version, at: Date.now() };
     backupTimer = setTimeout(() => {
       try {
+        // A backup still on offer is never touched until the writer decides.
+        if (recovered.value) return;
         if (dirty.value) localStorage.setItem(key, JSON.stringify(value));
         else localStorage.removeItem(key);
       } catch {
@@ -137,18 +139,19 @@ const save = async (overwriteVersion?: number): Promise<boolean> => {
   saving.value = true;
   saveError.value = "";
   const from = post.value.slug;
+  const sent = { ...draft.value };
   try {
     const saved = await request<Post>(`/api/posts/${encodeURIComponent(from)}`, "PUT", {
       version: overwriteVersion ?? post.value.version,
-      ...draft.value,
+      ...sent,
     });
     clearBackup(from);
     conflict.value = null;
     comparing.value = false;
     post.value = saved;
-    // Keep anything typed while the save was in flight.
-    if (same(draft.value, editable(saved)) || overwriteVersion !== undefined)
-      draft.value = editable(saved);
+    // Take the server's copy (it trims stray spaces) unless the writer typed
+    // more while the save was in flight; that stays as unsaved changes.
+    if (same(draft.value, sent)) draft.value = editable(saved);
     if (saved.slug !== from) await navigateTo(`/posts/${saved.slug}`, { replace: true });
     justSaved.value = true;
     setTimeout(() => (justSaved.value = false), 2400);

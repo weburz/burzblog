@@ -2,10 +2,12 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"sync"
 	"time"
 )
@@ -31,7 +33,12 @@ type deployer struct {
 }
 
 func newDeployer(url string, log *slog.Logger) *deployer {
-	return &deployer{url: url, log: log, client: &http.Client{Timeout: 15 * time.Second}}
+	return &deployer{url: url, log: log, client: &http.Client{
+		Timeout: 15 * time.Second,
+		// A redirect would send the request somewhere the operator did not
+		// configure; report it instead.
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}}
 }
 
 func (d *deployer) configured() bool {
@@ -79,6 +86,11 @@ func (d *deployer) fire() {
 	if err != nil {
 		// The error text can contain the hook URL; keep it out of the API.
 		status, errText = "failed", "The deploy hook could not be reached."
+		// *url.Error prints the URL, which is a secret; log only the cause.
+		var uerr *url.Error
+		if errors.As(err, &uerr) {
+			err = uerr.Err
+		}
 		d.log.Warn("deploy hook failed", "err", err)
 	} else {
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))

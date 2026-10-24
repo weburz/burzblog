@@ -156,6 +156,17 @@ func TestTerminalWorkflow(t *testing.T) {
 		t.Errorf("forced push = %q", out)
 	}
 
+	// A file pulled earlier stays stale even after the post is edited
+	// through another route; pushing it must not overwrite that work.
+	stale := filepath.Join(dir, "stale", "go-interfaces-explained.md")
+	os.MkdirAll(filepath.Dir(stale), 0o755)
+	e.must("", "pull", "go-interfaces-explained", "-o", stale)
+	e.editor("s/Edited in VS Code./Edited again via edit./")
+	e.must("", "edit", "go-interfaces-explained")
+	if _, errOut, code := e.run("", "push", stale); code == 0 || !strings.Contains(errOut, "changed on the server") {
+		t.Errorf("stale file pushed over newer edit: %d %q", code, errOut)
+	}
+
 	newFile := filepath.Join(dir, "fresh-idea.md")
 	os.WriteFile(newFile, []byte("---\ntitle: Fresh idea\n---\n\nBody.\n"), 0o644)
 	if out := e.must("", "push", newFile); !strings.Contains(out, "Created fresh-idea") {

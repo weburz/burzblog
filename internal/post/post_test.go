@@ -150,7 +150,6 @@ func TestDecodeErrors(t *testing.T) {
 		"bad yaml":        "---\ntitle: [x\n---\n",
 		"list root":       "---\n- a\n---\n",
 		"archived status": "---\ntitle: x\nstatus: archived\n---\n",
-		"slug key":        "---\ntitle: x\nslug: y\n---\n",
 		"bad date":        "---\ntitle: x\ntimestamps:\n  publishedOn: soon\n---\n",
 		"unknown ts":      "---\ntitle: x\ntimestamps:\n  editedOn: 2026-01-01\n---\n",
 		"duplicate":       "---\ntitle: x\ntitle: y\n---\n",
@@ -186,5 +185,38 @@ func TestCountWords(t *testing.T) {
 	}
 	if n := CountWords(""); n != 0 {
 		t.Errorf("CountWords(empty) = %d", n)
+	}
+}
+
+func TestDecodeSlug(t *testing.T) {
+	d, err := Decode("---\ntitle: x\nslug: hello\n---\n")
+	if err != nil || d.Slug != "hello" || d.Extra != "" {
+		t.Errorf("slug key: %v %+v", err, d)
+	}
+}
+
+func TestDecodeEdgeCases(t *testing.T) {
+	if _, err := Decode("---\n# only a comment\n---\nbody"); !IsFieldError(err) {
+		t.Errorf("comment-only frontmatter: %v, want FieldError", err)
+	}
+	d, err := Decode("---\ntitle: x\n---\n")
+	if err != nil || d.HasStatus {
+		t.Errorf("no status key: HasStatus = %v, %v", d.HasStatus, err)
+	}
+	d, _ = Decode("---\ntitle: x\nstatus: draft\n---\n")
+	if !d.HasStatus {
+		t.Error("status key not noticed")
+	}
+}
+
+func TestSameContentIgnoresTrailingNewline(t *testing.T) {
+	a, b := valid(), valid()
+	a.Body, b.Body = "text", "text\n"
+	if !SameContent(a, b) {
+		t.Error("a trailing newline counted as a change")
+	}
+	b.Body = "text\n\nmore"
+	if SameContent(a, b) {
+		t.Error("a real change was ignored")
 	}
 }

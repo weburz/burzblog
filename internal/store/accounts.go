@@ -250,38 +250,36 @@ func (s *Store) DeleteToken(ctx context.Context, id int64) error {
 	return nil
 }
 
-// LoginAllowed reports whether key has failures left in the current window.
-func (s *Store) LoginAllowed(ctx context.Context, key string, limit int, window time.Duration) (bool, error) {
+// ReserveLoginAttempt counts an attempt for key before the password is
+// checked, atomically, and reports whether the key had attempts left in the
+// current window. Concurrent requests cannot all slip under the limit.
+// A successful sign-in clears the count with ClearLoginFailures.
+func (s *Store) ReserveLoginAttempt(ctx context.Context, key string, limit int, window time.Duration) (bool, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("begin login attempt: %w", err)
+	}
+	defer tx.Rollback()
+	now := s.now().Unix()
 	var start int64
 	var failures int
-	err := s.db.QueryRowContext(ctx, "SELECT window_start, failures FROM login_attempts WHERE key = ?", key).
+	err = tx.QueryRowContext(ctx, "SELECT window_start, failures FROM login_attempts WHERE key = ?", key).
 		Scan(&start, &failures)
-	if errors.Is(err, sql.ErrNoRows) {
-		return true, nil
-	}
-	if err != nil {
+	switch {
+	case errors.Is(err, sql.ErrNoRows), err == nil && now-start >= int64(window.Seconds()):
+		start, failures = now, 0
+	case err != nil:
 		return false, fmt.Errorf("read login attempts: %w", err)
 	}
-	if s.now().Unix()-start >= int64(window.Seconds()) {
-		return true, nil
+	if failures >= limit {
+		return false, nil
 	}
-	return failures < limit, nil
-}
-
-// RecordLoginFailure counts a failed sign-in against each key.
-func (s *Store) RecordLoginFailure(ctx context.Context, window time.Duration, keys ...string) error {
-	now := s.now().Unix()
-	for _, key := range keys {
-		_, err := s.db.ExecContext(ctx, `INSERT INTO login_attempts (key, window_start, failures) VALUES (?, ?, 1)
-			ON CONFLICT (key) DO UPDATE SET
-				failures = CASE WHEN ? - window_start >= ? THEN 1 ELSE failures + 1 END,
-				window_start = CASE WHEN ? - window_start >= ? THEN ? ELSE window_start END`,
-			key, now, now, int64(window.Seconds()), now, int64(window.Seconds()), now)
-		if err != nil {
-			return fmt.Errorf("record login failure: %w", err)
-		}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO login_attempts (key, window_start, failures) VALUES (?, ?, ?)
+		ON CONFLICT (key) DO UPDATE SET window_start = excluded.window_start, failures = excluded.failures`,
+		key, start, failures+1); err != nil {
+		return false, fmt.Errorf("record login attempt: %w", err)
 	}
-	return nil
+	return true, tx.Commit()
 }
 
 // ClearLoginFailures forgets failures for key after a successful sign-in.
