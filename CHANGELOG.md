@@ -6,75 +6,41 @@ All notable changes are recorded here, following
 
 ## [Unreleased]
 
-### Added
+### Changed
 
-- Versioned publication export (`burzblog export`) with draft exclusion, public
-  metadata allowlisting, duplicate-slug validation, empty-release protection,
-  and a bounded output size. A static reader example demonstrates sanitized
-  rendering and hosted images without exposing the private content directory.
-- Public-facing launch guidance covering separate application/content storage,
-  upgrade boundaries, reader integration, media limitations, and release gates.
-
-### Fixed
-
-- Apply compatible Vite, launch-editor, tinypool, and Vitest security patches
-  for launch tooling. Remaining unavailable/incompatible upstream fixes are
-  documented in the dependency review; no clean audit is claimed.
-
-- Frontmatter BurzBlog writes reads the same elsewhere: strings a YAML 1.1 reader
-  would take as booleans, numbers or dates (`On`, `No`, `10:30`) are quoted;
-  control and line-separator characters in values are refused; delimiters are
-  found on newlines only; invisible-only titles and commit messages count as
-  empty; commit messages are limited to 4,000 characters consistently (#46).
-- Posts says how many Markdown files have unusable names and how many folders
-  were skipped for being writable by others, instead of hiding the files or
-  failing the whole list; discovery allows 50,000 entries; slugs stop at 125
-  characters so the filename fits; files created in setgid folders stay readable
-  (#44).
-- Simultaneous correct logins wait for each other instead of failing with 429;
-  IPv6 literal origins are refused at start-up instead of rejecting every request;
-  404, 405, unreadable bodies and unexpected errors use the JSON error shape with
-  security headers; `Content-Type` is matched case-insensitively (#45).
-- Editor polish (#35): the preview grows with its content instead of scrolling
-  inside the page, the save shortcut shows ⌘ on macOS, slugs keep accented letters
-  without their accents ("Café" → `cafe`), and a successful move is confirmed.
-- Repository page: changes and commit on the left, sync and branches beside them;
-  no-op push and update are disabled with the reason, changes outside Markdown are
-  named as the blocker, branches switch from a list, files show their change type,
-  and the page shows a loading state (#32).
-- Git panel: fetch follows force-pushed remotes, dotted branch names work,
-  ahead/behind appear without tracking configuration, nothing-to-commit and
-  duplicate branches are explained conflicts, pushing a branch without commits is
-  no longer reported as a remote failure, uncommittable names are listed apart,
-  and inert tool-written config keys are accepted (#43).
-- A save or move that fails after capture no longer takes the post out of its
-  folder: unwritable folders are refused first, and a failed publication links
-  the captured file back to its own name (#42).
-- Publish refuses a file whose opening frontmatter BurzBlog cannot read (BOM,
-  leading blank lines, `--- ` or TOML) instead of adding a second block above it;
-  the editor explains the opening lines (#41).
-- Preview and frontmatter parsing have bounded cost: rendering runs in a capped
-  worker process, a quadratic text join in markdown-it is replaced, and deeply
-  nested frontmatter is refused in milliseconds instead of minutes (#40).
-- A malformed or unencodable file, or a non-UTF-8 name in the repository, no
-  longer turns the post list or the Git panel into a server error (#39).
-- Failures name their cause and appear beside the control that caused them: wrong
-  passwords, existing destinations, missing folders, invalid paths and titles, and
-  files removed outside BurzBlog each get their own message (#28).
-- The session dialog no longer claims a valid session ended; Sign out is a direct
-  button (#34).
-- Drafts, Published and search cover every post instead of the visible page of
-  100; search also matches filenames (#29).
-- A post marked Needs attention opens as its exact text with the reason and can be
-  repaired and saved in the browser (#30).
+- **BurzBlog is now one Go binary with SQLite storage** (ADR-013). Posts are
+  Markdown in a database; there are no content files on the server and no Git
+  integration. The binary serves the API and the embedded panel and is also
+  the terminal client. The Python package, recovery journals, Git transport
+  and JSON publication export are removed.
+- The browser panel is rebuilt: post list with filters, search and keyboard
+  shortcuts; a split editor with a formatting toolbar and a live preview that
+  looks like the published post; post settings, history with restore, a
+  conflict view, a browser backup of unsaved work; and a settings page for
+  passwords, connected computers, build tokens and site rebuilds.
 
 ### Added
 
-- Unpublish returns a published post to draft, changing only its status (#33).
-- The address reflects the view: Back, Forward, reload and bookmarks work, the
-  list keeps its filters and scroll position, and the tab title names the view (#31).
-- Posts lists the most recently changed files first, shows when each changed and
-  can sort by path; files without a title show as Untitled (#29).
+- Terminal workflow: `burzblog login`, `list`, `new`, `edit` (opens `$EDITOR`),
+  `pull`, `push`, `publish`, `unpublish`, `archive`, `restore`, `open`,
+  `export`, `logout`, `whoami`; host commands `serve` and `user add|passwd|list`.
+- Versioned saves everywhere: stale saves are refused with the current
+  version attached, and every change keeps a revision.
+- Reader integration: `/api/export.tar.gz` with export-only tokens in Nuxt
+  Content frontmatter shape, unknown frontmatter kept verbatim, and an optional
+  deploy hook after publishing.
+- Multiple accounts, API tokens with revocation, and a systemd unit for
+  Raspberry Pi hosts; a 17 MB distroless container image.
+
+### Removed
+
+- Everything specific to the file-first 1.0.0 design: content directories,
+  recovery journals, Git commit/push/pull, the Python CLI and JSON publication
+  export. Fixes made to that implementation after 1.0.0 are superseded by this
+  rewrite and are not listed. This is a breaking release (2.0.0): there is no
+  automatic migration from 1.0.0 content directories. Push existing files with
+  `burzblog push <slug>.md`; a `slug` key must match the file name, and keys
+  such as `date`, `tags` and `authors` are kept as extra frontmatter.
 
 ## [1.0.0] - 2026-10-06
 

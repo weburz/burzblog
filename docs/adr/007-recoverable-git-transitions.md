@@ -1,5 +1,7 @@
 # ADR-007: Explicit commits and recoverable scoped Git transitions
 
+> **Superseded by [ADR-013](013-database-storage.md)** (2026-10-24). Kept as the record of the file-first design.
+
 Accepted. Native checkout/pull can unlink a concurrently replaced working file.
 Preserving only an earlier copy would repeat issue #2. Do not ask Git to update
 working content. Compute and validate a bounded tree delta, then apply its

@@ -1,5 +1,7 @@
 # ADR-003: POSIX descriptor-relative storage
 
+> **Superseded by [ADR-013](013-database-storage.md)** (2026-10-24). Kept as the record of the file-first design.
+
 Accepted. Resolve each component with directory descriptors and `O_NOFOLLOW`,
 not just string normalization. Refuse symlinks, hard-linked content, non-regular
 files and foreign-owned files. Require read revisions for every destructive

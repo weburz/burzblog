@@ -1,72 +1,114 @@
-# Self-hosting BurzBlog
+# Running BurzBlog
 
-BurzBlog is one process that serves the browser writing interface and its
-authenticated API from a single origin ([ADR-011](adr/011-production-topology.md)).
-It needs a content directory, a private state directory, optionally a Git remote
-token, and an HTTPS reverse proxy you operate. There is no database server,
-worker, queue or Node.js runtime in production.
+BurzBlog is one binary and one SQLite file. These steps run it under systemd on
+a Raspberry Pi or any Linux host, behind HTTPS.
 
-| What | Where | Back up? |
-| --- | --- | --- |
-| Markdown, `.archive`, `.burzblog-recovery`, `.git` | site directory | yes — this is your content |
-| Login database (SQLite) | state directory, 0700, outside the site | yes, privately |
-| Git token / private CA | secrets directory, 0700, outside both | privately, or re-issue |
-| Code | container image or Python package | no — reinstall a pinned version |
+## 1. Get the binary
 
-## Recommended: container
-
-Follow [containers](containers.md): create three host directories, build the
-image, run `init-admin`, `docker compose up -d`, and put an HTTPS reverse proxy
-in front of `127.0.0.1:8080`. This is the verified deployment path.
-
-## Without containers (systemd)
-
-Prerequisites: Python 3.12+, uv, Git ≥ 2.31, Node 24 + pnpm 11 to build the
-interface once. Use a dedicated account that owns the content.
+Build it, or cross-compile for the Pi from another machine:
 
 ```sh
-task setup && (cd web && pnpm build)       # generates web/.output/public
-export BURZBLOG_CONTENT_ROOT=/srv/burzblog/site
-export BURZBLOG_STATE_DIR=/srv/burzblog/state      # 0700, outside the site
-export BURZBLOG_ORIGIN=https://blog.example.org
-export BURZBLOG_WEB_ROOT=$PWD/web/.output/public
-uv run --frozen burzblog-server init-admin
-uv run --frozen burzblog-server serve --port 8080  # binds 127.0.0.1 only
+task build                 # bin/burzblog for this machine
+task release               # dist/ for linux/arm64, linux/arm (Pi 2/3 32-bit), amd64, macOS, Windows
 ```
 
-Run `serve` under a supervisor (systemd `Restart=on-failure`, `User=` the content
-owner, `NoNewPrivileges=yes`, `ProtectSystem=strict` with `ReadWritePaths=` for
-the site and state directories; these unit settings are guidance, not tested
-here), and reverse-proxy to `127.0.0.1:8080` exactly as
-in the [container guide](containers.md#4-put-https-in-front). Never run the Nuxt
-development server (`task dev`) for real use: it is for local development only.
+Copy the right file to the host as `/usr/local/bin/burzblog`. A 64-bit Raspberry
+Pi OS uses `linux-arm64`.
 
-## Content rules
+## 2. Install the service
 
-Point the content root at an existing directory owned by the service user. Root
-and subdirectories must not be group/world writable, content files must have the
-account's effective group, and symlinked ancestors are rejected. Create
-collection folders and `.archive` yourself:
-
-```text
-site/
-  posts/
-  pages/
-  .archive/
+```sh
+sudo useradd --system --home-dir /var/lib/burzblog --shell /usr/sbin/nologin burzblog
+sudo install -m 0755 burzblog /usr/local/bin/burzblog
+sudo install -m 0644 deploy/burzblog.service /etc/systemd/system/burzblog.service
+sudo systemctl edit burzblog
 ```
 
-## Backups, upgrades, recovery
+In the override, set the public address people will open:
 
-The step-by-step procedure is in [backup and restore](backup.md).
+```ini
+[Service]
+Environment=BURZBLOG_ORIGIN=https://blog.example.com
+```
 
-Back up the site (including `.archive`, `.burzblog-recovery` and `.git`) and the
-state directory with normal filesystem tools while writers are stopped; restore
-with the same tools. A private Git token ([setup](git.md#private-https-remotes))
-can be re-issued at the Git host after a restore instead of being backed up.
-Upgrades are explicit: back up, install a pinned version, start, verify, keep the
-previous version for rollback. Startup never migrates Markdown. If a save or Git
-transition reports recovery, follow [recovery](recovery.md) before retrying.
+The origin must match the address in the browser exactly (scheme, host and
+port). Browser requests from anywhere else are refused.
 
-Performance figures in [performance](performance.md) are a local sanity baseline,
-not capacity claims. Native Windows, network filesystems and crash/power-loss
-fault injection are unverified.
+To rebuild your website after publishing, put the deploy hook URL in a private
+file, because it is a secret:
+
+```sh
+sudo install -d -m 0755 /etc/burzblog
+echo 'BURZBLOG_DEPLOY_HOOK=https://api.vercel.com/v1/integrations/deploy/...' | sudo tee /etc/burzblog/env >/dev/null
+sudo chmod 0600 /etc/burzblog/env
+```
+
+Start it and create the first account:
+
+```sh
+sudo systemctl enable --now burzblog
+sudo -u burzblog burzblog user add jarmos --data /var/lib/burzblog
+journalctl -u burzblog -f
+```
+
+Accounts are managed on the host only: `burzblog user add`, `user passwd` and
+`user list`, always with `--data /var/lib/burzblog` and as the `burzblog` user.
+`user passwd` also signs that account out of every browser.
+
+## 3. HTTPS in front
+
+BurzBlog listens on `127.0.0.1:8080` and does not terminate TLS. Put a reverse
+proxy in front:
+
+- [deploy/Caddyfile](../deploy/Caddyfile): Caddy obtains certificates itself.
+- [deploy/nginx.conf](../deploy/nginx.conf): nginx with your certificates.
+
+Both forward the original `Host` header and limit request bodies to 4 MB.
+`task proxy:lint` validates both files with pinned images.
+
+On a home network without a public address, a tunnel (for example Cloudflare
+Tunnel) to `127.0.0.1:8080` works the same way; set `BURZBLOG_ORIGIN` to the
+tunnel's public HTTPS address. Your website's build must be able to reach this
+address to download posts.
+
+## Settings
+
+| Flag | Environment | Default |
+|---|---|---|
+| `--addr` | `BURZBLOG_ADDR` | `127.0.0.1:8080` |
+| `--data` | `BURZBLOG_DATA`, then systemd's `STATE_DIRECTORY` | `./burzblog-data` |
+| `--origin` | `BURZBLOG_ORIGIN` | `http://<addr>` |
+| `--deploy-hook` | `BURZBLOG_DEPLOY_HOOK` | none |
+
+Prefer the environment for the deploy hook so it does not show up in process
+listings.
+
+## Backups
+
+Everything lives in `burzblog.db` in the data directory: posts, every earlier
+version of every post, accounts and token digests. Back up a consistent copy
+while the server runs:
+
+```sh
+sudo -u burzblog sqlite3 /var/lib/burzblog/burzblog.db ".backup '/var/lib/burzblog/backup.db'"
+```
+
+Or stop the service and copy `burzblog.db` (the `-wal` and `-shm` files are
+folded in on a clean stop). To restore, stop the service, put the file back as
+`burzblog.db` owned by `burzblog` with mode `0600`, and start it.
+
+For a plain-text copy of your published writing, `burzblog export --out dir`
+writes every published post as a Markdown file.
+
+## Upgrades
+
+Replace the binary and restart:
+
+```sh
+sudo install -m 0755 burzblog /usr/local/bin/burzblog
+sudo systemctl restart burzblog
+```
+
+The database schema upgrades itself on start. An older binary refuses to open
+a database written by a newer one, rather than damaging it. Take a backup
+before upgrading.

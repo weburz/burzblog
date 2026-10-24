@@ -114,6 +114,31 @@ URL. Settings can also come from the environment:
 	return cmd
 }
 
+// healthCmd lets container health checks probe the server without curl.
+func (a *App) healthCmd() *cobra.Command {
+	url := "http://127.0.0.1:8080/healthz"
+	cmd := &cobra.Command{
+		Use:    "healthcheck",
+		Short:  "Exit 0 if the local server answers /healthz",
+		Hidden: true,
+		Args:   cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c := &http.Client{Timeout: 4 * time.Second}
+			resp, err := c.Get(url)
+			if err != nil {
+				return err
+			}
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				return fmt.Errorf("health check answered HTTP %d", resp.StatusCode)
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&url, "url", url, "health endpoint to probe")
+	return cmd
+}
+
 func firstOf(values ...string) string {
 	for _, v := range values {
 		if v != "" {

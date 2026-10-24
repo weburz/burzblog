@@ -1,0 +1,59 @@
+# BurzBlog as a systemd service, e.g. on a Raspberry Pi. Full steps are in
+# docs/self-hosting.md; in short:
+#
+#   sudo useradd --system --home-dir /var/lib/burzblog --shell /usr/sbin/nologin burzblog
+#   sudo install -m 0755 burzblog /usr/local/bin/burzblog
+#   sudo install -m 0644 deploy/burzblog.service /etc/systemd/system/
+#   sudo systemctl edit burzblog     # set BURZBLOG_ORIGIN, optionally the deploy hook
+#   sudo systemctl enable --now burzblog
+#   sudo -u burzblog burzblog user add <name> --data /var/lib/burzblog
+#
+# The database lives in /var/lib/burzblog (StateDirectory), private to the
+# burzblog user.
+[Unit]
+Description=BurzBlog writing server
+Documentation=https://github.com/weburz/burzblog
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/burzblog serve --addr 127.0.0.1:8080
+Environment=BURZBLOG_ORIGIN=https://blog.example.org
+# The deploy hook URL is a secret: put BURZBLOG_DEPLOY_HOOK=... in a 0600 file.
+EnvironmentFile=-/etc/burzblog/env
+User=burzblog
+Group=burzblog
+StateDirectory=burzblog
+StateDirectoryMode=0700
+Restart=on-failure
+RestartSec=2s
+TimeoutStopSec=25s
+
+# Hardening: the service only needs its state directory and the network.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+CapabilityBoundingSet=
+AmbientCapabilities=
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

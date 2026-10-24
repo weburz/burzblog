@@ -1,5 +1,7 @@
 # ADR-005: Capture before no-clobber publication
 
+> **Superseded by [ADR-013](013-database-storage.md)** (2026-10-24). Kept as the record of the file-first design.
+
 Accepted; supersedes ADR-003's replace and link/unlink mutation protocol.
 
 A revision check followed by replacement cannot preserve an external edit made

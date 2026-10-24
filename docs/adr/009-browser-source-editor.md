@@ -1,5 +1,7 @@
 # ADR-009: Markdown browser editor with explicit saves
 
+> **Superseded by [ADR-013](013-database-storage.md)** (2026-10-24). Kept as the record of the file-first design.
+
 Status: accepted for the first browser workflow.
 
 ## Decision

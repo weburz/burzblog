@@ -1,50 +1,27 @@
-# Local build of the BurzBlog browser application. compose.dist.yaml is the same
-# service for a published image; tests keep the two definitions in step.
-# All persistent data is bind-mounted from host directories you create first:
-# Compose refuses to invent root-owned replacements for missing paths.
+# Local build of BurzBlog. compose.dist.yaml is the same service for a
+# published image. Create the data directory first (owned by BURZBLOG_UID):
+# Compose refuses to invent a root-owned replacement for a missing path.
 services:
   burzblog:
     image: burzblog:local
     build: .
-    user: "${BURZBLOG_UID:?Set BURZBLOG_UID to the numeric owner of your content}:${BURZBLOG_GID:?Set BURZBLOG_GID to the content group}"
+    user: "${BURZBLOG_UID:?Set BURZBLOG_UID to the numeric owner of the data directory}:${BURZBLOG_GID:?Set BURZBLOG_GID}"
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
-    tmpfs:
-      - /tmp:size=16m,mode=1777
     restart: unless-stopped
-    # Let in-flight Git fetch/push (30 s deadline) finish before SIGKILL, so an
-    # upgrade or stop never interrupts them and leaves Git lock files behind.
-    stop_grace_period: 45s
+    stop_grace_period: 25s
     # Published on host loopback only; put your HTTPS reverse proxy in front.
     ports:
       - "127.0.0.1:${BURZBLOG_PORT:-8080}:8080"
     environment:
-      BURZBLOG_ORIGIN: "${BURZBLOG_ORIGIN:?Set BURZBLOG_ORIGIN to the exact browser origin}"
-      BURZBLOG_CONTENT_ROOT: /site/${BURZBLOG_CONTENT_SUBDIR:-}
-      BURZBLOG_STATE_DIR: /state
-      BURZBLOG_REMOTE_URL: ${BURZBLOG_REMOTE_URL:-}
-      BURZBLOG_REMOTE_NAME: ${BURZBLOG_REMOTE_NAME:-origin}
-      BURZBLOG_REMOTE_USERNAME: ${BURZBLOG_REMOTE_USERNAME:-}
-      BURZBLOG_REMOTE_TOKEN_FILE: ${BURZBLOG_REMOTE_TOKEN_FILE:-}
-      BURZBLOG_REMOTE_CA_FILE: ${BURZBLOG_REMOTE_CA_FILE:-}
+      BURZBLOG_ORIGIN: "${BURZBLOG_ORIGIN:?Set BURZBLOG_ORIGIN to the exact public URL}"
+      # Optional: a deploy hook URL to rebuild your site after publishing.
+      BURZBLOG_DEPLOY_HOOK: ${BURZBLOG_DEPLOY_HOOK:-}
     volumes:
-      # Markdown content and, when used, its .git repository.
+      # The SQLite database (posts, accounts, tokens). Back it up.
       - type: bind
-        source: ${BURZBLOG_SITE_DIR:-./site}
-        target: /site
-        bind:
-          create_host_path: false
-      # Private 0700 authentication state (SQLite), never inside the site.
-      - type: bind
-        source: ${BURZBLOG_STATE_PATH:-./state}
-        target: /state
-        bind:
-          create_host_path: false
-      # Private 0700 directory for Git token/CA files; mounted read-only.
-      - type: bind
-        source: ${BURZBLOG_SECRETS_DIR:-./secrets}
-        target: /secrets
-        read_only: true
+        source: ${BURZBLOG_DATA_DIR:-./data}
+        target: /data
         bind:
           create_host_path: false

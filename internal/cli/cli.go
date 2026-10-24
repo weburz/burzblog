@@ -101,6 +101,7 @@ Write in the browser panel, or from here:
 		c.GroupID = "account"
 		root.AddCommand(c)
 	}
+	root.AddCommand(a.healthCmd())
 	for _, c := range []*cobra.Command{a.serveCmd(), a.userCmd()} {
 		c.GroupID = "host"
 		root.AddCommand(c)

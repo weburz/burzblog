@@ -1,5 +1,7 @@
 # ADR-006: Bounded Git subprocesses and conservative repository configuration
 
+> **Superseded by [ADR-013](013-database-storage.md)** (2026-10-24). Kept as the record of the file-first design.
+
 Accepted. A separate Git domain uses the installed Git executable with argument
 arrays, isolated environment, no shell, disabled hooks/fsmonitor/global/system
 configuration, no optional index locks, and bounded stdout/time. Git provides

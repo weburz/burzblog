@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: Publish the exact tested image to GHCR. Only honoured on a v* tag whose version matches pyproject.toml, after the full local gates and the container smoke test pass in this run.
+        description: Publish the exact tested image to GHCR. Only honoured on a v* tag, after the full gates and the container smoke test pass in this run.
         type: boolean
         default: false
 
@@ -31,29 +31,31 @@ jobs:
         env:
           PUBLISH: ${{ inputs.publish }}
         run: |
-          version="$(python3 -c 'import tomllib,sys; print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')"
           release=false
+          version="${GITHUB_SHA::12}"
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            if [[ "$GITHUB_REF" != "refs/tags/v${version}" ]]; then
-              echo "Tag $GITHUB_REF does not match pyproject.toml version ${version}; expected refs/tags/v${version}" >&2
-              exit 1
-            fi
+            version="${GITHUB_REF#refs/tags/v}"
             release=true
           elif [[ "$PUBLISH" == "true" ]]; then
-            echo "Publishing requires a v${version} tag" >&2
+            echo "Publishing requires a v* tag" >&2
             exit 1
           fi
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "release=${release}" >> "$GITHUB_OUTPUT"
-      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5
         with:
-          version: '0.12.21'
-          python-version: '3.14'
-          enable-cache: false
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24.14.1'
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: '11.15.1'
       - uses: go-task/setup-task@70f2430ad412f838533de8c0515c749ffb2b8bd3 # v1
         with:
           version: '3.54.0'
-      - run: task setup && task check
+      - run: task setup && task go:check && task web:check
       - name: Lint Dockerfile
         run: |
           curl -fsSL https://github.com/hadolint/hadolint/releases/download/v2.15.1/hadolint-linux-x86_64 -o /tmp/hadolint
@@ -66,6 +68,7 @@ jobs:
           context: .
           load: true
           push: false
+          build-args: VERSION=${{ steps.release.outputs.version }}
           platforms: linux/amd64
           tags: burzblog:local
       - run: task docker:smoke

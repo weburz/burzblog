@@ -1,46 +1,25 @@
 version: '3'
 
+vars:
+  VERSION:
+    sh: git describe --tags --always --dirty 2>/dev/null || echo dev
+  LDFLAGS: -s -w -X main.version={{.VERSION}}
+
 tasks:
   default:
     desc: List available development commands
     cmd: task --list
   setup:
-    desc: Install locked uv/pnpm dependencies and the test browser
+    desc: Download Go modules, install locked pnpm dependencies and the test browser
     cmds:
-      - uv sync --frozen
+      - go mod download
       - task: web:setup
   dev:
-    desc: Run the configured API and browser development servers
+    desc: Run the Go API (:8080) and the Nuxt panel dev server (:3000) together
     cmd: task --parallel api:dev web:dev
-  lint:
-    desc: Check Python formatting and lint rules
-    cmds:
-      - uv run --frozen ruff format --check .
-      - uv run --frozen ruff check .
-  typecheck:
-    desc: Run strict mypy and Pyright
-    cmds:
-      - uv run --frozen mypy
-      - uv run --frozen pyright
-  test:
-    desc: Run unit and filesystem/CLI integration tests with coverage
-    cmd: uv run --frozen pytest
-  build:
-    desc: Build the wheel and source distribution using the locked backend
-    cmd: uv build --no-sources --no-build-isolation
-  check:
-    desc: Run all local merge gates (Actions is intentionally disabled)
-    cmds:
-      - task: backend:check
-      - task: web:check
-  backend:check:
-    desc: Check the independently usable Python backend
-    cmds:
-      - task: lint
-      - task: typecheck
-      - task: test
-      - task: build
-      - task: hooks:check
+  api:dev:
+    desc: Run the API for development, with data in ./burzblog-data
+    cmd: go run ./cmd/burzblog serve --addr 127.0.0.1:8080 --origin http://127.0.0.1:3000 --data burzblog-data
   web:setup:
     dir: web
     cmds:
@@ -49,23 +28,53 @@ tasks:
   web:dev:
     dir: web
     cmd: pnpm dev
-  api:dev:
-    cmd: uv run --frozen burzblog-server serve
+  build:
+    desc: Build the panel and one burzblog binary with it embedded (bin/burzblog)
+    cmds:
+      - pnpm --dir web build
+      - scripts/embed-panel.sh
+      - go build -trimpath -ldflags "{{.LDFLAGS}}" -o bin/burzblog ./cmd/burzblog
+  release:
+    desc: Cross-compile binaries for Linux (incl. Raspberry Pi), macOS and Windows into dist/
+    deps: [build]
+    cmds:
+      - for: [linux/amd64, linux/arm64, linux/arm, darwin/amd64, darwin/arm64, windows/amd64]
+        cmd: >-
+          GOOS={{splitList "/" .ITEM | first}} GOARCH={{splitList "/" .ITEM | last}} GOARM=7 CGO_ENABLED=0
+          go build -trimpath -ldflags "{{.LDFLAGS}}"
+          -o dist/burzblog-{{.VERSION}}-{{splitList "/" .ITEM | first}}-{{splitList "/" .ITEM | last}}{{if eq (splitList "/" .ITEM | first) "windows"}}.exe{{end}}
+          ./cmd/burzblog
+      - cd dist && sha256sum burzblog-{{.VERSION}}-* > SHA256SUMS-{{.VERSION}}
+  format:
+    desc: Format Go and web sources
+    cmds:
+      - gofmt -w cmd internal
+      - pnpm --dir web format
+  go:check:
+    desc: Go formatting, vet and tests (with the race detector)
+    cmds:
+      - test -z "$(gofmt -l cmd internal)" || (gofmt -l cmd internal; echo "run task format" >&2; exit 1)
+      - go vet ./...
+      - go test -race -count=1 ./...
   web:check:
+    desc: Panel format, lint, types, unit tests, build and browser E2E against the Go binary
     dir: web
     cmd: pnpm check
-  measure:
-    desc: Measure disposable local production fixtures (requires built web output)
-    cmd: uv run --frozen python scripts/measure.py
-  format:
-    desc: Format Python source
-    cmd: uv run --frozen ruff format .
+  check:
+    desc: Run all local merge gates (Actions is intentionally disabled)
+    cmds:
+      - task: go:check
+      - task: web:check
+      - task: hooks:check
+  vuln:
+    desc: Scan Go dependencies for known vulnerabilities
+    cmd: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
   hooks:install:
     desc: Install optional local pre-commit and Crisp commit-message hooks
-    cmd: uv run --frozen pre-commit install
+    cmd: pre-commit install
   hooks:check:
-    desc: Run repository hygiene hooks and static checks on tracked files
-    cmd: uv run --frozen pre-commit run --all-files
+    desc: Run repository hygiene hooks on tracked files
+    cmd: pre-commit run --all-files
   docker:lint:
     desc: Lint the Dockerfile with Hadolint 2.15.1 (standalone, else its pinned image)
     cmd: >-
@@ -73,16 +82,16 @@ tasks:
       else docker run --rm -i hadolint/hadolint:v2.15.1@sha256:32dac94127fd60b7b7e3fbfc65e1383b9b5e25c9bfd7b8536de7a539fe68a12d < Dockerfile;
       fi
   docker:build:
-    desc: Build the browser application image locally (requires Docker)
-    cmd: docker build --tag burzblog:local .
+    desc: Build the container image locally (requires Docker)
+    cmd: docker build --build-arg VERSION={{.VERSION}} --tag burzblog:local .
   docker:smoke:
-    desc: Container acceptance test against disposable fixtures (requires Docker)
-    cmd: uv run --frozen python scripts/docker-smoke.py
+    desc: Run the image against a disposable data directory and exercise the API (requires Docker)
+    cmd: scripts/docker-smoke.sh burzblog:local
   proxy:lint:
     desc: Validate deploy/Caddyfile and deploy/nginx.conf in pinned images (requires Docker)
     cmd: bash scripts/proxy-config-check.sh
   docker:check:
-    desc: Lint, build and acceptance-test the image and proxy examples (requires Docker)
+    desc: Lint, build and smoke-test the image and proxy examples (requires Docker)
     cmds:
       - task: docker:lint
       - task: proxy:lint

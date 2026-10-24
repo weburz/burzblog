@@ -1,5 +1,7 @@
 # ADR-012: Versioned public projection for reader sites
 
+> **Superseded by [ADR-013](013-database-storage.md)** (2026-10-24). Kept as the record of the file-first design.
+
 Status: accepted for launch preparation.
 
 ## Context

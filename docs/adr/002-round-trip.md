@@ -1,5 +1,7 @@
 # ADR-002: Preserve source and use bounded round-trip YAML
 
+> **Superseded by [ADR-013](013-database-storage.md)** (2026-10-24). Kept as the record of the file-first design.
+
 Accepted. Retain the original frontmatter bytes when metadata is unchanged;
 retain the body verbatim even when metadata changes. New documents use LF,
 stable known-key ordering, sorted extra fields, and a final newline. Existing
