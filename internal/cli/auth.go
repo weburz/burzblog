@@ -19,7 +19,7 @@ func (a *App) loginCmd() *cobra.Command {
 		Use:   "login <server>",
 		Short: "Sign in to a BurzBlog server from this computer",
 		Example: `  burzblog login https://blog.example.com
-  burzblog login https://blog.example.com --username jarmos`,
+  burzblog login https://blog.example.com --username ada`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			server, err := normalizeServer(args[0])
@@ -123,7 +123,7 @@ func (a *App) whoamiCmd() *cobra.Command {
 		Use:   "whoami",
 		Short: "Show which server and account this computer uses",
 		Example: `  burzblog whoami
-  burzblog whoami --json            # {"username":"jarmos","server":"https://blog.example.com"}
+  burzblog whoami --json            # {"username":"ada","server":"https://blog.example.com"}
   BURZBLOG_SERVER=https://blog.example.com BURZBLOG_TOKEN=bzb_... burzblog whoami --json`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {

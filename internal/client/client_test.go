@@ -111,7 +111,7 @@ func TestNormalFlowsUnchanged(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/api/session":
-			w.Write([]byte(`{"authenticated":true,"username":"jarmos"}`))
+			w.Write([]byte(`{"authenticated":true,"username":"ada"}`))
 		case r.URL.Path == "/api/posts/hello/markdown" && r.Method == http.MethodGet:
 			w.Header().Set("ETag", `"7"`)
 			w.Write([]byte("---\ntitle: Hello\n---\n"))
@@ -124,7 +124,7 @@ func TestNormalFlowsUnchanged(t *testing.T) {
 	}))
 	defer srv.Close()
 	c := New(srv.URL, "t", "")
-	if name, err := c.Whoami(ctx); err != nil || name != "jarmos" {
+	if name, err := c.Whoami(ctx); err != nil || name != "ada" {
 		t.Errorf("Whoami = %q, %v", name, err)
 	}
 	if doc, v, err := c.Markdown(ctx, "hello"); err != nil || v != 7 || !strings.Contains(doc, "Hello") {

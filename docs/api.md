@@ -59,7 +59,7 @@ A post:
   "slug": "hello-world", "title": "Hello, World!", "description": "", "status": "draft",
   "body": "# Hi\n", "coverUrl": "", "coverAlt": "", "extra": "sitemap:\n  priority: 1\n",
   "publishedOn": null, "updatedOn": null, "publishAt": null,
-  "createdAt": "...", "updatedAt": "...", "updatedBy": "jarmos", "version": 3
+  "createdAt": "...", "updatedAt": "...", "updatedBy": "ada", "version": 3
 }
 ```
 

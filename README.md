@@ -1,5 +1,8 @@
 # BurzBlog
 
+[![License: Apache-2.0](https://img.shields.io/github/license/weburz/burzblog)](LICENSE)
+[![Latest release](https://img.shields.io/github/v/release/weburz/burzblog)](https://github.com/weburz/burzblog/releases/latest)
+
 A small, self-hosted place to write blog posts. Write in the browser, or in your
 own editor from the terminal. Posts are Markdown, stored in one SQLite file, and
 your website picks up the published ones when it builds.
@@ -36,11 +39,22 @@ Not included yet: image and video uploads (use hosted image URLs), roles and
 permissions (every account can do everything), and serving the public blog
 itself.
 
+## Install
+
+Download the binary for your computer from the
+[latest release](https://github.com/weburz/burzblog/releases/latest). Assets are
+named `burzblog-vX.Y.Z-<os>-<arch>`, and a `SHA256SUMS` file is published
+alongside them for verification. See
+[Writing from the terminal](docs/terminal.md#install) for the full list and
+setup steps.
+
 ## Quick start
+
+To build from source:
 
 ```sh
 task build                                   # bin/burzblog with the panel inside
-bin/burzblog user add jarmos                 # create an account (asks for a password)
+bin/burzblog user add ada                 # create an account (asks for a password)
 bin/burzblog serve                           # http://127.0.0.1:8080
 ```
 

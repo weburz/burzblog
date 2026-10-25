@@ -70,11 +70,11 @@ func TestOpenRefusesNewerSchema(t *testing.T) {
 func TestCreateAndGetPost(t *testing.T) {
 	s := open(t)
 	ctx := context.Background()
-	p, err := s.CreatePost(ctx, &post.Post{Slug: "hello", Title: "  Hello  ", Body: "a\r\nb"}, "sagar")
+	p, err := s.CreatePost(ctx, &post.Post{Slug: "hello", Title: "  Hello  ", Body: "a\r\nb"}, "grace")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Version != 1 || p.Status != post.Draft || p.Title != "Hello" || p.Body != "a\nb" || p.UpdatedBy != "sagar" {
+	if p.Version != 1 || p.Status != post.Draft || p.Title != "Hello" || p.Body != "a\nb" || p.UpdatedBy != "grace" {
 		t.Errorf("created post = %+v", p)
 	}
 	if _, err := s.CreatePost(ctx, &post.Post{Slug: "hello", Title: "Again"}, "x"); !errors.Is(err, ErrTaken) {
@@ -253,14 +253,14 @@ func TestListPostsSort(t *testing.T) {
 func TestAccounts(t *testing.T) {
 	s := open(t)
 	ctx := context.Background()
-	u, err := s.CreateUser(ctx, "Jarmos", "hash1")
+	u, err := s.CreateUser(ctx, "Ada", "hash1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.CreateUser(ctx, "jarmos", "x"); !errors.Is(err, ErrTaken) {
+	if _, err := s.CreateUser(ctx, "ada", "x"); !errors.Is(err, ErrTaken) {
 		t.Errorf("case-insensitive duplicate: %v", err)
 	}
-	if got, err := s.UserByName(ctx, "JARMOS"); err != nil || got.ID != u.ID {
+	if got, err := s.UserByName(ctx, "ADA"); err != nil || got.ID != u.ID {
 		t.Errorf("lookup ignoring case: %v %v", got, err)
 	}
 
@@ -287,7 +287,7 @@ func TestAccounts(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := s.TokenByHash(ctx, "th")
-	if err != nil || got.Username != "Jarmos" || got.Scope != ScopeWrite {
+	if err != nil || got.Username != "Ada" || got.Scope != ScopeWrite {
 		t.Errorf("token lookup = %+v, %v", got, err)
 	}
 	if err := s.DeleteToken(ctx, tok.ID); err != nil {
@@ -330,7 +330,7 @@ func TestSetPasswordRevokesWriteTokensOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	u, err := s.CreateUser(ctx, "jarmos", "hash")
+	u, err := s.CreateUser(ctx, "ada", "hash")
 	if err != nil {
 		t.Fatal(err)
 	}

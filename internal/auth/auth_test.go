@@ -24,7 +24,7 @@ func setup(t *testing.T) (*Service, *store.Store, *store.User) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	u, err := s.CreateUser(ctx, "jarmos", hash)
+	u, err := s.CreateUser(ctx, "ada", hash)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,10 +71,10 @@ func TestCheckPassword(t *testing.T) {
 func TestAuthenticate(t *testing.T) {
 	a, _, _ := setup(t)
 	ctx := context.Background()
-	if u, err := a.Authenticate(ctx, " JARMOS ", "correct horse battery"); err != nil || u.Username != "jarmos" {
+	if u, err := a.Authenticate(ctx, " ADA ", "correct horse battery"); err != nil || u.Username != "ada" {
 		t.Fatalf("valid sign-in: %v %v", u, err)
 	}
-	if _, err := a.Authenticate(ctx, "jarmos", "nope"); !errors.Is(err, ErrCredentials) {
+	if _, err := a.Authenticate(ctx, "ada", "nope"); !errors.Is(err, ErrCredentials) {
 		t.Errorf("wrong password: %v", err)
 	}
 	if _, err := a.Authenticate(ctx, "ghost", "whatever"); !errors.Is(err, ErrCredentials) {
@@ -86,9 +86,9 @@ func TestAuthenticateRateLimit(t *testing.T) {
 	a, _, _ := setup(t)
 	ctx := context.Background()
 	for i := 0; i < userLimit; i++ {
-		a.Authenticate(ctx, "jarmos", "wrong")
+		a.Authenticate(ctx, "ada", "wrong")
 	}
-	if _, err := a.Authenticate(ctx, "jarmos", "correct horse battery"); !errors.Is(err, ErrRateLimited) {
+	if _, err := a.Authenticate(ctx, "ada", "correct horse battery"); !errors.Is(err, ErrRateLimited) {
 		t.Errorf("after %d failures: %v, want ErrRateLimited", userLimit, err)
 	}
 }
@@ -119,7 +119,7 @@ func TestTokens(t *testing.T) {
 	a, _, u := setup(t)
 	ctx := context.Background()
 	secret, tok, err := a.NewToken(ctx, u, "laptop", store.ScopeWrite)
-	if err != nil || !strings.HasPrefix(secret, TokenPrefix) || tok.Username != "jarmos" {
+	if err != nil || !strings.HasPrefix(secret, TokenPrefix) || tok.Username != "ada" {
 		t.Fatalf("new token: %v %v", tok, err)
 	}
 	if got, err := a.Token(ctx, secret); err != nil || got.ID != tok.ID {
@@ -156,7 +156,7 @@ func TestChangePassword(t *testing.T) {
 	if err := a.ChangePassword(ctx, u, "correct horse battery", "a brand new password", ""); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := a.Authenticate(ctx, "jarmos", "a brand new password"); err != nil {
+	if _, err := a.Authenticate(ctx, "ada", "a brand new password"); err != nil {
 		t.Errorf("new password rejected: %v", err)
 	}
 }
@@ -171,7 +171,7 @@ func TestAuthenticateRateLimitHoldsUnderConcurrency(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if _, err := a.Authenticate(ctx, "jarmos", "wrong"); errors.Is(err, ErrCredentials) {
+			if _, err := a.Authenticate(ctx, "ada", "wrong"); errors.Is(err, ErrCredentials) {
 				mu.Lock()
 				checked++
 				mu.Unlock()
@@ -188,11 +188,11 @@ func TestOtherAccountsUnaffectedByOneLockedAccount(t *testing.T) {
 	a, s, _ := setup(t)
 	ctx := context.Background()
 	hash, _ := HashPassword("another long password")
-	s.CreateUser(ctx, "sagar", hash)
+	s.CreateUser(ctx, "grace", hash)
 	for i := 0; i < userLimit+5; i++ {
-		a.Authenticate(ctx, "jarmos", "wrong")
+		a.Authenticate(ctx, "ada", "wrong")
 	}
-	if _, err := a.Authenticate(ctx, "sagar", "another long password"); err != nil {
+	if _, err := a.Authenticate(ctx, "grace", "another long password"); err != nil {
 		t.Errorf("another account was locked out: %v", err)
 	}
 }
@@ -220,12 +220,12 @@ func TestAuthenticateBusyGate(t *testing.T) {
 	a, _, _ := setup(t)
 	a.wait = 50 * time.Millisecond
 	ctx := context.Background()
-	if _, err := a.Authenticate(ctx, "jarmos", "correct horse battery"); err != nil {
+	if _, err := a.Authenticate(ctx, "ada", "correct horse battery"); err != nil {
 		t.Fatalf("free gate: %v", err)
 	}
 	fillGate(t, a)
 	start := time.Now()
-	_, err := a.Authenticate(ctx, "jarmos", "correct horse battery")
+	_, err := a.Authenticate(ctx, "ada", "correct horse battery")
 	if !errors.Is(err, ErrBusy) {
 		t.Fatalf("full gate: %v, want ErrBusy", err)
 	}
@@ -240,12 +240,12 @@ func TestBusyDoesNotSpendAttempts(t *testing.T) {
 	ctx := context.Background()
 	fillGate(t, a)
 	for i := 0; i < userLimit+5; i++ {
-		if _, err := a.Authenticate(ctx, "jarmos", "wrong"); !errors.Is(err, ErrBusy) {
+		if _, err := a.Authenticate(ctx, "ada", "wrong"); !errors.Is(err, ErrBusy) {
 			t.Fatalf("attempt %d: %v, want ErrBusy", i, err)
 		}
 	}
 	emptyGate(a)
-	if _, err := a.Authenticate(ctx, "jarmos", "correct horse battery"); err != nil {
+	if _, err := a.Authenticate(ctx, "ada", "correct horse battery"); err != nil {
 		t.Errorf("shed requests used up the budget: %v", err)
 	}
 }
@@ -311,7 +311,7 @@ func TestSignInSurvivesFlood(t *testing.T) {
 	}
 	time.Sleep(200 * time.Millisecond)
 	start := time.Now()
-	_, err := a.Authenticate(WithClient(context.Background(), "192.0.2.1"), "jarmos", "correct horse battery")
+	_, err := a.Authenticate(WithClient(context.Background(), "192.0.2.1"), "ada", "correct horse battery")
 	took := time.Since(start)
 	close(stop)
 	wg.Wait()
