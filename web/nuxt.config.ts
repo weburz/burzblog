@@ -1,4 +1,5 @@
 import { defineNuxtConfig } from "nuxt/config";
+import { themeBootScript } from "./app/utils/theme";
 
 export default defineNuxtConfig({
   compatibilityDate: "2026-10-02",
@@ -21,6 +22,10 @@ export default defineNuxtConfig({
         "lucide:circle-alert",
         "lucide:circle-check",
         "lucide:info",
+        "lucide:chevron-right",
+        "lucide:monitor",
+        "lucide:sun",
+        "lucide:moon",
         "lucide:triangle-alert",
       ],
     },
@@ -29,7 +34,11 @@ export default defineNuxtConfig({
     head: {
       title: "BurzBlog",
       htmlAttrs: { lang: "en" },
-      meta: [{ name: "robots", content: "noindex" }],
+      meta: [
+        { name: "robots", content: "noindex" },
+        { name: "color-scheme", content: "light dark" },
+      ],
+      script: [{ innerHTML: themeBootScript, tagPosition: "head" }],
     },
   },
   routeRules: {

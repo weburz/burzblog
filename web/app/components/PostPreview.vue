@@ -3,7 +3,12 @@ import { onMounted, onUnmounted, ref, watch } from "vue";
 import { errorMessage, request } from "../utils/api";
 import { previewDocument, type PreviewMeta } from "../utils/preview";
 
-const props = defineProps<{ body: string; meta: PreviewMeta; scroll?: number }>();
+const props = defineProps<{
+  body: string;
+  meta: PreviewMeta;
+  scroll?: number;
+  dark?: boolean;
+}>();
 const frame = ref<HTMLIFrameElement | null>(null);
 const error = ref("");
 const rendering = ref(false);
@@ -16,7 +21,7 @@ let sequence = 0;
 const paint = () => {
   const doc = frame.value?.contentDocument;
   const next = new DOMParser().parseFromString(
-    previewDocument(html, props.meta),
+    previewDocument(html, props.meta, props.dark),
     "text/html",
   );
   if (!doc?.body || !doc.querySelector("main")) {
@@ -55,6 +60,10 @@ watch(
 );
 watch(() => props.meta, paint, { deep: true });
 watch(
+  () => props.dark,
+  (dark) => frame.value?.contentDocument?.documentElement.classList.toggle("dark", dark),
+);
+watch(
   () => props.scroll,
   (ratio) => {
     const win = frame.value?.contentWindow;
@@ -64,7 +73,7 @@ watch(
   },
 );
 onMounted(() => {
-  if (frame.value) frame.value.srcdoc = previewDocument("", props.meta);
+  if (frame.value) frame.value.srcdoc = previewDocument("", props.meta, props.dark);
   void render();
 });
 onUnmounted(() => clearTimeout(timer));
