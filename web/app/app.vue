@@ -1,8 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { errorMessage } from "./utils/api";
+import { themeOptions } from "./utils/theme";
 
 const { state, load, signOut } = useCurrentSession();
+const theme = usePreferredTheme();
+let stopTheme = () => {};
+onMounted(() => (stopTheme = theme.start()));
+onUnmounted(() => stopTheme());
 // The editor reports unsaved writing here, so signing out can warn first.
 const dirty = useState("editor-dirty", () => false);
 const editorFailed = useState("editor-failed", () => false);
@@ -54,8 +59,19 @@ const accountItems = computed(() => [
   [{ label: `Signed in as ${state.value.username}`, type: "label" as const }],
   [
     { label: "Settings", icon: "i-lucide-settings", to: "/settings" },
-    { label: "Sign out", icon: "i-lucide-log-out", onSelect: requestSignOut },
+    {
+      label: "Theme",
+      icon: theme.dark.value ? "i-lucide-moon" : "i-lucide-sun",
+      children: themeOptions.map((option) => ({
+        label: option.label,
+        icon: option.icon,
+        type: "checkbox" as const,
+        checked: theme.preference.value === option.value,
+        onUpdateChecked: () => (theme.preference.value = option.value),
+      })),
+    },
   ],
+  [{ label: "Sign out", icon: "i-lucide-log-out", onSelect: requestSignOut }],
 ]);
 // The editor brings its own bar, unless the post could not be opened.
 const editing = computed(() => route.path.startsWith("/posts/") && !editorFailed.value);

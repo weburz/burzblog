@@ -2,10 +2,12 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import type { Settings, Token } from "../types";
 import { errorMessage, request } from "../utils/api";
+import { themeOptions } from "../utils/theme";
 import { editedLabel, exactTime } from "../utils/time";
 
 useHead({ title: "Settings" });
 const toast = useToast();
+const theme = usePreferredTheme();
 
 const settings = ref<Settings | null>(null);
 const tokens = ref<Token[] | null>(null);
@@ -320,6 +322,7 @@ const scopeUse = (t: Token) =>
           <UButton
             as="a"
             href="/api/backup.tar.gz"
+            external
             download
             color="neutral"
             variant="outline"
@@ -337,6 +340,31 @@ const scopeUse = (t: Token) =>
             >Backups in the self-hosting guide</a
           >.
         </p>
+      </div>
+    </section>
+
+    <section class="settings-section" aria-labelledby="appearance-heading">
+      <div class="settings-aside">
+        <h2 id="appearance-heading" class="section-title">Appearance</h2>
+        <p class="muted">
+          Saved in this browser. System follows your computer's setting.
+        </p>
+      </div>
+      <div class="settings-main">
+        <div class="segment" role="radiogroup" aria-labelledby="appearance-heading">
+          <button
+            v-for="option in themeOptions"
+            :key="option.value"
+            type="button"
+            role="radio"
+            class="segment-item"
+            :aria-checked="theme.preference.value === option.value"
+            @click="theme.preference.value = option.value"
+          >
+            <UIcon :name="option.icon" class="size-4" aria-hidden="true" />
+            {{ option.label }}
+          </button>
+        </div>
       </div>
     </section>
 

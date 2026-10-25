@@ -11,6 +11,7 @@ const toast = useToast();
 const dirtyFlag = useState("editor-dirty", () => false);
 // A post that fails to open falls back to the normal page chrome.
 const editorFailed = useState("editor-failed", () => false);
+const { dark: themeDark } = usePreferredTheme();
 
 const post = ref<Post | null>(null);
 const draft = ref<PostDraft | null>(null);
@@ -851,6 +852,7 @@ const primary = computed(() => {
       <PostPreview
         v-show="layout !== 'write'"
         :body="draft.body"
+        :dark="themeDark"
         :meta="{
           title: draft.title,
           description: draft.description,

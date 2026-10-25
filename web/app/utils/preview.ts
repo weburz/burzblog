@@ -37,6 +37,15 @@ article th{background:#fafaf8}
 article li{margin:.25em 0}
 article input[type=checkbox]{margin-right:.5em}
 .empty-body{color:#9aa5b1;font-style:italic}
+.dark{color-scheme:dark}
+.dark body{background:#182029;color:#e4e8ec}
+.dark .cover,.dark article code{background:#1f2832}
+.dark h1.title.empty,.dark .empty-body{color:#6d7987}
+.dark .lede,.dark article blockquote{color:#aab5c1}
+.dark article a{color:#a9c0d8}
+.dark article pre{background:#0b0f14;color:#dfe5ec}
+.dark article hr,.dark article th,.dark article td{border-color:#2b3541}
+.dark article th{background:#1f2832}
 `;
 
 export interface PreviewMeta {
@@ -49,7 +58,11 @@ export interface PreviewMeta {
 // The whole preview page for the sandboxed iframe: the sanitized article HTML
 // from the server, laid out like a published post. The iframe allows no
 // scripts; its own policy blocks everything but styles, fonts and images.
-export const previewDocument = (html: string, meta: PreviewMeta): string => {
+export const previewDocument = (
+  html: string,
+  meta: PreviewMeta,
+  dark = false,
+): string => {
   const cover = /^https?:\/\//.test(meta.coverUrl)
     ? `<img class="cover" src="${escape(meta.coverUrl)}" alt="${escape(meta.coverAlt)}">`
     : "";
@@ -60,5 +73,5 @@ export const previewDocument = (html: string, meta: PreviewMeta): string => {
     ? `<p class="lede">${escape(meta.description)}</p>`
     : "";
   const body = html.trim() || `<p class="empty-body">Nothing written yet.</p>`;
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; img-src https: http: data:; base-uri 'none'; form-action 'none'"><base target="_blank"><style>${styles}</style></head><body><main><header>${cover}${title}${lede}</header><article>${body}</article></main></body></html>`;
+  return `<!doctype html><html lang="en"${dark ? ' class="dark"' : ""}><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; img-src https: http: data:; base-uri 'none'; form-action 'none'"><base target="_blank"><style>${styles}</style></head><body><main><header>${cover}${title}${lede}</header><article>${body}</article></main></body></html>`;
 };
