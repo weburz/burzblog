@@ -6,6 +6,8 @@ All notable changes are recorded here, following
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-10-25
+
 ### Changed
 
 - **BurzBlog is now one Go binary with SQLite storage** (ADR-013). Posts are
@@ -21,6 +23,21 @@ All notable changes are recorded here, following
 
 ### Added
 
+- Panel: dark mode (Light, Dark or System, applied before first paint); a
+  Ctrl/Cmd+K command palette for posts, pages and actions (Ctrl/Cmd+Shift+K
+  inside the editor body, where Ctrl/Cmd+K inserts a link); sorting the post
+  list by edited, published, title or created date; history rows that say what
+  each version changed ("+42 words", "Published"); Undo after Unpublish and
+  Archive; and editor tools: image by URL, table, rule and task list buttons,
+  list continuation on Enter, Tab to indent lists, a `?` shortcuts dialog and
+  a focus mode.
+- Accessibility: placeholder and control-border contrast meet WCAG AA in both
+  themes (checked by a unit test), focus returns to the control that opened an
+  overlay, route changes and empty results are announced, the editor has a
+  heading, and single-key shortcuts can be turned off in Settings.
+- Install guide for the terminal tool and release binaries for Linux,
+  Raspberry Pi, macOS and Windows; Settings links to the download and explains
+  connecting your website in two plain steps.
 - Terminal automation: a global `--json` flag (`list`, `whoami`, `new`, `pull`,
   `push`, `publish`, `unpublish`, `archive`, `restore`, `backup`) with JSON
   errors on stderr, documented exit codes (2 usage, 3 conflict, 4 not found,
@@ -49,6 +66,21 @@ All notable changes are recorded here, following
   deploy hook after publishing.
 - Multiple accounts, API tokens with revocation, and a systemd unit for
   Raspberry Pi hosts; a 17 MB distroless container image.
+
+### Security
+
+- Previews are bounded: a pre-scan refuses tables wider than 64 columns and
+  other constructs that made rendering quadratic, output is capped at 8 MiB and
+  at most two previews render at once (`422 preview_limit`, `503 busy`).
+- Sign-in floods are shed instead of queued (`503 busy`, per-address cap) and
+  expired sign-in attempt records are pruned.
+- The terminal client never follows redirects, so a password or token cannot
+  be carried to `http://` or another host, and it strips control characters
+  from everything it prints; single-line fields refuse control characters.
+- Changing a password revokes that account's terminal (write) tokens; export
+  tokens can only call the export.
+- Frontmatter refuses YAML merge keys and every tag outside the core schema, so
+  reader builds parse it the same way.
 
 ### Removed
 
@@ -89,4 +121,4 @@ All notable changes are recorded here, following
 - SSH and proxy Git transports are deferred (#18).
 - No visual editor, file watcher, ARM image or automatic update.
 
-Releases are tagged `vX.Y.Z`; the container image for a release is published as `ghcr.io/weburz/burzblog:vX.Y.Z` and `sha-<commit>` and must be pinned by digest (see `docs/release.md`).
+Releases are tagged `vX.Y.Z`. Each GitHub release carries the binaries from `task release` (Linux amd64/arm64/arm, macOS amd64/arm64, Windows amd64) and a `SHA256SUMS` file; see [docs/terminal.md](docs/terminal.md#install). Container images are built locally with `task docker:build` (see [docs/containers.md](docs/containers.md)).
