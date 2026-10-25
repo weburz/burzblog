@@ -9,8 +9,8 @@ to it; they read the website your build produces.
 12 characters. At most two hashes run at once, so a burst of sign-ins cannot
 exhaust a Pi's memory. A sign-in that cannot get a slot within two seconds is
 answered `503` with `Retry-After` instead of queueing, so a flood of junk
-usernames cannot build an unbounded queue, and one client address may have only
-two sign-ins waiting. That per-address cap uses the connecting address only
+usernames cannot build an unbounded queue, and one client address may have at
+most four sign-ins in progress. That per-address cap uses the connecting address only
 (`X-Forwarded-For` is ignored on purpose), so it separates clients only when
 they connect directly; behind a reverse proxy everyone shares the proxy's
 address and a flood is shed as a whole. It is load shedding, never a lockout:

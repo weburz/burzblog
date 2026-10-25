@@ -14,7 +14,7 @@ There are no unauthenticated content routes.
 Sessions last 12 hours. Each username gets ten sign-in attempts per 15 minutes;
 a successful sign-in resets the count. When many sign-ins arrive at once and no
 password-checking slot frees within two seconds, or one client address already
-has two sign-ins waiting, the request is answered `503` `busy` with
+has four sign-ins in progress, the request is answered `503` `busy` with
 `Retry-After: 5`; it is not counted against the username. There is no instance-wide limit, so one
 attacker cannot lock every author out.
 
