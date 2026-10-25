@@ -272,3 +272,45 @@ func TestImportRoundTripFromExport(t *testing.T) {
 		}
 	}
 }
+
+func TestImportSlugMismatch(t *testing.T) {
+	e := newEnv(t)
+	e.signedIn()
+	e.must("", "new", "Custom", "--no-edit")
+	before := e.getPost("custom")
+	dir := writeFiles(t, map[string]string{"other-name.md": "---\ntitle: Replaced\nslug: custom\n---\n\nNew body.\n"})
+
+	// Without --update the frontmatter slug still picks the post, with a warning.
+	out, errOut, code := e.run("", "import", dir)
+	if code != 0 || !strings.Contains(errOut, "warning") || !strings.Contains(errOut, `"custom" differs from the file name "other-name"`) {
+		t.Errorf("exit %d, out %q, stderr %q", code, out, errOut)
+	}
+	if !strings.Contains(out, "skipped custom: already exists") {
+		t.Errorf("output = %q", out)
+	}
+
+	out, _, _ = e.run("", "import", dir, "--json")
+	files := decode(t, out)["files"].([]any)
+	if w, _ := files[0].(map[string]any)["warning"].(string); !strings.Contains(w, "differs from the file name") {
+		t.Errorf("json files = %v", files)
+	}
+
+	// With --update the file is refused and nothing is overwritten.
+	_, errOut, code = e.run("", "import", dir, "--update")
+	if code != ExitValidation || !strings.Contains(errOut, "rename the file or fix the slug") {
+		t.Errorf("--update: exit %d, stderr %q", code, errOut)
+	}
+	if after := e.getPost("custom"); after.Title != before.Title || after.Version != before.Version {
+		t.Errorf("post was overwritten: %+v", after)
+	}
+	out, _, code = e.run("", "import", dir, "--update", "--json", "--dry-run")
+	if code != ExitValidation || decode(t, out)["failed"] != float64(1) {
+		t.Errorf("--update --dry-run: exit %d, out %q", code, out)
+	}
+
+	// A matching slug raises no warning.
+	dir = writeFiles(t, map[string]string{"custom-slug.md": importSlugged})
+	if _, errOut, _ := e.run("", "import", dir); strings.Contains(errOut, "warning") {
+		t.Errorf("unexpected warning: %q", errOut)
+	}
+}

@@ -17,6 +17,10 @@ func TestClean(t *testing.T) {
 		"line\nbreak\r":            "line�break�",
 		"c1\u009b31m":              "c1�31m",
 		"del\x7f":                  "del�",
+		"a\u202eb":                 "a�b",
+		"zero\u200bwidth":          "zero�width",
+		"bom\ufeff":                "bom�",
+		"👩\u200d💻 می\u200cخواهم":   "👩\u200d💻 می\u200cخواهم",
 	}
 	for in, want := range cases {
 		if got := clean(in); got != want {
@@ -26,7 +30,7 @@ func TestClean(t *testing.T) {
 }
 
 func TestCleanLinesKeepsLineBreaks(t *testing.T) {
-	if got, want := cleanLines("a\x1b[2J\n       b\u009b\r"), "a�[2J\n       b��"; got != want {
+	if got, want := cleanLines("a\x1b[2J\n       b\u009b\r\u202e\u200b"), "a�[2J\n       b����"; got != want {
 		t.Errorf("cleanLines = %q, want %q", got, want)
 	}
 }

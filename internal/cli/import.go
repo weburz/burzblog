@@ -37,6 +37,7 @@ type importFile struct {
 	Status  string       `json:"status,omitempty"`
 	Version int64        `json:"version,omitempty"`
 	Error   *importError `json:"error,omitempty"`
+	Warning string       `json:"warning,omitempty"`
 	exit    int
 }
 
@@ -147,9 +148,19 @@ func (a *App) importOne(cl *client.Client, path string, seen map[string]bool, as
 	if err != nil {
 		return res.failed(&exitError{"validation", ExitValidation, err.Error()})
 	}
+	stem := strings.TrimSuffix(filepath.Base(path), ".md")
 	slug := doc.Slug
 	if slug == "" {
-		slug = strings.TrimSuffix(filepath.Base(path), ".md")
+		slug = stem
+	} else if slug != stem {
+		// The slug in the file, not its name, picks the post, so --update could
+		// overwrite a post the file name gives no hint of.
+		if update {
+			res.Slug = slug
+			return res.failed(&exitError{"validation", ExitValidation, fmt.Sprintf(
+				"frontmatter slug %q differs from the file name %q; rename the file or fix the slug", slug, stem)})
+		}
+		res.Warning = fmt.Sprintf("frontmatter slug %q differs from the file name %q", slug, stem)
 	}
 	res.Slug = slug
 	if asDraft {
@@ -230,6 +241,9 @@ func (a *App) reportImport(results []importFile, dryRun bool) error {
 			would = "would be "
 		}
 		for _, r := range results {
+			if r.Warning != "" {
+				fmt.Fprintf(a.Err, "%s %s: %s\n", a.paint(yellow, "warning"), clean(r.File), clean(r.Warning))
+			}
 			switch r.Action {
 			case importCreated, importUpdated:
 				fmt.Fprintf(a.Out, "%s %s %s%s (%s)\n", a.paint(green, "✓"), a.paint(bold, clean(r.Slug)), would, r.Action, clean(r.Status))

@@ -170,6 +170,10 @@ slug is the frontmatter `slug`, or the file name without `.md`. The title,
 description, `timestamps`, `coverImage` and any other frontmatter keys are
 kept. A file with `status: published` is imported as published; a file without
 a status becomes a draft. `--draft` imports everything as a draft.
+If the frontmatter `slug` differs from the file name, a warning is printed (and
+included as `"warning"` in `--json`), and with `--update` the file is refused so
+it cannot overwrite a post its name does not hint at; rename the file or fix the
+slug.
 
 - Only `.md` files are read. Folders are not entered unless you add `--recursive`.
 - A post that already exists is never overwritten: it prints
