@@ -5,6 +5,7 @@ import { ApiError, errorMessage, request } from "../../utils/api";
 import { returnFocusTo } from "../../utils/focus";
 import { countWords, lengthLabel } from "../../utils/markdown";
 import { diffTooLong, lineDiff } from "../../utils/diff";
+import type { PaletteCommand } from "../../utils/palette";
 import { editedLabel, exactTime } from "../../utils/time";
 
 const route = useRoute();
@@ -13,6 +14,8 @@ const dirtyFlag = useState("editor-dirty", () => false);
 // A post that fails to open falls back to the normal page chrome.
 const editorFailed = useState("editor-failed", () => false);
 const { dark: themeDark } = usePreferredTheme();
+const { register } = useRegisteredCommands();
+const { remember } = useRecentPosts();
 
 const post = ref<Post | null>(null);
 const draft = ref<PostDraft | null>(null);
@@ -127,6 +130,7 @@ const load = async () => {
   try {
     const p = await request<Post>(`/api/posts/${encodeURIComponent(slug)}`);
     show(p);
+    remember(p.slug);
     try {
       const raw = localStorage.getItem(backupKey(slug));
       const backup = raw ? (JSON.parse(raw) as typeof recovered.value) : null;
@@ -179,7 +183,10 @@ const save = async (overwriteVersion?: number): Promise<boolean> => {
     // Take the server's copy (it trims stray spaces) unless the writer typed
     // more while the save was in flight; that stays as unsaved changes.
     if (same(draft.value, sent)) draft.value = editable(saved);
-    if (saved.slug !== from) await navigateTo(`/posts/${saved.slug}`, { replace: true });
+    if (saved.slug !== from) {
+      remember(saved.slug);
+      await navigateTo(`/posts/${saved.slug}`, { replace: true });
+    }
     justSaved.value = true;
     setTimeout(() => (justSaved.value = false), 2400);
     return true;
@@ -506,6 +513,86 @@ const modes = computed(() =>
     label: { write: "Write", split: "Split", preview: "Preview" }[m as Mode],
   })),
 );
+
+// What the command palette offers while this post is open. Every command goes
+// through the same functions as the buttons, so the state machine, the confirm
+// step and the Undo toast stay in one place.
+const paletteCommands = (): PaletteCommand[] => {
+  const p = post.value;
+  if (!p) return [];
+  const status: PaletteCommand[] = [];
+  if (p.status === "draft")
+    status.push({
+      id: "publish",
+      label: "Publish",
+      icon: "i-lucide-send",
+      run: publish,
+    });
+  else if (p.status === "published")
+    status.push({
+      id: "unpublish",
+      label: "Unpublish",
+      icon: "i-lucide-eye-off",
+      run: () => void action("unpublish"),
+    });
+  else
+    status.push({
+      id: "restore",
+      label: "Restore as draft",
+      icon: "i-lucide-archive-restore",
+      run: () => void action("restore"),
+    });
+  const modeIcons = {
+    write: "i-lucide-pen-line",
+    split: "i-lucide-columns-2",
+    preview: "i-lucide-eye",
+  };
+  return [
+    ...(archived.value
+      ? []
+      : [
+          {
+            id: "save",
+            label: "Save",
+            icon: "i-lucide-save",
+            kbds: ["meta", "s"],
+            disabled: !dirty.value && !saving.value,
+            run: () => void save(),
+          },
+        ]),
+    ...status,
+    {
+      id: "settings",
+      label: "Post settings",
+      icon: "i-lucide-sliders-horizontal",
+      run: () => (detailsOpen.value = true),
+    },
+    {
+      id: "history",
+      label: "History",
+      icon: "i-lucide-history",
+      run: () => (historyOpen.value = true),
+    },
+    {
+      id: "focus",
+      label: focused.value ? "Leave focus mode" : "Focus mode",
+      icon: focused.value ? "i-lucide-minimize-2" : "i-lucide-maximize-2",
+      kbds: ["meta", "shift", "f"],
+      run: toggleFocus,
+    },
+    ...modes.value
+      .filter((m) => m.value !== mode.value)
+      .map((m) => ({
+        id: `mode-${m.value}`,
+        label: `${m.label} layout`,
+        icon: modeIcons[m.value],
+        run: () => (mode.value = m.value),
+      })),
+  ];
+};
+let unregister = () => {};
+onMounted(() => (unregister = register(paletteCommands)));
+onUnmounted(() => unregister());
 
 // Dragging or arrow keys on the divider resize the split.
 const panes = ref<HTMLElement | null>(null);

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
+import type { Post } from "./types";
 import { errorMessage } from "./utils/api";
 import { themeOptions } from "./utils/theme";
 
@@ -13,6 +14,8 @@ onUnmounted(() => stopTheme());
 const dirty = useState("editor-dirty", () => false);
 const editorFailed = useState("editor-failed", () => false);
 const shortcutsOpen = useState("shortcuts-open", () => false);
+const paletteOpen = useState("palette-open", () => false);
+const creating = ref(false);
 const route = useRoute();
 const error = ref("");
 const confirmingSignOut = ref(false);
@@ -51,6 +54,7 @@ const leave = async () => {
   await signOut();
   await navigateTo("/");
 };
+const openCreated = (post: Post) => navigateTo(`/posts/${post.slug}`);
 const requestSignOut = () => {
   if (dirty.value) confirmingSignOut.value = true;
   else void leave();
@@ -101,6 +105,22 @@ useHead({
               >Settings</NuxtLink
             >
           </nav>
+          <UButton
+            v-if="state.authenticated"
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-search"
+            class="palette-trigger"
+            aria-label="Search or jump"
+            aria-keyshortcuts="Control+K Meta+K"
+            @click="paletteOpen = true"
+          >
+            <span class="max-sm:hidden">Search or jump…</span>
+            <UKbd value="meta" class="max-sm:hidden" /><UKbd
+              value="k"
+              class="max-sm:hidden"
+            />
+          </UButton>
           <UDropdownMenu
             v-if="state.authenticated"
             :items="accountItems"
@@ -144,6 +164,17 @@ useHead({
         </template>
       </UModal>
       <ShortcutsDialog v-if="state.authenticated" v-model:open="shortcutsOpen" />
+      <CommandPalette
+        v-if="state.authenticated"
+        v-model:open="paletteOpen"
+        @new-post="creating = true"
+        @sign-out="requestSignOut"
+      />
+      <NewPostDialog
+        v-if="state.authenticated"
+        v-model:open="creating"
+        @created="openCreated"
+      />
       <ConfirmDialog
         v-model:open="confirmingSignOut"
         title="Sign out with unsaved changes?"

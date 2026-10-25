@@ -60,6 +60,12 @@ const load = async () => {
   }
 };
 
+// The command palette's "Go to" entries change the filter from outside.
+watch(
+  () => route.query.status,
+  (value) => (status.value = asFilter(value)),
+);
+
 let debounce: ReturnType<typeof setTimeout> | undefined;
 watch([status, search, sort], ([s, q, o], [oldS, , oldO]) => {
   void router.replace({

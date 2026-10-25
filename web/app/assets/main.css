@@ -885,6 +885,30 @@ code {
   gap: var(--bb-space-1);
 }
 
+/* Command palette */
+.palette {
+  max-height: min(70dvh, 520px);
+}
+.palette-trigger {
+  gap: var(--bb-space-2);
+  color: var(--bb-text-2);
+}
+.palette-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--bb-space-3);
+}
+.palette-edited {
+  font-size: 12px;
+  color: var(--bb-text-3);
+  white-space: nowrap;
+}
+@media (max-width: 640px) {
+  .palette-edited {
+    display: none;
+  }
+}
+
 /* Post settings and history */
 .details {
   display: grid;
