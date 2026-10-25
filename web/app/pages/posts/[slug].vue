@@ -2,17 +2,20 @@
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import type { Post, PostDraft } from "../../types";
 import { ApiError, errorMessage, request } from "../../utils/api";
-import { countWords, readingMinutes } from "../../utils/markdown";
+import { countWords, lengthLabel } from "../../utils/markdown";
 import { diffTooLong, lineDiff } from "../../utils/diff";
 import { editedLabel, exactTime } from "../../utils/time";
 
 const route = useRoute();
 const toast = useToast();
 const dirtyFlag = useState("editor-dirty", () => false);
+// A post that fails to open falls back to the normal page chrome.
+const editorFailed = useState("editor-failed", () => false);
 
 const post = ref<Post | null>(null);
 const draft = ref<PostDraft | null>(null);
 const loadError = ref("");
+const missing = ref(false);
 const saving = ref(false);
 const acting = ref(false);
 const saveError = ref("");
@@ -98,6 +101,7 @@ const show = (p: Post) => {
 
 const load = async () => {
   loadError.value = "";
+  missing.value = false;
   const slug = String(route.params.slug);
   try {
     const p = await request<Post>(`/api/posts/${encodeURIComponent(slug)}`);
@@ -112,13 +116,15 @@ const load = async () => {
     await nextTick();
     if (!p.body && !p.title) titleField.value?.focus();
   } catch (cause) {
-    loadError.value =
-      cause instanceof ApiError && cause.code === "not_found"
-        ? "This post does not exist. It may have been renamed or deleted."
-        : errorMessage(cause);
+    missing.value = cause instanceof ApiError && cause.code === "not_found";
+    loadError.value = missing.value
+      ? `Nothing is saved at “${slug}”. It may have been renamed or deleted.`
+      : errorMessage(cause);
   }
 };
 onMounted(load);
+watch(loadError, (message) => (editorFailed.value = Boolean(message)));
+onUnmounted(() => (editorFailed.value = false));
 
 const restoreBackup = () => {
   if (!recovered.value || !post.value) return;
@@ -549,10 +555,20 @@ const primary = computed(() => {
 
 <template>
   <div v-if="loadError" class="content">
-    <div class="empty-state">
-      <p class="empty-title">{{ loadError }}</p>
+    <div class="page-head">
+      <div>
+        <h1 class="page-title">
+          {{ missing ? "Post not found" : "The post did not open" }}
+        </h1>
+        <p class="muted">{{ loadError }}</p>
+      </div>
+    </div>
+    <div class="load-error-actions">
       <UButton to="/" color="neutral" variant="outline" icon="i-lucide-arrow-left"
         >All posts</UButton
+      >
+      <UButton v-if="!missing" color="neutral" variant="ghost" @click="load"
+        >Try again</UButton
       >
     </div>
   </div>
@@ -723,9 +739,7 @@ const primary = computed(() => {
           {{ m.label }}
         </button>
       </div>
-      <span class="editor-count"
-        >{{ words.toLocaleString() }} words, {{ readingMinutes(words) }} min read</span
-      >
+      <span class="editor-count">{{ lengthLabel(words) }}</span>
     </div>
 
     <div

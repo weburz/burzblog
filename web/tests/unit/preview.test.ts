@@ -37,11 +37,11 @@ describe("previewDocument", () => {
       '<img class="cover"',
     );
   });
-  it("blocks scripts with its own policy and invites writing when empty", () => {
+  it("blocks scripts with its own policy and says when nothing is written", () => {
     const doc = previewDocument("", meta);
     expect(doc).toContain("default-src 'none'");
     expect(doc).not.toMatch(/script-src/);
-    expect(doc).toContain("Start writing on the left.");
+    expect(doc).toContain("Nothing written yet.");
     expect(doc).toContain("Untitled");
   });
 });

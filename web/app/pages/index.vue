@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import type { Post, PostList, PostStatus } from "../types";
 import { errorMessage, request } from "../utils/api";
+import { wordLabel } from "../utils/markdown";
 import { editedLabel, exactTime } from "../utils/time";
 
 useHead({ title: "Posts" });
@@ -177,7 +178,7 @@ const origin = typeof window === "undefined" ? "" : window.location.origin;
             </span>
           </span>
           <StatusBadge :status="post.status" class="post-status" />
-          <span class="post-words">{{ post.words.toLocaleString() }} words</span>
+          <span class="post-words">{{ wordLabel(post.words) }}</span>
           <time
             class="post-edited"
             :datetime="post.updatedAt"
