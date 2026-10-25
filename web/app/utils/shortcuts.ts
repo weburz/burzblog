@@ -13,7 +13,14 @@ export interface ShortcutGroup {
 export const shortcutGroups: ShortcutGroup[] = [
   {
     title: "Anywhere",
-    items: [{ label: "Show keyboard shortcuts", keys: ["?"] }],
+    items: [
+      { label: "Search or jump", keys: ["meta", "k"] },
+      {
+        label: "Search or jump, also while writing the body",
+        keys: ["meta", "shift", "k"],
+      },
+      { label: "Show keyboard shortcuts", keys: ["?"] },
+    ],
   },
   {
     title: "Posts list",
