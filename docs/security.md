@@ -19,7 +19,29 @@ long as known ones, and nothing is shed by whether an account exists. Failed
 sign-ins are limited per username, counted before the password is checked so
 parallel guesses cannot slip past (see [API](api.md)); expired counters are
 pruned as sign-ins arrive. There
-is no self sign-up; accounts are created on the host with `burzblog user add`.
+is no self sign-up; accounts are created on the host with `burzblog user add`,
+or once, in the browser, by first-run setup (below).
+
+**First-run setup.** `POST /api/setup` is the one unauthenticated write, and
+it exists so a fresh install does not need a shell to get its first account.
+It is not a content route and is gated three ways: it only works while the
+store has zero accounts; it needs a one-time token that `burzblog serve` prints
+in its own log and nowhere else; and it needs the same `Origin` as sign-in. The
+token is 256 random bits (`crypto/rand`, base64url), held only as a SHA-256
+digest in memory (a restart forgets it and prints a new one), valid for one
+hour, compared in constant time and consumed by the account it creates. It dies
+as soon as any account exists, including one made with `burzblog user add`
+while the server runs. The link carries it in the URL fragment, so it never
+reaches a proxy, an access log or a `Referer` header, and the panel removes it
+from the address bar at once. The account is created in a transaction that
+re-checks for zero accounts, so two concurrent requests with a valid token make
+exactly one account (the other gets 409). Hashing uses sign-in's two slots and
+per-address cap, and wrong tokens count against a per-address limit of ten per
+15 minutes. A wrong, expired or used token gets the same 403. `GET /api/setup`
+answers `{"needed": true|false}` without sign-in; that reveals only whether any
+account exists, which the sign-in page's behavior would show anyway. Anyone who
+can read the service log (`journalctl`, `docker logs`) while setup is open can
+create the first account, so treat the log as sensitive until you have.
 
 **Browser sessions.** A random 256-bit session id in an `HttpOnly`,
 `SameSite=Strict` cookie, `Secure` and `__Host-` prefixed over HTTPS. Only its

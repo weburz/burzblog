@@ -84,6 +84,12 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	if user == nil {
 		return
 	}
+	s.startSession(w, r, user, http.StatusOK)
+}
+
+// startSession signs the browser in as user: it sets the session cookie and
+// replies with the CSRF token.
+func (s *Server) startSession(w http.ResponseWriter, r *http.Request, user *store.User, status int) {
 	token, sess, err := s.auth.NewSession(r.Context(), user)
 	if err != nil {
 		s.internal(w, r, err)
@@ -94,7 +100,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		MaxAge: int(auth.SessionTTL.Seconds()), HttpOnly: true, Secure: s.origin.Scheme == "https",
 		SameSite: http.SameSiteStrictMode,
 	})
-	reply(w, http.StatusOK, sessionReply{Authenticated: true, Username: user.Username, CSRF: sess.CSRF})
+	reply(w, status, sessionReply{Authenticated: true, Username: user.Username, CSRF: sess.CSRF})
 }
 
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {

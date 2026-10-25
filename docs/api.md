@@ -29,8 +29,8 @@ specific cause when there is one.
 
 Codes include `bad_request` (400: invalid JSON, an unknown `status`, a missing
 `?version=`), `authentication` (401), `credentials` (401), `rate_limited`
-(429), `origin`/`csrf`/`scope` (403), `not_found` (404), `validation` and
-`preview_limit` (422), `busy` (503), `slug_taken`, `conflict`, `state` and
+(429), `origin`/`csrf`/`scope`/`setup_token` (403), `not_found` (404), `validation` and
+`preview_limit` (422), `busy` (503), `slug_taken`, `conflict`, `state`, `setup_done` and
 `deploy_unconfigured` (409), `version_required` (428), `too_large` (413) and
 `content_type` (415).
 
@@ -42,6 +42,8 @@ versions: `{ "error": {...}, "current": { ...post } }`.
 | | |
 |---|---|
 | `GET /api/session` | `{authenticated, username, csrf}`; works without signing in. An export token is anonymous here (`authenticated: false`) |
+| `GET /api/setup` | `{needed}`: true while the server has no accounts. Needs no sign-in and reveals nothing else |
+| `POST /api/setup` | `{token, username, password}` creates the first account and signs the browser in (201, same body as `GET /api/session`, plus the session cookie). Needs the `Origin` header. `token` is the one-time value after `#token=` in the link `burzblog serve` prints. 403 `setup_token` for a wrong, expired or used token (one message for all), 409 `setup_done` once any account exists, 400 `validation` for a name or password `burzblog user add` would refuse, 429 `rate_limited` and 503 `busy` like sign-in |
 | `POST /api/login` | `{username, password}` → session cookie and the same body as `GET /api/session` |
 | `POST /api/logout` | ends the session |
 | `POST /api/auth/token` | `{username, password, name}` → write token `{id, name, scope, secret}`; the secret is returned once |

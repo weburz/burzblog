@@ -10,9 +10,15 @@ same single binary on a distroless base, under 20 MB.
 cp .env.example .env          # set BURZBLOG_ORIGIN, BURZBLOG_UID/GID
 mkdir -m 700 data             # owned by BURZBLOG_UID
 task docker:build
-docker compose run --rm burzblog user add ada
 docker compose up -d
+docker compose logs burzblog       # open the "/setup#token=..." link it prints
 ```
+
+On a fresh `data/` the server logs a one-time setup link (valid for 60
+minutes; `docker compose restart burzblog` prints a new one). Open it to create
+the first account in the browser; the address uses `BURZBLOG_ORIGIN`, so set
+that to the URL you will open. To create the account from a terminal instead,
+run `docker compose run --rm burzblog user add ada` before or after starting.
 
 The container:
 

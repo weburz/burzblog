@@ -25,6 +25,8 @@ var (
 	ErrConflict = errors.New("changed since it was loaded")
 	ErrTaken    = errors.New("already exists")
 	ErrState    = errors.New("not allowed in the current state")
+	// ErrHasUsers means an account already exists, so there is no first one.
+	ErrHasUsers = errors.New("accounts already exist")
 )
 
 // Store is a handle on the database.

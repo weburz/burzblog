@@ -143,7 +143,8 @@ useHead({
       <main id="main" tabindex="-1">
         <p v-if="error" class="alert content mt-6" role="alert">{{ error }}</p>
         <p v-if="!state.ready" class="loading" role="status">Opening BurzBlog…</p>
-        <div v-else-if="!state.authenticated" class="content">
+        <div v-else-if="!state.authenticated && route.name !== 'setup'" class="content">
+          <SetupNotice />
           <LoginForm />
         </div>
         <NuxtPage v-else @sign-out="requestSignOut" />

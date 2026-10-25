@@ -47,13 +47,33 @@ Start it and create the first account:
 
 ```sh
 sudo systemctl enable --now burzblog
-sudo -u burzblog burzblog user add ada --data /var/lib/burzblog
-journalctl -u burzblog -f
+journalctl -u burzblog -n 20
 ```
 
-Accounts are managed on the host only: `burzblog user add`, `user passwd` and
-`user list`, always with `--data /var/lib/burzblog` and as the `burzblog` user.
-Passwords need at least 12 characters.
+While the server has no accounts, it logs a one-time setup link on every start:
+
+```text
+msg="no accounts yet; open https://blog.example.com/setup#token=... to create the first one (valid for 60 minutes; restart to get a new link), or run: burzblog user add <name> --data /var/lib/burzblog"
+```
+
+Open that link in your browser, choose a username and a password of at least 12
+characters, and you are signed in. The link works once and for 60 minutes; after
+that, or once any account exists, it is dead and `sudo systemctl restart
+burzblog` prints a new one if it is still needed. The token sits after the `#`,
+so browsers never send it to your reverse proxy, and the panel removes it from
+the address bar as soon as the page opens. Anyone who can read the service log
+can use the link, so open it before you share the logs.
+
+Prefer the terminal? Create the account on the host instead; that also ends
+first-run setup:
+
+```sh
+sudo -u burzblog burzblog user add ada --data /var/lib/burzblog
+```
+
+Later accounts are managed on the host only: `burzblog user add`, `user passwd`
+and `user list`, always with `--data /var/lib/burzblog` and as the `burzblog`
+user. Passwords need at least 12 characters.
 `user passwd` also signs that account out of every browser.
 
 ## 3. HTTPS in front

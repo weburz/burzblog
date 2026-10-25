@@ -32,6 +32,42 @@ func (s *Store) CreateUser(ctx context.Context, username, passwordHash string) (
 	return u, nil
 }
 
+// HasUsers reports whether any account exists.
+func (s *Store) HasUsers(ctx context.Context) (bool, error) {
+	var exists bool
+	if err := s.db.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM users)").Scan(&exists); err != nil {
+		return false, fmt.Errorf("count users: %w", err)
+	}
+	return exists, nil
+}
+
+// CreateFirstUser adds an account only if there are none. The check and the
+// insert share one write transaction, so of any number of concurrent calls
+// exactly one succeeds and the rest get ErrHasUsers.
+func (s *Store) CreateFirstUser(ctx context.Context, username, passwordHash string) (*User, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin first account: %w", err)
+	}
+	defer tx.Rollback()
+	var exists bool
+	if err := tx.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM users)").Scan(&exists); err != nil {
+		return nil, fmt.Errorf("count users: %w", err)
+	}
+	if exists {
+		return nil, ErrHasUsers
+	}
+	u := &User{Username: username, PasswordHash: passwordHash, CreatedAt: s.now()}
+	if err := tx.QueryRowContext(ctx, `INSERT INTO users (username, password_hash, created_at)
+		VALUES (?, ?, ?) RETURNING id`, username, passwordHash, s.stamp()).Scan(&u.ID); err != nil {
+		return nil, fmt.Errorf("create first account: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("create first account: %w", err)
+	}
+	return u, nil
+}
+
 // UserByName finds an account, ignoring case.
 func (s *Store) UserByName(ctx context.Context, username string) (*User, error) {
 	return s.user(ctx, "username = ?", username)

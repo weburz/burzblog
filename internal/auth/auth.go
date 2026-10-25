@@ -162,6 +162,10 @@ type Service struct {
 	// dummy is verified when a username does not exist, so timing does not
 	// reveal which accounts exist.
 	dummy string
+	// setup is the live first-run token, if any; now is its clock.
+	setupMu sync.Mutex
+	setup   *setupToken
+	now     func() time.Time
 }
 
 // New returns a Service. Only two password checks run at once.
@@ -171,7 +175,7 @@ func New(s *store.Store) (*Service, error) {
 		return nil, err
 	}
 	return &Service{store: s, gate: make(chan struct{}, 2), wait: gateWait,
-		inflight: map[string]int{}, perClient: clientLimit, dummy: dummy}, nil
+		inflight: map[string]int{}, perClient: clientLimit, dummy: dummy, now: time.Now}, nil
 }
 
 // Authenticate checks a username and password, with rate limiting.

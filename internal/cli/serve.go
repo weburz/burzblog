@@ -16,7 +16,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/weburz/burzblog/internal/auth"
-	"github.com/weburz/burzblog/internal/post"
 	"github.com/weburz/burzblog/internal/server"
 	"github.com/weburz/burzblog/internal/store"
 )
@@ -71,8 +70,8 @@ URL. Settings can also come from the environment:
 			if err != nil {
 				return err
 			}
-			if users, err := st.Users(ctx); err == nil && len(users) == 0 {
-				log.Warn("no accounts yet; create one with: burzblog user add <name> --data " + dir)
+			if err := announceSetup(ctx, log, svc, origin, dir); err != nil {
+				return err
 			}
 
 			srv.StartScheduler(ctx)
@@ -116,6 +115,24 @@ URL. Settings can also come from the environment:
 	cmd.Flags().StringVar(&origin, "origin", "", "public URL people open, e.g. https://blog.example.com (default http://<addr>)")
 	cmd.Flags().StringVar(&hook, "deploy-hook", "", "URL to POST after published posts change; prefer BURZBLOG_DEPLOY_HOOK, it is a secret")
 	return cmd
+}
+
+// announceSetup does nothing when accounts exist. Otherwise it issues the
+// one-time first-run token and logs the setup link, the only place the token
+// is ever written. The link keeps the token in the fragment so it never
+// reaches a proxy, an access log or a Referer header.
+func announceSetup(ctx context.Context, log *slog.Logger, svc *auth.Service, origin, dir string) error {
+	token, err := svc.IssueSetupToken(ctx, auth.SetupTTL)
+	if errors.Is(err, auth.ErrSetupDone) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("prepare first-run setup: %w", err)
+	}
+	log.Warn(fmt.Sprintf("no accounts yet; open %s/setup#token=%s to create the first one "+
+		"(valid for %d minutes; restart to get a new link), or run: burzblog user add <name> --data %s",
+		strings.TrimRight(origin, "/"), token, int(auth.SetupTTL.Minutes()), dir))
+	return nil
 }
 
 // healthCmd lets container health checks probe the server without curl.
@@ -189,8 +206,8 @@ terminal the password is read from standard input.`,
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := store.NormalizeUsername(args[0])
-			if name == "" || len(name) > 64 || strings.Contains(name, " ") || post.HasControl(name) {
-				return errors.New("a username is 1 to 64 characters without spaces or control characters")
+			if err := auth.CheckUsername(name); err != nil {
+				return err
 			}
 			st, err := open()
 			if err != nil {

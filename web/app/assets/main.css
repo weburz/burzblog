@@ -325,6 +325,17 @@ code {
   font-size: 14px;
 }
 
+.notice {
+  margin: 24px auto 0;
+  max-width: 400px;
+  padding: 12px 16px;
+  border: 1px solid var(--bb-border-strong);
+  border-radius: var(--bb-radius-m);
+  background: var(--bb-surface-2);
+  color: var(--bb-text);
+  font-size: 14px;
+}
+
 /* Sign in */
 .login {
   display: grid;

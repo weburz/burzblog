@@ -23,9 +23,18 @@ export const useCurrentSession = () => {
     apply(await request<Session>("/api/login", "POST", { username, password }));
     state.value.expired = false;
   };
+  // Trades the one-time setup token for the first account and signs it in.
+  const createFirstAccount = async (
+    token: string,
+    username: string,
+    password: string,
+  ) => {
+    apply(await request<Session>("/api/setup", "POST", { token, username, password }));
+    state.value.expired = false;
+  };
   const signOut = async () => {
     await request("/api/logout", "POST", {}).catch(() => undefined);
     apply({ authenticated: false });
   };
-  return { state, load, signIn, signOut };
+  return { state, load, signIn, createFirstAccount, signOut };
 };

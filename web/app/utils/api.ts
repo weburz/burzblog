@@ -61,7 +61,8 @@ export const request = async <T>(
   method = "GET",
   body?: unknown,
 ): Promise<T> => {
-  if (method !== "GET" && !csrf && path !== "/api/login") await refreshCsrf();
+  if (method !== "GET" && !csrf && path !== "/api/login" && path !== "/api/setup")
+    await refreshCsrf();
   let response = await send(path, method, body);
   if (response.status === 403 && method !== "GET") {
     // A token rotated by another tab: fetch the current one and retry once.
