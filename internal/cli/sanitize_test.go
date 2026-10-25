@@ -91,7 +91,7 @@ func TestRedirectErrorIsShown(t *testing.T) {
 	}))
 	defer origin.Close()
 	e := newEnv(t)
-	_, errOut, code := e.run("correct horse battery\n", "login", origin.URL, "-u", "jarmos")
+	_, errOut, code := e.run("correct horse battery\n", "login", origin.URL, "-u", "ada")
 	if code == 0 || !strings.Contains(errOut, "redirected to "+dest.URL) || !strings.Contains(errOut, "burzblog login") {
 		t.Errorf("login through a redirect: %d %q", code, errOut)
 	}

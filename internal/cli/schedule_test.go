@@ -31,8 +31,8 @@ func TestParseWhen(t *testing.T) {
 
 func TestScheduleAndUnscheduleCommands(t *testing.T) {
 	e := newEnv(t)
-	e.must("correct horse battery\n", "user", "add", "jarmos")
-	e.must("correct horse battery\n", "login", e.url, "-u", "jarmos")
+	e.must("correct horse battery\n", "user", "add", "ada")
+	e.must("correct horse battery\n", "login", e.url, "-u", "ada")
 	e.must("", "new", "Coming soon", "--no-edit")
 
 	when := time.Now().AddDate(0, 0, 3).Format("2006-01-02 15:04")
@@ -41,7 +41,7 @@ func TestScheduleAndUnscheduleCommands(t *testing.T) {
 		t.Errorf("schedule = %q", out)
 	}
 	p, _ := e.store.GetPost(context.Background(), "coming-soon")
-	if p.PublishAt == nil || p.Status != "draft" || p.PublishBy != "jarmos" {
+	if p.PublishAt == nil || p.Status != "draft" || p.PublishBy != "ada" {
 		t.Fatalf("post after schedule = %+v", p)
 	}
 

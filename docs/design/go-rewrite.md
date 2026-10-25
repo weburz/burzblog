@@ -1,12 +1,11 @@
 # BurzBlog in Go: database-backed writing tool
 
-Status: approved direction (end-of-week meeting 2026-10-23, follow-up chat
-2026-10-24). Supersedes the file-first design in ADR-001 to ADR-012.
+Status: accepted. Supersedes the file-first design in ADR-001 to ADR-012.
 
 ## Why
 
-The file-first rewrite treated Markdown files and Git as canonical because we
-assumed the goal was GitHub parity. It was not. The owner wants:
+The file-first design treated Markdown files and Git as canonical. That was
+more machinery than the problem needs. The goals are:
 
 - a writing interface whose only job is authoring posts;
 - posts stored **in a database as Markdown** (SQLite), with no files on the
@@ -15,10 +14,8 @@ assumed the goal was GitHub parity. It was not. The owner wants:
 - a split editor: Markdown on the left, preview on the right, with a proper
   form (title, description, ...) instead of a bare text area.
 
-The main author (Jarmos) also needs to keep writing from his local terminal and
-editor: "it's impossible to completely ditch the local environment", and the
-CMS must stay "minimal enough that anyone who chooses to tinker around with it
-has the means to do so".
+Authors also need to keep writing from a local terminal and editor, and the
+CMS must stay small enough that anyone can tinker with it.
 
 ## What it is
 
@@ -42,7 +39,7 @@ copies, never a second source of truth.
    `$EDITOR` on a normal `.md` file with frontmatter and saves it back.
 3. No silent overwrites: every post has a version; a save based on an old
    version is refused with a clear message, in both the panel and the CLI.
-4. A reader site (first target: jarmos.dev, Nuxt Content, static on Vercel)
+4. A reader site (for example a Nuxt Content site, static on Vercel)
    gets published posts as Markdown files at build time, in its own
    frontmatter shape, and can be rebuilt automatically on publish.
 5. Runs as one process, one binary, one SQLite file. No Python, Node or Docker
@@ -50,8 +47,7 @@ copies, never a second source of truth.
 
 ## Non-goals (for now)
 
-- Image and video uploads (deferred; "there are some caveats"). Cover images
-  are URLs, which matches jarmos.dev (ImageKit).
+- Image and video uploads (deferred). Cover images are URLs to hosted images.
 - Roles and permissions. Every account can do everything.
 - Serving the public blog. BurzBlog is the kitchen; reader sites are the
   restaurant.
@@ -61,7 +57,7 @@ copies, never a second source of truth.
 ## Anti-goals (failure even if it works)
 
 - The CLI feels clunkier than `git push`. Then the database is a step backwards
-  for the main author.
+  for terminal authors.
 - A post edited in two places silently loses one of the edits.
 - A reader site goes down because BurzBlog is down.
 - Frontmatter the author wrote by hand (e.g. `sitemap`, `seo`) disappears after
@@ -87,7 +83,7 @@ web/                     Nuxt 4 + Nuxt UI panel (ssr: false, nuxt generate);
                          its output is embedded with go:embed
 ```
 
-Decided: Go (the main author's language; single static binary for the Pi and
+Decided: Go (single static binary for the Pi and
 for laptops). Pure-Go SQLite so one `GOOS/GOARCH` cross-compile works for
 arm64. The existing Nuxt panel is already a static SPA and is kept and
 reworked, not rewritten.
@@ -135,7 +131,7 @@ person at the keyboard. No unauthenticated content route.
 
 ### Frontmatter format
 
-The document the CLI edits and the export emits uses the jarmos.dev shape:
+The document the CLI edits and the export emits uses the Nuxt Content shape:
 
 ```yaml
 ---
@@ -213,10 +209,9 @@ them (ADRs kept, marked superseded by ADR-013).
 
 ## Builder's calls
 
-- Users table instead of the old single password (CLI login needs a name; two
-  people write today). All users are equal until RBAC exists.
+- Users table instead of a single password (CLI login needs a name). All users are equal until RBAC exists.
 - Revisions table replaces recovery journals as the safety net.
 - `extra` JSON column to honour the "frontmatter must survive" anti-goal.
-- Export format is the jarmos.dev shape; other shapes can come later.
+- Export format is the Nuxt Content shape; other shapes can come later.
 - cobra for the CLI (help, completion), goldmark + bluemonday for rendering,
   modernc.org/sqlite for cgo-free builds, golang.org/x/crypto for Argon2id.

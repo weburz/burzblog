@@ -99,7 +99,7 @@ status: draft
 timestamps:
   publishedOn: 2026-10-24T09:30:00Z
 coverImage:
-  url: https://ik.imagekit.io/you/cover.png
+  url: https://images.example.com/cover.png
   alt: A diagram of three small interfaces.
 sitemap:
   changefreq: yearly
@@ -198,7 +198,7 @@ burzblog whoami --json
 ```
 
 The environment wins over the stored login. `burzblog login` itself can also
-run unattended: `echo "$PASSWORD" | burzblog login https://blog.example.com -u jarmos --password-stdin`.
+run unattended: `echo "$PASSWORD" | burzblog login https://blog.example.com -u ada --password-stdin`.
 
 ### JSON output
 

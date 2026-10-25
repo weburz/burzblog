@@ -12,8 +12,8 @@ import (
 // signedIn creates an account and signs the CLI in.
 func (e *env) signedIn() {
 	e.t.Helper()
-	e.must("correct horse battery\n", "user", "add", "jarmos")
-	e.must("correct horse battery\n", "login", e.url, "-u", "jarmos")
+	e.must("correct horse battery\n", "user", "add", "ada")
+	e.must("correct horse battery\n", "login", e.url, "-u", "ada")
 }
 
 func decode(t *testing.T, raw string) map[string]any {
@@ -59,7 +59,7 @@ func TestJSONResults(t *testing.T) {
 	}
 
 	who := decode(t, e.must("", "whoami", "--json"))
-	if who["username"] != "jarmos" || who["server"] != e.url {
+	if who["username"] != "ada" || who["server"] != e.url {
 		t.Errorf("whoami = %v", who)
 	}
 
@@ -123,7 +123,7 @@ func TestJSONResults(t *testing.T) {
 	}
 
 	// Without --json the human output is unchanged.
-	if out := e.must("", "whoami"); out != "jarmos on "+e.url+"\n" {
+	if out := e.must("", "whoami"); out != "ada on "+e.url+"\n" {
 		t.Errorf("whoami = %q", out)
 	}
 }
@@ -161,7 +161,7 @@ func TestJSONFailures(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "contested.md")
 	e.must("", "pull", "contested", "-o", file)
 	cur, _ := e.store.GetPost(context.Background(), "contested")
-	if _, err := e.store.UpdatePost(context.Background(), cur.Slug, cur.Version, "sagar", touch); err != nil {
+	if _, err := e.store.UpdatePost(context.Background(), cur.Slug, cur.Version, "grace", touch); err != nil {
 		t.Fatal(err)
 	}
 	inner, code := e.failure("", "push", file, "--json")
