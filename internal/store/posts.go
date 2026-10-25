@@ -243,9 +243,15 @@ func (s *Store) UpdatePost(ctx context.Context, slug string, version int64, by s
 	if next.Status != post.Draft || next.PublishAt == nil {
 		next.PublishAt, next.PublishBy = nil, ""
 	}
+	// A published post keeps its first publish date when a save leaves the
+	// date out, so re-pushing a file without one does not move the post.
 	if next.Status == post.Published && next.PublishedOn == nil {
-		now := s.now().Truncate(time.Second)
-		next.PublishedOn = &now
+		if current.PublishedOn != nil {
+			next.PublishedOn = current.PublishedOn
+		} else {
+			now := s.now().Truncate(time.Second)
+			next.PublishedOn = &now
+		}
 	}
 	if err := post.Validate(&next); err != nil {
 		return nil, err
