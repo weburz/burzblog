@@ -149,6 +149,35 @@ sequences) are not allowed in `title`, `description` or the cover `alt`; the
 error names the field. Anything the server sends is shown with such characters
 replaced by `�`.
 
+## Importing existing posts
+
+```sh
+burzblog import content/blog           # every .md file in the folder
+burzblog import content/blog --recursive
+burzblog import a.md b.md --update
+burzblog import content/blog --dry-run
+```
+
+The inverse of `export`: bring posts from a static site repository, for example
+a Nuxt Content `content/blog/` folder of `<slug>.md` files, into BurzBlog. The
+slug is the frontmatter `slug`, or the file name without `.md`. The title,
+description, `timestamps`, `coverImage` and any other frontmatter keys are
+kept. A file with `status: published` is imported as published; a file without
+a status becomes a draft. `--draft` imports everything as a draft.
+
+- Only `.md` files are read. Folders are not entered unless you add `--recursive`.
+- A post that already exists is never overwritten: it prints
+  `skipped my-post: already exists`. With `--update` the file is saved over it as
+  a new version, so the old text stays in **History**. Together with `--draft`
+  that also turns a published post back into a draft.
+- `--dry-run` prints what would happen and changes nothing.
+- One bad file (broken YAML, an invalid slug, no title) does not stop the
+  others. It is listed on standard error and the exit code is non-zero: `6`
+  when every failure was invalid content, `1` otherwise.
+- With `--json`, standard output holds one document:
+  `{"dryRun","created","updated","unchanged","skipped","failed","files":[{"file","slug","action","status","version","error"}]}`.
+  `action` is `created`, `updated`, `unchanged`, `skipped` or `failed`.
+
 ## Backing up your posts
 
 ```sh
