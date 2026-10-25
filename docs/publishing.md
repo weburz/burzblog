@@ -9,7 +9,7 @@ serving its last build; only new posts wait.
 
 ## 1. Create a build token
 
-In the panel, open **Settings → Build tokens → New build token**. Copy the token
+In the panel, open **Settings → Your website → New build token**. Copy the token
 (it starts with `bzb_` and is shown once) and store it as a secret environment
 variable in your host, for example `BURZBLOG_TOKEN` in Vercel.
 
@@ -30,7 +30,7 @@ Or with the `burzblog` binary, which also removes files of posts that are no
 longer published:
 
 ```sh
-BURZBLOG_SERVER=https://blog.example.com burzblog export --out content/blogs --clean
+BURZBLOG_SERVER=https://blog.example.com BURZBLOG_TOKEN=bzb_... burzblog export --out content/blogs --clean
 ```
 
 The archive contains one `<slug>.md` per published post and nothing else.

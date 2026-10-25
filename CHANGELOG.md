@@ -19,6 +19,32 @@ All notable changes are recorded here, following
   a Nuxt Content `content/blog/` folder or the output of `burzblog export`,
   into BurzBlog. It skips posts that already exist unless `--update` is given,
   and supports `--recursive`, `--draft`, `--dry-run` and `--json`.
+- `site/install.sh`, a one-line installer for Linux and macOS
+  (`curl -fsSL https://burzblog.weburz.com/install.sh | sh`). It picks the build
+  for the computer, checks it against the release's `SHA256SUMS-vX.Y.Z` file and
+  never calls `sudo`; `BURZBLOG_VERSION` and `BURZBLOG_INSTALL_DIR` adjust it.
+  `task install:test` runs it against a local fake release server.
+- The project website in `site/` (plain HTML, no build step), with a dormant
+  GitHub Pages workflow and `task site:serve` to preview it.
+- Public-repository files: `SECURITY.md`, `CODE_OF_CONDUCT.md`, issue and pull
+  request templates, and a fuller `CONTRIBUTING.md`.
+
+### Changed
+
+- The first-run posts page hides the filters and search box until there is
+  something to filter, and the panel's phone layout, row dates, dialog headers,
+  and the wording for schedule, delete and the command palette were tidied.
+- The design document moved from `docs/superpowers/specs/` to `docs/design/`,
+  and examples and tests use neutral names.
+- Help texts: `--json` now lists `schedule` and `unschedule`, `serve --data`
+  names `$BURZBLOG_DATA`, `pull -o` says the file must be named `<slug>.md`, and
+  `login`, `open`, `schedule` and `user` gained examples.
+
+### Fixed
+
+- Saving a published post with no publish date, such as pushing a file without
+  `timestamps.publishedOn`, keeps its first publish date instead of resetting it
+  to the time of the save.
 
 ### Changed
 

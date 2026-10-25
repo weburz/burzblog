@@ -495,7 +495,7 @@ func (a *App) pullCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVarP(&out, "output", "o", "", "file to write, or - for standard output")
+	cmd.Flags().StringVarP(&out, "output", "o", "", "file to write, named <slug>.md, or - for standard output")
 	cmd.Flags().BoolVarP(&force, "force", "f", false, "replace an existing file")
 	return cmd
 }
@@ -671,7 +671,8 @@ or a local date and time in quotes ("2026-11-03 09:00"). It must be in the
 future, at most two years away. Reader sites with a deploy hook rebuild when
 it publishes; use "burzblog unschedule" to cancel.`,
 		Example: `  burzblog schedule my-post "2026-11-03 09:00"
-  burzblog schedule my-post 2026-11-03T09:00:00+05:30`,
+  burzblog schedule my-post 2026-11-03T09:00:00+05:30
+  burzblog schedule my-post "2026-11-03 09:00" --json     # prints the post: {"slug","status","publishAt",...}`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			at, err := parseWhen(args[1], time.Local)
@@ -706,7 +707,9 @@ func (a *App) openCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "open [slug]",
 		Short: "Open the browser panel, or one post in it",
-		Args:  cobra.MaximumNArgs(1),
+		Example: `  burzblog open
+  burzblog open my-post`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := a.loadConfig()
 			if err != nil {
@@ -745,7 +748,7 @@ func (a *App) exportCmd() *cobra.Command {
 		Long: `Writes each published post to <dir>/<slug>.md with frontmatter, ready for
 Nuxt Content or another static site generator.
 
-In CI, set BURZBLOG_SERVER and BURZBLOG_TOKEN (an export token from
+In CI, set BURZBLOG_SERVER and BURZBLOG_TOKEN (a build token from
 Settings) instead of running burzblog login.`,
 		Example: `  burzblog export --out website/content/blogs --clean
   BURZBLOG_SERVER=https://blog.example.com BURZBLOG_TOKEN=bzb_... burzblog export --out content`,

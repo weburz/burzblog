@@ -7,9 +7,9 @@ There are no unauthenticated content routes.
 
 | Caller | Credential | Changes need |
 |---|---|---|
-| Browser panel | `HttpOnly`, `SameSite=Strict` session cookie from `POST /api/login` (`__Host-burzblog` over HTTPS) | `Origin` equal to the configured origin, and `X-CSRF-Token` from `GET /api/session` |
+| Browser panel | `HttpOnly`, `SameSite=Strict` session cookie from `POST /api/login` (`__Host-burzblog` over HTTPS, `burzblog_session` over plain HTTP) | `Origin` equal to the configured origin, and `X-CSRF-Token` from `GET /api/session` |
 | CLI | `Authorization: Bearer bzb_...` write token from `POST /api/auth/token` | nothing else |
-| Website build | `Authorization: Bearer bzb_...` export token created in Settings | can only call `GET /api/export.tar.gz`; `GET /api/backup.tar.gz` answers 403 |
+| Website build | `Authorization: Bearer bzb_...` export token created in Settings (a build token in the panel) | can only call `GET /api/export.tar.gz`; `GET /api/backup.tar.gz` answers 403 |
 
 Sessions last 12 hours. Each username gets ten sign-in attempts per 15 minutes;
 a successful sign-in resets the count. When many sign-ins arrive at once and no
@@ -27,10 +27,12 @@ specific cause when there is one.
 { "error": { "code": "validation", "message": "Fix the highlighted field, then save again.", "detail": "title must not be empty." } }
 ```
 
-Codes include `authentication` (401), `credentials` (401), `rate_limited`
+Codes include `bad_request` (400: invalid JSON, an unknown `status`, a missing
+`?version=`), `authentication` (401), `credentials` (401), `rate_limited`
 (429), `origin`/`csrf`/`scope` (403), `not_found` (404), `validation` and
-`preview_limit` (422), `busy` (503),
-`slug_taken`, `conflict` and `state` (409), `version_required` (428).
+`preview_limit` (422), `busy` (503), `slug_taken`, `conflict`, `state` and
+`deploy_unconfigured` (409), `version_required` (428), `too_large` (413) and
+`content_type` (415).
 
 A `conflict` also carries the post as it is now, so clients can show both
 versions: `{ "error": {...}, "current": { ...post } }`.
@@ -40,7 +42,7 @@ versions: `{ "error": {...}, "current": { ...post } }`.
 | | |
 |---|---|
 | `GET /api/session` | `{authenticated, username, csrf}`; works without signing in. An export token is anonymous here (`authenticated: false`) |
-| `POST /api/login` | `{username, password}` → session cookie |
+| `POST /api/login` | `{username, password}` → session cookie and the same body as `GET /api/session` |
 | `POST /api/logout` | ends the session |
 | `POST /api/auth/token` | `{username, password, name}` → write token `{id, name, scope, secret}`; the secret is returned once |
 | `GET /api/tokens` | every token (without secrets) |
@@ -48,7 +50,7 @@ versions: `{ "error": {...}, "current": { ...post } }`.
 | `DELETE /api/tokens/{id}` | revoke |
 | `POST /api/account/password` | `{current, next}`; signs out every other browser and revokes every write token (`burzblog login`); export tokens keep working |
 | `GET /api/settings` | `{username, origin, version, deploy}` |
-| `POST /api/deploy` | request a website rebuild now |
+| `POST /api/deploy` | request a website rebuild now; 409 `deploy_unconfigured` when no deploy hook is set |
 
 ## Posts
 
