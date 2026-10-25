@@ -420,10 +420,15 @@ code {
   white-space: nowrap;
 }
 .post-sub .mono {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: var(--bb-text-3);
 }
 .post-description {
+  flex: 1 1 0;
+  min-width: 8em;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -434,6 +439,11 @@ code {
   text-align: right;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+.load-error-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 24px;
 }
 .list-foot {
   margin-top: 20px;
@@ -864,6 +874,8 @@ code {
 }
 .settings-main {
   display: grid;
+  /* One shrinkable column: long commands scroll instead of widening the page. */
+  grid-template-columns: minmax(0, 1fr);
   align-content: start;
   gap: 12px;
   min-width: 0;
@@ -878,6 +890,7 @@ code {
 }
 .copy-field {
   position: relative;
+  min-width: 0;
 }
 .copy-field .terminal {
   padding-right: 96px;
@@ -981,6 +994,9 @@ code {
   .content {
     padding-inline: 16px;
   }
+  .topbar-inner {
+    gap: 10px;
+  }
   .nav-tabs {
     margin-left: 8px;
     gap: 16px;
@@ -1018,6 +1034,14 @@ code {
   }
   .list-search {
     width: 100%;
+  }
+  /* Commands scroll sideways on phones; keep Copy clear of them. */
+  .copy-field .terminal {
+    padding-right: 16px;
+  }
+  .copy-button {
+    position: static;
+    margin-top: 8px;
   }
   .segment {
     max-width: 100%;

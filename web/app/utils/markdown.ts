@@ -103,3 +103,13 @@ export const countWords = (text: string): number => text.match(words)?.length ??
 // About 230 words a minute, rounded up, never "0 min".
 export const readingMinutes = (wordCount: number): number =>
   Math.max(1, Math.ceil(wordCount / 230));
+
+// "1 word", "1,204 words": counts as people read them.
+export const wordLabel = (wordCount: number): string =>
+  wordCount === 1 ? "1 word" : `${wordCount.toLocaleString()} words`;
+
+// The editor's length summary; an empty post has no reading time.
+export const lengthLabel = (wordCount: number): string =>
+  wordCount === 0
+    ? "No words yet"
+    : `${wordLabel(wordCount)}, ${readingMinutes(wordCount)} min read`;

@@ -5,6 +5,7 @@ import { errorMessage } from "./utils/api";
 const { state, load, signOut } = useCurrentSession();
 // The editor reports unsaved writing here, so signing out can warn first.
 const dirty = useState("editor-dirty", () => false);
+const editorFailed = useState("editor-failed", () => false);
 const route = useRoute();
 const error = ref("");
 const confirmingSignOut = ref(false);
@@ -42,7 +43,8 @@ const accountItems = computed(() => [
     { label: "Sign out", icon: "i-lucide-log-out", onSelect: requestSignOut },
   ],
 ]);
-const editing = computed(() => route.path.startsWith("/posts/"));
+// The editor brings its own bar, unless the post could not be opened.
+const editing = computed(() => route.path.startsWith("/posts/") && !editorFailed.value);
 
 useHead({
   titleTemplate: (title) => (title ? `${title} · BurzBlog` : "BurzBlog"),

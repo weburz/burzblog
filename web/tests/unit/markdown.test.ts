@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   codeBlock,
   countWords,
+  lengthLabel,
   link,
   prefixLines,
   readingMinutes,
+  wordLabel,
   wrap,
 } from "../../app/utils/markdown";
 
@@ -69,5 +71,25 @@ describe("counting", () => {
   it("never says zero minutes", () => {
     expect(readingMinutes(0)).toBe(1);
     expect(readingMinutes(231)).toBe(2);
+  });
+});
+
+describe("wordLabel", () => {
+  it("uses the singular for one word", () => {
+    expect(wordLabel(1)).toBe("1 word");
+  });
+  it("groups digits for larger counts", () => {
+    expect(wordLabel(0)).toBe("0 words");
+    expect(wordLabel(1204)).toBe("1,204 words");
+  });
+});
+
+describe("lengthLabel", () => {
+  it("has no reading time for an empty post", () => {
+    expect(lengthLabel(0)).toBe("No words yet");
+  });
+  it("adds the reading time otherwise", () => {
+    expect(lengthLabel(1)).toBe("1 word, 1 min read");
+    expect(lengthLabel(460)).toBe("460 words, 2 min read");
   });
 });

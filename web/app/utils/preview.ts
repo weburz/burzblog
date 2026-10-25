@@ -59,6 +59,6 @@ export const previewDocument = (html: string, meta: PreviewMeta): string => {
   const lede = meta.description.trim()
     ? `<p class="lede">${escape(meta.description)}</p>`
     : "";
-  const body = html.trim() || `<p class="empty-body">Start writing on the left.</p>`;
+  const body = html.trim() || `<p class="empty-body">Nothing written yet.</p>`;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; img-src https: http: data:; base-uri 'none'; form-action 'none'"><base target="_blank"><style>${styles}</style></head><body><main><header>${cover}${title}${lede}</header><article>${body}</article></main></body></html>`;
 };
