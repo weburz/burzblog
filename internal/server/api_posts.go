@@ -106,7 +106,11 @@ func (s *Server) listPosts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	limit, offset := 0, 0
-	for name, dst := range map[string]*int{"limit": &limit, "offset": &offset} {
+	for _, f := range []struct {
+		name string
+		dst  *int
+	}{{"limit", &limit}, {"offset", &offset}} {
+		name, dst := f.name, f.dst
 		raw := r.URL.Query().Get(name)
 		if raw == "" {
 			continue

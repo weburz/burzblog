@@ -142,6 +142,38 @@ func TestForEachPostStreamsInOrder(t *testing.T) {
 	}
 }
 
+func TestForEachPostReadsInBatches(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+	n := 2*forEachBatch + 7
+	for i := range n {
+		status := post.Draft
+		if i%3 == 0 {
+			status = post.Published
+		}
+		if _, err := s.CreatePost(ctx, &post.Post{Slug: fmt.Sprintf("p-%03d", i), Title: "T", Status: status}, "u"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Every connection is taken while the callbacks run, so a batch that
+	// kept its query open would deadlock here.
+	s.db.SetMaxOpenConns(1)
+	seen, last := 0, ""
+	err := s.ForEachPost(ctx, func(p *post.Post) error {
+		key := string(p.Status) + "/" + p.Slug
+		if key <= last {
+			t.Fatalf("out of order: %s after %s", key, last)
+		}
+		last = key
+		seen++
+		_, err := s.GetPost(ctx, p.Slug)
+		return err
+	})
+	if err != nil || seen != n {
+		t.Errorf("saw %d of %d posts: %v", seen, n, err)
+	}
+}
+
 // queryPlan returns EXPLAIN QUERY PLAN for query as one string.
 func queryPlan(t *testing.T, s *Store, query string, args ...any) string {
 	t.Helper()

@@ -456,31 +456,53 @@ func (s *Store) Revision(ctx context.Context, slug string, version int64) (*Revi
 // ForEachPost calls fn with every post in full, whatever its status, by
 // status and slug, one at a time so a large blog is never held in memory.
 func (s *Store) ForEachPost(ctx context.Context, fn func(*post.Post) error) error {
-	return s.forEach(ctx, "SELECT "+postColumns+" FROM posts ORDER BY status, slug", fn)
+	return s.forEach(ctx, "", fn)
 }
 
 // ForEachPublished calls fn with every published post in full, by slug, one
 // at a time.
 func (s *Store) ForEachPublished(ctx context.Context, fn func(*post.Post) error) error {
-	return s.forEach(ctx, "SELECT "+postColumns+" FROM posts WHERE status = 'published' ORDER BY slug", fn)
+	return s.forEach(ctx, "status = 'published' AND ", fn)
 }
 
-func (s *Store) forEach(ctx context.Context, query string, fn func(*post.Post) error) error {
-	rows, err := s.db.QueryContext(ctx, query)
-	if err != nil {
-		return fmt.Errorf("list posts: %w", err)
-	}
-	defer rows.Close()
-	for rows.Next() {
-		p, err := scanPost(rows)
+// forEachBatch is how many posts forEach reads per query.
+const forEachBatch = 100
+
+// forEach reads posts in (status, slug) order in small batches and calls fn
+// between queries, so a slow reader of an export never holds one of the few
+// database connections while it downloads.
+func (s *Store) forEach(ctx context.Context, where string, fn func(*post.Post) error) error {
+	var lastStatus, lastSlug string
+	for {
+		rows, err := s.db.QueryContext(ctx, "SELECT "+postColumns+" FROM posts WHERE "+where+
+			"(status, slug) > (?, ?) ORDER BY status, slug LIMIT ?", lastStatus, lastSlug, forEachBatch)
 		if err != nil {
-			return err
+			return fmt.Errorf("list posts: %w", err)
 		}
-		if err := fn(p); err != nil {
-			return err
+		var batch []*post.Post
+		for rows.Next() {
+			p, err := scanPost(rows)
+			if err != nil {
+				rows.Close()
+				return err
+			}
+			batch = append(batch, p)
 		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("list posts: %w", err)
+		}
+		for _, p := range batch {
+			if err := fn(p); err != nil {
+				return err
+			}
+		}
+		if len(batch) < forEachBatch {
+			return nil
+		}
+		last := batch[len(batch)-1]
+		lastStatus, lastSlug = string(last.Status), last.Slug
 	}
-	return rows.Err()
 }
 
 // PublishedPosts returns every published post in full, by slug.
