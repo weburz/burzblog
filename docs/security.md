@@ -39,8 +39,13 @@ own policy. Images in previews load from their `https://` URLs; that is the
 author's own content.
 
 **Input.** Request bodies are capped at 4 MiB and JSON rejects unknown fields.
-Frontmatter must be a plain mapping: YAML anchors, aliases and custom tags are
-refused. Slugs are limited to lowercase letters, digits and hyphens, so they
+Frontmatter must be a plain mapping: YAML anchors, aliases, merge keys (`<<`,
+`!!merge`) and any tag outside the YAML core schema (`!!str`, `!!int`,
+`!!float`, `!!bool`, `!!null`, `!!timestamp`, `!!map`, `!!seq`, `!!binary`) are
+refused at every nesting level, so exports parse the same way in every YAML
+reader. Extra frontmatter saved before these checks that still holds such
+syntax is left out of exports (the rest of the post is exported) until it is
+edited. Slugs are limited to lowercase letters, digits and hyphens, so they
 are always safe file names in exports.
 
 **Data at rest.** One SQLite file, created `0600` in a `0700` directory. Revisions
