@@ -110,7 +110,7 @@ const announcement = computed(() => {
         :groups="groups"
         :loading="loading"
         preserve-group-order
-        placeholder="Search posts, jump to a page, or run an action…"
+        placeholder="Search posts, pages and actions…"
         close
         class="palette"
         @update:open="open = $event"

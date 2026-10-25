@@ -110,6 +110,13 @@ const emptyText = computed(() => {
     ? `No ${noun} match “${search.value.trim()}”.`
     : `No ${noun} yet.`;
 });
+// A brand-new blog has nothing to filter, so the controls would only be noise.
+const fresh = computed(() => {
+  const c = list.value?.counts;
+  return Boolean(
+    c && !filtered.value && !list.value?.items.length && !c.archived && !c.scheduled,
+  );
+});
 const clearFilters = () => {
   status.value = "";
   search.value = "";
@@ -157,7 +164,7 @@ const origin = typeof window === "undefined" ? "" : window.location.origin;
     <div class="page-head">
       <div>
         <h1 class="page-title">Posts</h1>
-        <p v-if="list" class="muted">
+        <p v-if="list && !fresh" class="muted">
           <template v-if="total === 0">Nothing written yet.</template>
           <template v-else
             >{{ list.counts.published }} published, {{ list.counts.draft }}
@@ -168,10 +175,12 @@ const origin = typeof window === "undefined" ? "" : window.location.origin;
           >
         </p>
       </div>
-      <UButton icon="i-lucide-plus" size="lg" @click="creating = true">New post</UButton>
+      <UButton v-if="!fresh" icon="i-lucide-plus" size="lg" @click="creating = true"
+        >New post</UButton
+      >
     </div>
 
-    <div class="list-controls">
+    <div v-if="!fresh" class="list-controls">
       <div class="segment" role="group" aria-label="Show">
         <button
           v-for="f in filters"
@@ -207,7 +216,8 @@ const origin = typeof window === "undefined" ? "" : window.location.origin;
           class="list-search"
         >
           <template #trailing>
-            <UKbd v-if="!search" value="/" class="max-sm:hidden" />
+            <!-- Always rendered: an empty slot falls back to a second magnifier. -->
+            <UKbd value="/" class="max-sm:hidden" :class="{ invisible: search }" />
           </template>
         </UInput>
       </div>
@@ -277,7 +287,9 @@ const origin = typeof window === "undefined" ? "" : window.location.origin;
 
     <div v-else-if="list" class="empty-state empty-first">
       <p class="empty-title">Your first post starts here.</p>
-      <p class="muted">Write it in the browser, or from your own editor.</p>
+      <p class="muted">
+        Write it here in the browser, or from a terminal with your own editor.
+      </p>
       <div class="empty-options">
         <div class="empty-option">
           <UButton icon="i-lucide-plus" size="lg" @click="creating = true"
@@ -285,7 +297,15 @@ const origin = typeof window === "undefined" ? "" : window.location.origin;
           >
         </div>
         <div class="empty-option">
-          <p class="field-hint">From a terminal:</p>
+          <p class="field-hint">
+            In a terminal, after you
+            <a
+              href="https://github.com/weburz/burzblog/releases/latest"
+              target="_blank"
+              rel="noopener noreferrer"
+              >download burzblog</a
+            >:
+          </p>
           <pre class="terminal"><code>burzblog login {{ origin }}
 burzblog new "My first post"</code></pre>
         </div>

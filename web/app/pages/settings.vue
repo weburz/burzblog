@@ -478,11 +478,7 @@ const scopeUse = (t: Token) =>
         </div>
         <p v-if="passwordError" class="alert" role="alert">{{ passwordError }}</p>
         <div>
-          <UButton
-            type="submit"
-            color="secondary"
-            :loading="passwordBusy"
-            :disabled="mismatch"
+          <UButton type="submit" :loading="passwordBusy" :disabled="mismatch"
             >Change password</UButton
           >
         </div>
