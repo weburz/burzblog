@@ -8,7 +8,10 @@ errors explicitly with messages that tell people what to do. Tests use the
 standard `testing` package with positive and negative cases; anything touching
 the database or files uses temporary directories. The panel uses Nuxt UI, arrow
 functions, Vitest for units and Playwright for end-to-end tests against the real
-binary.
+binary. The browser tests listen on 127.0.0.1:3000 by default; set `E2E_PORT`
+(for example `E2E_PORT=3300 pnpm test:e2e` in `web/`) to use another port while
+`task dev` holds :3000. A port that is already in use fails the run instead of
+being reused.
 
 Use short-lived feature branches and Conventional Commit subjects validated with
 `crisp message 'feat(store): describe the change'`. Open a PR with the exact

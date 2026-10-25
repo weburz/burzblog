@@ -31,7 +31,8 @@ never commit or hand-edit it.
   arrow functions, Vitest + Playwright. Keep Playwright at 1.61.1 until its
   Chromium 151+ headless regression on WSL2 is resolved.
 - Browser E2E builds the real binary and runs it on 127.0.0.1:3000 with a
-  disposable data directory; never point tests at real content.
+  disposable data directory; never point tests at real content. `E2E_PORT=3300`
+  moves it off :3000 while a dev server runs; a busy port fails the run.
 - Short-lived feature branches; commit via Crisp; never push to main directly.
   GitHub Actions is intentionally disabled: run `task check` and record exact
   results in PRs. Keep the dormant workflows reproducible.
