@@ -52,15 +52,23 @@ tells you the address to use, for example `burzblog login https://blog.example.c
 ## Everyday commands
 
 ```sh
-burzblog list                          # newest first; --status draft|published|archived, --search text,
+burzblog list                          # newest first; --status draft|scheduled|published|archived, --search text,
                                        # --sort updated|published|title|created
 burzblog new "Understanding Go interfaces"   # creates a draft and opens it in your editor
                                        # (only in a terminal; --no-edit skips it)
 burzblog edit understanding-go-interfaces
 burzblog publish understanding-go-interfaces
 burzblog unpublish | archive | restore <slug>
+burzblog schedule <slug> "2026-11-03 09:00"   # publish a draft by itself, at a future time
+burzblog unschedule <slug>
 burzblog open [slug]                   # open the browser panel
 ```
+
+`schedule` takes an RFC 3339 time (`2026-11-03T09:00:00Z`) or a local date and
+time in quotes (`"2026-11-03 09:00"`, in this computer's time zone). The time
+must be in the future and at most two years away. `list` marks scheduled drafts
+with their time, and `list --status scheduled` shows only those. Publishing,
+archiving or unscheduling a post ends its schedule.
 
 `edit` downloads the post, opens it in `$VISUAL` or `$EDITOR` (then `vi`), and
 saves it back when the editor exits. Editors that return immediately need their
@@ -182,27 +190,28 @@ run unattended: `echo "$PASSWORD" | burzblog login https://blog.example.com -u j
 `--json` is a global flag, so it works the same on every command and always
 means one JSON document on standard output (one line). It is supported by
 `list`, `whoami`, `new`, `pull`, `push`, `publish`, `unpublish`, `archive`,
-`restore` and `backup`. Other commands ignore it and print their usual text,
+`restore`, `schedule`, `unschedule` and `backup`. Other commands ignore it and print their usual text,
 but their failures are still JSON. `new` never opens an editor with `--json`.
 
 | Command | Output |
 |---|---|
-| `list` | `{"items":[{"slug","title","description","status","words","publishedOn","updatedAt","updatedBy","version"}],"counts":{"draft","published","archived"}}`; `items` is `[]` when nothing matches |
+| `list` | `{"items":[{"slug","title","description","status","words","publishedOn","publishAt","updatedAt","updatedBy","version"}],"counts":{"draft","published","archived","scheduled"}}`; `items` is `[]` when nothing matches |
 | `whoami` | `{"username","server"}` |
-| `new`, `publish`, `unpublish`, `archive`, `restore` | the post: `{"slug","title","description","status","publishedOn","updatedAt","updatedBy","version"}` |
+| `new`, `publish`, `unpublish`, `archive`, `restore`, `schedule`, `unschedule` | the post: `{"slug","title","description","status","publishedOn","publishAt","updatedAt","updatedBy","version"}` |
 | `push` | the same, plus `"created"` (`true` if the post did not exist) |
 | `pull` | `{"slug","version","path"}`; with `-o -` it is `{"slug","version","markdown"}` instead of the raw file |
 | `backup` | `{"dir","posts"}` |
 
 The field names are the HTTP API's (see [api.md](api.md#posts)); bodies are
-never included. `publishedOn` is `null` until a post is published.
+never included. `publishedOn` is `null` until a post is published, and
+`publishAt` is `null` unless the draft is scheduled.
 
 ```sh
 $ burzblog list --status draft --json
-{"items":[{"slug":"release-notes","title":"Release notes","description":"","status":"draft","words":212,"publishedOn":null,"updatedAt":"2026-10-25T09:12:00Z","updatedBy":"agent","version":3}],"counts":{"archived":0,"draft":1,"published":4}}
+{"items":[{"slug":"release-notes","title":"Release notes","description":"","status":"draft","words":212,"publishedOn":null,"publishAt":null,"updatedAt":"2026-10-25T09:12:00Z","updatedBy":"agent","version":3}],"counts":{"archived":0,"draft":1,"published":4,"scheduled":0}}
 
 $ burzblog new "Release notes" --body-file notes.md --json
-{"slug":"release-notes","title":"Release notes","description":"","status":"draft","publishedOn":null,"updatedAt":"2026-10-25T09:12:00Z","updatedBy":"agent","version":2}
+{"slug":"release-notes","title":"Release notes","description":"","status":"draft","publishedOn":null,"publishAt":null,"updatedAt":"2026-10-25T09:12:00Z","updatedBy":"agent","version":2}
 ```
 
 With `--json`, errors go to standard error as one line, with a non-zero exit

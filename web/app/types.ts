@@ -12,6 +12,8 @@ export interface Post {
   extra: string;
   publishedOn: string | null;
   updatedOn: string | null;
+  // When a draft publishes itself; null unless it is scheduled.
+  publishAt: string | null;
   createdAt: string;
   updatedAt: string;
   updatedBy: string;
@@ -39,14 +41,16 @@ export interface PostSummary {
   status: PostStatus;
   words: number;
   publishedOn: string | null;
+  publishAt: string | null;
   updatedAt: string;
   updatedBy: string;
   version: number;
 }
 
+// Scheduled drafts are counted in draft as well.
 export interface PostList {
   items: PostSummary[];
-  counts: Record<PostStatus, number>;
+  counts: Record<PostStatus | "scheduled", number>;
 }
 
 export interface Session {

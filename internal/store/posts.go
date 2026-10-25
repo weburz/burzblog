@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -12,7 +13,7 @@ import (
 )
 
 const postColumns = `id, slug, title, description, status, body, cover_url, cover_alt, extra,
-	published_on, updated_on, created_at, updated_at, updated_by, version`
+	published_on, updated_on, created_at, updated_at, updated_by, version, publish_at, publish_by`
 
 type scanner interface {
 	Scan(dest ...any) error
@@ -21,9 +22,9 @@ type scanner interface {
 func scanPost(row scanner) (*post.Post, error) {
 	var p post.Post
 	var status, created, updated string
-	var publishedOn, updatedOn sql.NullString
+	var publishedOn, updatedOn, publishAt sql.NullString
 	err := row.Scan(&p.ID, &p.Slug, &p.Title, &p.Description, &status, &p.Body, &p.CoverURL,
-		&p.CoverAlt, &p.Extra, &publishedOn, &updatedOn, &created, &updated, &p.UpdatedBy, &p.Version)
+		&p.CoverAlt, &p.Extra, &publishedOn, &updatedOn, &created, &updated, &p.UpdatedBy, &p.Version, &publishAt, &p.PublishBy)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -33,6 +34,7 @@ func scanPost(row scanner) (*post.Post, error) {
 	p.Status = post.Status(status)
 	p.PublishedOn = timePtr(publishedOn)
 	p.UpdatedOn = timePtr(updatedOn)
+	p.PublishAt = timePtr(publishAt)
 	p.CreatedAt = parseStamp(created)
 	p.UpdatedAt = parseStamp(updated)
 	return &p, nil
@@ -76,6 +78,8 @@ func (s *Store) GetPost(ctx context.Context, slug string) (*post.Post, error) {
 type Filter struct {
 	// Status limits results to one status; empty means drafts and published.
 	Status post.Status
+	// Scheduled limits results to drafts with a publish time.
+	Scheduled bool
 	// Query matches title, slug or description, case-insensitively.
 	Query string
 	// Sort orders the result; empty means SortUpdated.
@@ -116,14 +120,16 @@ type Summary struct {
 	Status      post.Status
 	Words       int
 	PublishedOn *time.Time
+	PublishAt   *time.Time
 	UpdatedAt   time.Time
 	UpdatedBy   string
 	Version     int64
 }
 
-// Counts is the number of posts in each status.
+// Counts is the number of posts in each status. Scheduled counts the drafts
+// that have a publish time, so it is part of Draft, not on top of it.
 type Counts struct {
-	Draft, Published, Archived int
+	Draft, Published, Archived, Scheduled int
 }
 
 // ListPosts returns matching posts, most recently changed first unless
@@ -162,9 +168,15 @@ func (s *Store) ListPosts(ctx context.Context, f Filter) ([]Summary, Counts, err
 	if err := rows.Err(); err != nil {
 		return nil, counts, fmt.Errorf("count posts: %w", err)
 	}
+	if err := s.db.QueryRowContext(ctx, "SELECT count(*) FROM posts WHERE status = 'draft' AND publish_at IS NOT NULL").
+		Scan(&counts.Scheduled); err != nil {
+		return nil, counts, fmt.Errorf("count scheduled posts: %w", err)
+	}
 
 	where, args := []string{}, []any{}
-	if f.Status != "" {
+	if f.Scheduled {
+		where = append(where, "status = 'draft' AND publish_at IS NOT NULL")
+	} else if f.Status != "" {
 		where = append(where, "status = ?")
 		args = append(args, string(f.Status))
 	} else {
@@ -176,7 +188,7 @@ func (s *Store) ListPosts(ctx context.Context, f Filter) ([]Summary, Counts, err
 		args = append(args, like, like, like)
 	}
 	rows, err = s.db.QueryContext(ctx, `SELECT slug, title, description, status, body, published_on,
-		updated_at, updated_by, version FROM posts WHERE `+strings.Join(where, " AND ")+
+		publish_at, updated_at, updated_by, version FROM posts WHERE `+strings.Join(where, " AND ")+
 		" ORDER BY "+order, args...)
 	if err != nil {
 		return nil, counts, fmt.Errorf("list posts: %w", err)
@@ -186,14 +198,15 @@ func (s *Store) ListPosts(ctx context.Context, f Filter) ([]Summary, Counts, err
 	for rows.Next() {
 		var sm Summary
 		var status, body, updated string
-		var publishedOn sql.NullString
-		if err := rows.Scan(&sm.Slug, &sm.Title, &sm.Description, &status, &body, &publishedOn,
+		var publishedOn, publishAt sql.NullString
+		if err := rows.Scan(&sm.Slug, &sm.Title, &sm.Description, &status, &body, &publishedOn, &publishAt,
 			&updated, &sm.UpdatedBy, &sm.Version); err != nil {
 			return nil, counts, fmt.Errorf("list posts: %w", err)
 		}
 		sm.Status = post.Status(status)
 		sm.Words = post.CountWords(body)
 		sm.PublishedOn = timePtr(publishedOn)
+		sm.PublishAt = timePtr(publishAt)
 		sm.UpdatedAt = parseStamp(updated)
 		list = append(list, sm)
 	}
@@ -226,6 +239,10 @@ func (s *Store) UpdatePost(ctx context.Context, slug string, version int64, by s
 		return nil, err
 	}
 	post.Normalize(&next)
+	// Only drafts wait for a publish time: publishing or archiving ends it.
+	if next.Status != post.Draft || next.PublishAt == nil {
+		next.PublishAt, next.PublishBy = nil, ""
+	}
 	if next.Status == post.Published && next.PublishedOn == nil {
 		now := s.now().Truncate(time.Second)
 		next.PublishedOn = &now
@@ -257,10 +274,12 @@ func (s *Store) UpdatePost(ctx context.Context, slug string, version int64, by s
 	}
 	updated, err := scanPost(tx.QueryRowContext(ctx, `UPDATE posts SET
 		slug = ?, title = ?, description = ?, status = ?, body = ?, cover_url = ?, cover_alt = ?, extra = ?,
-		published_on = ?, updated_on = ?, updated_at = ?, updated_by = ?, version = version + 1
+		published_on = ?, updated_on = ?, publish_at = ?, publish_by = ?, updated_at = ?, updated_by = ?,
+		version = version + 1
 		WHERE id = ? RETURNING `+postColumns,
 		next.Slug, next.Title, next.Description, string(next.Status), next.Body, next.CoverURL, next.CoverAlt,
-		next.Extra, nullTime(next.PublishedOn), nullTime(next.UpdatedOn), now, by, current.ID))
+		next.Extra, nullTime(next.PublishedOn), nullTime(next.UpdatedOn), nullTime(next.PublishAt), next.PublishBy,
+		now, by, current.ID))
 	if err != nil {
 		return nil, err
 	}
@@ -268,6 +287,45 @@ func (s *Store) UpdatePost(ctx context.Context, slug string, version int64, by s
 		return nil, fmt.Errorf("commit update: %w", err)
 	}
 	return updated, nil
+}
+
+// Scheduled is a draft waiting for its publish time.
+type Scheduled struct {
+	Slug    string
+	Version int64
+	At      time.Time
+	By      string
+}
+
+// ScheduledPosts lists drafts with a publish time, soonest first.
+func (s *Store) ScheduledPosts(ctx context.Context) ([]Scheduled, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT slug, version, publish_at, publish_by FROM posts
+		WHERE status = 'draft' AND publish_at IS NOT NULL`)
+	if err != nil {
+		return nil, fmt.Errorf("list scheduled posts: %w", err)
+	}
+	defer rows.Close()
+	var list []Scheduled
+	for rows.Next() {
+		var sc Scheduled
+		var at string
+		if err := rows.Scan(&sc.Slug, &sc.Version, &at, &sc.By); err != nil {
+			return nil, fmt.Errorf("list scheduled posts: %w", err)
+		}
+		sc.At = parseStamp(at)
+		list = append(list, sc)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list scheduled posts: %w", err)
+	}
+	// Sorted here rather than in SQL: stored times are text.
+	sort.Slice(list, func(i, j int) bool {
+		if !list[i].At.Equal(list[j].At) {
+			return list[i].At.Before(list[j].At)
+		}
+		return list[i].Slug < list[j].Slug
+	})
+	return list, nil
 }
 
 // DeletePost removes an archived post and its revisions for good.

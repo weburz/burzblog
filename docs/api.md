@@ -58,20 +58,24 @@ A post:
 {
   "slug": "hello-world", "title": "Hello, World!", "description": "", "status": "draft",
   "body": "# Hi\n", "coverUrl": "", "coverAlt": "", "extra": "sitemap:\n  priority: 1\n",
-  "publishedOn": null, "updatedOn": null,
+  "publishedOn": null, "updatedOn": null, "publishAt": null,
   "createdAt": "...", "updatedAt": "...", "updatedBy": "jarmos", "version": 3
 }
 ```
 
-`extra` is YAML for frontmatter keys BurzBlog does not model.
+`extra` is YAML for frontmatter keys BurzBlog does not model. `publishAt` is
+the time a draft publishes itself (UTC, RFC 3339), or `null`; see
+[scheduled publishing](#scheduled-publishing).
 
 | | |
 |---|---|
-| `GET /api/posts?status=&q=&sort=` | `{items, counts}`; items have no body; without `status`, archived posts are left out; `sort` is `updated` (default, newest first), `published` (newest first, unpublished last), `title` (A to Z, ignoring case) or `created` (newest first); any other value is a 422 |
+| `GET /api/posts?status=&q=&sort=` | `{items, counts}`; items have no body; without `status`, archived posts are left out; `status` is `draft`, `published`, `archived` or `scheduled` (drafts with a `publishAt`); `counts` has `draft`, `published`, `archived` and `scheduled`, and scheduled drafts are counted in `draft` too; `sort` is `updated` (default, newest first), `published` (newest first, unpublished last), `title` (A to Z, ignoring case) or `created` (newest first); any other value is a 422; items carry `publishAt` |
 | `POST /api/posts` | `{title, slug?, ...}` → new draft; the slug is made from the title when omitted |
 | `GET /api/posts/{slug}` | one post |
 | `PUT /api/posts/{slug}` | `{version, slug, title, description, body, coverUrl, coverAlt, extra, publishedOn, updatedOn}`; `version` must be current, a new `slug` renames |
 | `POST /api/posts/{slug}/publish` | `{version}`; also `unpublish`, `archive`, `restore` |
+| `POST /api/posts/{slug}/schedule` | `{version, at}` → the draft with `publishAt` set; see below |
+| `POST /api/posts/{slug}/unschedule` | `{version}` → the draft without a `publishAt`; a no-op if it had none |
 | `DELETE /api/posts/{slug}?version=N` | only archived posts; removes its history too |
 | `GET /api/posts/{slug}/revisions` | `{items, current}`: earlier versions, newest first, without bodies; see below |
 | `GET /api/posts/{slug}/revisions/{v}` | one earlier version in full |
@@ -109,6 +113,24 @@ edit.
 
 A save that changes nothing returns the post unchanged, without a new version.
 Every change keeps the previous content as a revision.
+
+### Scheduled publishing
+
+`at` is an RFC 3339 time. It must be in the future and at most two years away,
+and only drafts can be scheduled; anything else is a 422. The post stays a
+draft, hidden from the export, until the time comes. Then the server publishes
+it through the same versioned path as a manual publish: the content as it is
+at that moment (edits made after scheduling are published too), a new version
+with the previous one kept in history, `updatedBy` set to the account that
+scheduled it, `publishedOn` set to the scheduled time unless the post already
+had one, and the deploy hook called when one is configured. If the server was
+down at the time, the post publishes when it starts. The scheduler checks at
+least once a minute, so a post publishes within about a minute of its time.
+
+Publishing, unpublishing or archiving a post by hand ends its schedule, as does
+`unschedule`. Saving a post's text, or pushing a file with `status: draft`,
+keeps the schedule. Scheduling and unscheduling are saves: each makes a new
+version and needs the current `version`.
 
 ## Markdown documents
 

@@ -76,6 +76,11 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
+// Now returns the store's current time.
+func (s *Store) Now() time.Time {
+	return s.now()
+}
+
 // SetClock replaces the time source; tests use it.
 func (s *Store) SetClock(now func() time.Time) {
 	s.now = now
@@ -151,6 +156,10 @@ var migrations = []string{
 		window_start INTEGER NOT NULL,
 		failures INTEGER NOT NULL
 	);`,
+	// Scheduled publishing: a draft with publish_at set publishes itself then.
+	// Revisions keep content history only, so they do not mirror these.
+	`ALTER TABLE posts ADD COLUMN publish_at TEXT;
+	ALTER TABLE posts ADD COLUMN publish_by TEXT NOT NULL DEFAULT '';`,
 }
 
 func (s *Store) migrate(ctx context.Context) error {

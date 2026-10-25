@@ -27,6 +27,14 @@ All notable changes are recorded here, following
   5 not signed in, 6 invalid content), `new --body-file`, `push -` with
   `--slug` and `--base-version`, and a "Scripts and AI agents" guide. `new` no
   longer opens an editor when standard input is not a terminal.
+- Scheduled publishing: a writer picks a future date and time and the draft
+  publishes itself then, through the normal versioned update, with a deploy
+  hook call like a manual publish. `POST /api/posts/{slug}/schedule` and
+  `/unschedule`, `publishAt` on posts and list items, `status=scheduled` and a
+  `scheduled` count on the list, a split Publish button with **Schedule…**, a
+  Scheduled badge and filter in the panel, and `burzblog schedule` and
+  `unschedule`. Posts that came due while the server was down publish on
+  start. New migration; existing databases upgrade on start.
 - Full backup: `GET /api/backup.tar.gz`, **Settings → Backup** in the panel and
   `burzblog backup [dir]` download every post, drafts and archived included, as
   `<status>/<slug>.md` files with a `README.txt`. Needs a session or write

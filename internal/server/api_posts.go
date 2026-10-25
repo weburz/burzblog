@@ -29,6 +29,7 @@ type postReply struct {
 	Extra       string      `json:"extra"`
 	PublishedOn *time.Time  `json:"publishedOn"`
 	UpdatedOn   *time.Time  `json:"updatedOn"`
+	PublishAt   *time.Time  `json:"publishAt"`
 	CreatedAt   time.Time   `json:"createdAt"`
 	UpdatedAt   time.Time   `json:"updatedAt"`
 	UpdatedBy   string      `json:"updatedBy"`
@@ -39,7 +40,7 @@ func postJSON(p *post.Post) postReply {
 	return postReply{
 		Slug: p.Slug, Title: p.Title, Description: p.Description, Status: p.Status, Body: p.Body,
 		CoverURL: p.CoverURL, CoverAlt: p.CoverAlt, Extra: p.Extra, PublishedOn: p.PublishedOn,
-		UpdatedOn: p.UpdatedOn, CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt, UpdatedBy: p.UpdatedBy,
+		UpdatedOn: p.UpdatedOn, PublishAt: p.PublishAt, CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt, UpdatedBy: p.UpdatedBy,
 		Version: p.Version,
 	}
 }
@@ -51,6 +52,7 @@ type summaryReply struct {
 	Status      post.Status `json:"status"`
 	Words       int         `json:"words"`
 	PublishedOn *time.Time  `json:"publishedOn"`
+	PublishAt   *time.Time  `json:"publishAt"`
 	UpdatedAt   time.Time   `json:"updatedAt"`
 	UpdatedBy   string      `json:"updatedBy"`
 	Version     int64       `json:"version"`
@@ -85,8 +87,12 @@ func (s *Server) postError(w http.ResponseWriter, r *http.Request, err error, cu
 
 func (s *Server) listPosts(w http.ResponseWriter, r *http.Request) {
 	status := post.Status(r.URL.Query().Get("status"))
+	scheduled := status == "scheduled"
+	if scheduled {
+		status = ""
+	}
 	if status != "" && !post.ValidStatus(status) {
-		fail(w, http.StatusBadRequest, "bad_request", "Status must be draft, published or archived.", "")
+		fail(w, http.StatusBadRequest, "bad_request", "Status must be draft, published, scheduled or archived.", "")
 		return
 	}
 	sort := store.Sort(r.URL.Query().Get("sort"))
@@ -94,7 +100,7 @@ func (s *Server) listPosts(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusUnprocessableEntity, "validation", "Sort must be updated, published, title or created.", "sort")
 		return
 	}
-	list, counts, err := s.store.ListPosts(r.Context(), store.Filter{Status: status, Query: r.URL.Query().Get("q"), Sort: sort})
+	list, counts, err := s.store.ListPosts(r.Context(), store.Filter{Status: status, Scheduled: scheduled, Query: r.URL.Query().Get("q"), Sort: sort})
 	if err != nil {
 		s.internal(w, r, err)
 		return
@@ -103,12 +109,14 @@ func (s *Server) listPosts(w http.ResponseWriter, r *http.Request) {
 	for _, p := range list {
 		items = append(items, summaryReply{
 			Slug: p.Slug, Title: p.Title, Description: p.Description, Status: p.Status, Words: p.Words,
-			PublishedOn: p.PublishedOn, UpdatedAt: p.UpdatedAt, UpdatedBy: p.UpdatedBy, Version: p.Version,
+			PublishedOn: p.PublishedOn, PublishAt: p.PublishAt, UpdatedAt: p.UpdatedAt, UpdatedBy: p.UpdatedBy,
+			Version: p.Version,
 		})
 	}
 	reply(w, http.StatusOK, map[string]any{
-		"items":  items,
-		"counts": map[string]int{"draft": counts.Draft, "published": counts.Published, "archived": counts.Archived},
+		"items": items,
+		"counts": map[string]int{"draft": counts.Draft, "published": counts.Published, "archived": counts.Archived,
+			"scheduled": counts.Scheduled},
 	})
 }
 
@@ -193,11 +201,24 @@ func (s *Server) update(w http.ResponseWriter, r *http.Request, slug string, ver
 func (s *Server) postAction(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Version int64 `json:"version"`
+		// At is the publish time for the schedule action.
+		At *time.Time `json:"at"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
 	action := r.PathValue("action")
+	switch action {
+	case "schedule":
+		s.schedule(w, r, body.Version, body.At)
+		return
+	case "unschedule":
+		s.update(w, r, r.PathValue("slug"), body.Version, func(p *post.Post) error {
+			p.PublishAt = nil
+			return nil
+		})
+		return
+	}
 	var next post.Status
 	var from []post.Status
 	switch action {
@@ -222,6 +243,27 @@ func (s *Server) postAction(w http.ResponseWriter, r *http.Request) {
 		}
 		return &post.FieldError{Field: "status", Message: fmt.Sprintf("is %s, so the post cannot be %s.", p.Status, pastTense(action))}
 	})
+}
+
+// schedule gives a draft a publish time; the scheduler publishes it then.
+func (s *Server) schedule(w http.ResponseWriter, r *http.Request, version int64, at *time.Time) {
+	if at == nil {
+		fail(w, http.StatusUnprocessableEntity, "validation", "Send the publish time as at, for example 2026-11-03T09:00:00Z.", "at")
+		return
+	}
+	when := at.UTC().Truncate(time.Second)
+	by := who(r).user.Username
+	s.update(w, r, r.PathValue("slug"), version, func(p *post.Post) error {
+		if err := post.ValidateSchedule(when, s.store.Now()); err != nil {
+			return err
+		}
+		if p.Status != post.Draft {
+			return &post.FieldError{Field: "status", Message: fmt.Sprintf("is %s, so the post cannot be scheduled. Only drafts can.", p.Status)}
+		}
+		p.PublishAt, p.PublishBy = &when, by
+		return nil
+	})
+	s.scheduler.wake()
 }
 
 func pastTense(action string) string {

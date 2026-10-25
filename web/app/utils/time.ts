@@ -59,3 +59,76 @@ export const fromLocalInput = (value: string): string | null => {
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? null : d.toISOString().replace(/\.\d{3}Z$/, "Z");
 };
+
+// A post is scheduled while it is a draft with a publish time.
+export const isScheduled = (post: {
+  status: string;
+  publishAt?: string | null;
+}): boolean => post.status === "draft" && Boolean(post.publishAt);
+
+const scheduleSameYear = new Intl.DateTimeFormat(undefined, {
+  day: "numeric",
+  month: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+const scheduleOtherYear = new Intl.DateTimeFormat(undefined, {
+  year: "numeric",
+  day: "numeric",
+  month: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+const zone = new Intl.DateTimeFormat(undefined, { timeZoneName: "short" });
+
+// "3 Nov, 09:00", with the year only when it differs from now's.
+const scheduleStamp = (iso: string, now: number): string => {
+  const then = Date.parse(iso);
+  if (Number.isNaN(then)) return "";
+  const date = new Date(then);
+  return (
+    date.getFullYear() === new Date(now).getFullYear()
+      ? scheduleSameYear
+      : scheduleOtherYear
+  ).format(date);
+};
+
+// "Scheduled for 3 Nov, 09:00".
+export const scheduledLabel = (iso: string, now = Date.now()): string => {
+  const stamp = scheduleStamp(iso, now);
+  return stamp && `Scheduled for ${stamp}`;
+};
+
+// "Publishes 3 Nov, 09:00", the list row's counterpart of "Published 3 Oct".
+export const publishesLabel = (iso: string, now = Date.now()): string => {
+  const stamp = scheduleStamp(iso, now);
+  return stamp && `Publishes ${stamp}`;
+};
+
+// The viewer's time zone as the schedule dialog shows it: "Asia/Kolkata (GMT+5:30)".
+export const zoneLabel = (at = Date.now()): string => {
+  const name = zone.formatToParts(at).find((part) => part.type === "timeZoneName")?.value;
+  const id = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return name && id && id !== name ? `${id} (${name})` : (id ?? name ?? "");
+};
+
+// The server accepts publish times up to two years ahead.
+export const MAX_SCHEDULE_MS = 2 * 365 * 24 * 3_600_000;
+
+// Why a datetime-local value cannot be a publish time, or "" when it can.
+export const scheduleProblem = (value: string, now = Date.now()): string => {
+  const iso = fromLocalInput(value);
+  if (!iso) return "Pick a date and time.";
+  const at = Date.parse(iso);
+  if (at <= now) return "Pick a time in the future.";
+  if (at > now + MAX_SCHEDULE_MS) return "Pick a time within the next 2 years.";
+  return "";
+};
+
+// Tomorrow at 09:00 local, as a datetime-local value: a sensible first pick.
+export const suggestedSchedule = (now = Date.now()): string => {
+  const d = new Date(now);
+  d.setDate(d.getDate() + 1);
+  d.setHours(9, 0, 0, 0);
+  return toLocalInput(d.toISOString());
+};

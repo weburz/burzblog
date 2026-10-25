@@ -61,10 +61,28 @@ type Post struct {
 	Extra       string
 	PublishedOn *time.Time
 	UpdatedOn   *time.Time
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-	UpdatedBy   string
-	Version     int64
+	// PublishAt is when a draft publishes itself; nil when not scheduled.
+	// Only drafts carry it. PublishBy is the account that scheduled it.
+	PublishAt *time.Time
+	PublishBy string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	UpdatedBy string
+	Version   int64
+}
+
+// MaxScheduleAhead is how far in the future a post can be scheduled.
+const MaxScheduleAhead = 2 * 365 * 24 * time.Hour
+
+// ValidateSchedule checks that at is after now and within MaxScheduleAhead.
+func ValidateSchedule(at, now time.Time) error {
+	switch {
+	case !at.After(now):
+		return &FieldError{"publish time", "must be in the future."}
+	case at.After(now.Add(MaxScheduleAhead)):
+		return &FieldError{"publish time", "must be within 2 years from now."}
+	}
+	return nil
 }
 
 // FieldError is a validation failure people can act on.
@@ -139,6 +157,9 @@ func Validate(p *Post) error {
 	}
 	if !ValidStatus(p.Status) {
 		return &FieldError{"status", "must be draft, published or archived."}
+	}
+	if p.PublishAt != nil && p.Status != Draft {
+		return &FieldError{"publish time", "can only be set on a draft."}
 	}
 	checks := []struct {
 		field, value string
@@ -216,7 +237,8 @@ func SameContent(a, b *Post) bool {
 	return a.Slug == b.Slug && a.Title == b.Title && a.Description == b.Description &&
 		a.Status == b.Status && sameBody(a.Body, b.Body) && a.CoverURL == b.CoverURL &&
 		a.CoverAlt == b.CoverAlt && a.Extra == b.Extra &&
-		sameTime(a.PublishedOn, b.PublishedOn) && sameTime(a.UpdatedOn, b.UpdatedOn)
+		sameTime(a.PublishedOn, b.PublishedOn) && sameTime(a.UpdatedOn, b.UpdatedOn) &&
+		sameTime(a.PublishAt, b.PublishAt)
 }
 
 // sameBody ignores one trailing newline: files always end with one, the
