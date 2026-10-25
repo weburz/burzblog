@@ -128,6 +128,59 @@ burzblog push - --slug my-post --base-version 3   # reads the file from standard
 The file name is the slug, so name new files `<slug>.md` with lowercase letters,
 digits and hyphens.
 
+## Comparing with the server: diff and status
+
+```sh
+burzblog diff my-post.md               # server's version -> your file
+burzblog diff my-post                  # the same, for ./my-post.md
+burzblog diff my-post drafts/copy.md   # a file with another name
+burzblog status                        # every <slug>.md in this folder
+burzblog status drafts
+```
+
+`diff` prints a unified diff from the server's current post, as the Markdown
+with frontmatter that `pull` writes, to your file. Lines starting with `-` are
+only on the server, lines starting with `+` only in your file. It is colored
+under the same rules as the rest of the CLI: no color when output is piped or
+`NO_COLOR` is set. On standard error it says whether the file is based on the
+server's current version or an older one, using the version `pull` or your last
+`push` recorded for that file. A file this computer never pulled or pushed has
+no known base version.
+
+The exit code follows `diff(1)`: `0` identical, `1` different. Failures use the
+usual codes: `4` the post is not on the server, `5` not signed in, `2` an
+unreadable file or a bad name. A network or server failure is also `1`, so a
+script that must tell it apart from "different" should use `--json`: it
+writes an error document to standard error only for failures.
+
+Text output is for reading: tabs become spaces, a line ending in a carriage
+return shows `␍`, and control characters from the post are replaced by `�`.
+`--json` prints one document with the exact, unsanitised diff:
+`{"slug","baseVersion","serverVersion","stale","identical","diff"}`.
+`baseVersion` is `null` when unknown, and `stale` is `true` when the server's
+version is newer than `baseVersion`. Lines are compared exactly, so a missing
+final newline or Windows line endings show up as differences. Two very large,
+very different files are shown as one block removed and one added instead of a
+minimal diff.
+
+`status` looks at each `.md` file in the folder (default `.`; subfolders are
+not entered) whose name is a valid slug, and prints one line per file:
+
+| State | Meaning |
+|---|---|
+| `up to date` | the file matches the server |
+| `modified locally` | you edited the file; the server has not moved on |
+| `changed on server` | the server's version is newer than the one you pulled; your file is untouched |
+| `both changed` | both of the above; run `burzblog diff <file>` before pushing |
+| `not on server` | no post has that slug yet; `push` would create it |
+| `differs, not pulled by this computer` | the file differs and this computer has no record of where it came from |
+
+With `--json` it prints
+`{"dir","files":[{"file","slug","state","baseVersion","serverVersion"}]}`, where
+`state` is `up_to_date`, `modified`, `changed_on_server`, `both_changed`,
+`not_on_server` or `not_pulled`. The exit code is non-zero only when something
+went wrong: not signed in, an unreadable folder or file, a network failure.
+
 ## When someone else saved first
 
 Every save says which version it started from. If the post changed on the
@@ -135,7 +188,7 @@ server in the meantime, nothing is overwritten:
 
 - `edit` keeps your text in a draft file and tells you where it is. Running
   `burzblog edit <slug>` again offers to continue with it.
-- `push` refuses. Compare with `burzblog pull <slug> -o -`, then either edit
+- `push` refuses. Compare with `burzblog diff <file>`, then either edit
   your file to include their changes or `burzblog push <file> --force` to
   replace their version with yours.
 
@@ -233,8 +286,8 @@ run unattended: `echo "$PASSWORD" | burzblog login https://blog.example.com -u a
 
 `--json` is a global flag, so it works the same on every command and always
 means one JSON document on standard output (one line). It is supported by
-`list`, `whoami`, `new`, `pull`, `push`, `publish`, `unpublish`, `archive`,
-`restore`, `schedule`, `unschedule` and `backup`. Other commands ignore it and print their usual text,
+`list`, `whoami`, `new`, `pull`, `push`, `diff`, `status`, `publish`,
+`unpublish`, `archive`, `restore`, `schedule`, `unschedule` and `backup`. Other commands ignore it and print their usual text,
 but their failures are still JSON. `new` never opens an editor with `--json`.
 
 | Command | Output |
@@ -244,6 +297,8 @@ but their failures are still JSON. `new` never opens an editor with `--json`.
 | `new`, `publish`, `unpublish`, `archive`, `restore`, `schedule`, `unschedule` | the post: `{"slug","title","description","status","publishedOn","publishAt","updatedAt","updatedBy","version"}` |
 | `push` | the same, plus `"created"` (`true` if the post did not exist) |
 | `pull` | `{"slug","version","path"}`; with `-o -` it is `{"slug","version","markdown"}` instead of the raw file |
+| `diff` | `{"slug","baseVersion","serverVersion","stale","identical","diff"}`; exit `1` when different |
+| `status` | `{"dir","files":[{"file","slug","state","baseVersion","serverVersion"}]}` |
 | `backup` | `{"dir","posts"}` |
 
 The field names are the HTTP API's (see [api.md](api.md#posts)); bodies are
@@ -331,7 +386,7 @@ Nothing here deletes a post (`delete` is panel-only and only for archived posts)
 | Code | Meaning | JSON `error.code` |
 |---|---|---|
 | `0` | success | |
-| `1` | any other failure: network, server error, unreadable file, ... | `error`, or the API's code |
+| `1` | any other failure: network, server error, unreadable file, ...; also `diff` finding a difference (no error document) | `error`, or the API's code |
 | `2` | wrong flags or arguments, or a file or `--slug` that is not a valid slug | `usage` |
 | `3` | version conflict (the post changed since its base version) or the slug is already taken | `conflict`, `slug_taken` |
 | `4` | the post does not exist | `not_found` |

@@ -4,6 +4,8 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -395,12 +397,37 @@ func baseKey(server, file string) string {
 	return server + " " + file
 }
 
-func (a *App) rememberBase(server, file string, version int64) {
+// baseHashPath holds the SHA-256 of each file as pulled or pushed, under the
+// same keys, so `burzblog status` can tell whether the file was edited since.
+func (a *App) baseHashPath() string {
+	return filepath.Join(a.CacheDir, "base-content.json")
+}
+
+func (a *App) baseHashes() map[string]string {
+	m := map[string]string{}
+	if raw, err := os.ReadFile(a.baseHashPath()); err == nil {
+		_ = json.Unmarshal(raw, &m)
+	}
+	return m
+}
+
+func contentHash(doc []byte) string {
+	sum := sha256.Sum256(doc)
+	return hex.EncodeToString(sum[:])
+}
+
+// rememberBase records the version a file came from and what it held then.
+func (a *App) rememberBase(server, file string, version int64, doc []byte) {
+	key := baseKey(server, file)
 	m := a.bases()
-	m[baseKey(server, file)] = version
-	raw, _ := json.Marshal(m)
+	m[key] = version
+	hashes := a.baseHashes()
+	hashes[key] = contentHash(doc)
 	if os.MkdirAll(a.CacheDir, 0o700) == nil {
+		raw, _ := json.Marshal(m)
 		_ = writeFileAtomic(a.basePath(), raw, 0o600)
+		raw, _ = json.Marshal(hashes)
+		_ = writeFileAtomic(a.baseHashPath(), raw, 0o600)
 	}
 }
 
@@ -456,7 +483,7 @@ func (a *App) pullCmd() *cobra.Command {
 			if err := writeFileAtomic(out, []byte(doc), 0o644); err != nil {
 				return err
 			}
-			a.rememberBase(cfg.Server, out, version)
+			a.rememberBase(cfg.Server, out, version, []byte(doc))
 			if a.asJSON {
 				return a.emit(struct {
 					Slug    string `json:"slug"`
@@ -536,6 +563,9 @@ show it); without it, push refuses to touch a post that already exists.`,
 					return err
 				case force:
 					version = current.Version
+				case path != "-":
+					return conflictf("%s already exists on the server and this file was not pulled from it.\n"+
+						"       Compare with `burzblog diff %s`, or pass --force to replace it", slug, path)
 				default:
 					return conflictf("%s already exists on the server and this file was not pulled from it.\n"+
 						"       Pull it first (`burzblog pull %s -o other.md`) to compare, or pass --force to replace it", slug, slug)
@@ -543,14 +573,18 @@ show it); without it, push refuses to touch a post that already exists.`,
 			}
 			saved, err := cl.SaveMarkdown(c, slug, string(raw), version)
 			if client.IsCode(err, "conflict") {
+				compare := fmt.Sprintf("burzblog pull %s -o -", slug)
+				if path != "-" {
+					compare = "burzblog diff " + path
+				}
 				return conflictf("%s changed on the server since you pulled it, so nothing was overwritten.\n"+
-					"       Compare with `burzblog pull %s -o -`, then push again with --force to replace it", slug, slug)
+					"       Compare with `%s`, then push again with --force to replace it", slug, compare)
 			}
 			if err != nil {
 				return err
 			}
 			if path != "-" {
-				a.rememberBase(cfg.Server, path, saved.Version)
+				a.rememberBase(cfg.Server, path, saved.Version, raw)
 			}
 			if a.asJSON {
 				return a.emit(struct {

@@ -77,6 +77,8 @@ burzblog list
 burzblog edit my-next-post
 burzblog publish my-next-post
 burzblog import content/blog                 # bring in existing Markdown posts
+burzblog diff my-next-post.md                # compare a pulled file with the server
+burzblog status                              # which local .md files changed
 ```
 
 ## Guides
