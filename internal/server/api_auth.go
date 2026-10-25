@@ -1,7 +1,9 @@
 package server
 
 import (
+	"context"
 	"errors"
+	"net"
 	"net/http"
 	"strconv"
 	"time"
@@ -34,9 +36,26 @@ type credentials struct {
 	Password string `json:"password"`
 }
 
+// clientContext tags the request context with the connecting address. It is
+// RemoteAddr only: X-Forwarded-For is never trusted.
+func clientContext(r *http.Request) context.Context {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	return auth.WithClient(r.Context(), host)
+}
+
+func busy(w http.ResponseWriter) {
+	w.Header().Set("Retry-After", "5")
+	fail(w, http.StatusServiceUnavailable, "busy", "BurzBlog is busy checking sign-ins. Try again in a few seconds.", "")
+}
+
 func (s *Server) authenticate(w http.ResponseWriter, r *http.Request, c credentials) *store.User {
-	user, err := s.auth.Authenticate(r.Context(), c.Username, c.Password)
+	user, err := s.auth.Authenticate(clientContext(r), c.Username, c.Password)
 	switch {
+	case errors.Is(err, auth.ErrBusy):
+		busy(w)
 	case errors.Is(err, auth.ErrRateLimited):
 		w.Header().Set("Retry-After", "900")
 		fail(w, http.StatusTooManyRequests, "rate_limited", "Too many failed sign-in attempts. Wait 15 minutes, then try again.", "")
@@ -203,8 +222,10 @@ func (s *Server) changePassword(w http.ResponseWriter, r *http.Request) {
 	if id.session != nil {
 		keep = id.session.TokenHash
 	}
-	err := s.auth.ChangePassword(r.Context(), id.user, body.Current, body.Next, keep)
+	err := s.auth.ChangePassword(clientContext(r), id.user, body.Current, body.Next, keep)
 	switch {
+	case errors.Is(err, auth.ErrBusy):
+		busy(w)
 	case errors.Is(err, auth.ErrCredentials):
 		fail(w, http.StatusBadRequest, "credentials", "Your current password is not correct.", "")
 	case errors.Is(err, auth.ErrRateLimited):

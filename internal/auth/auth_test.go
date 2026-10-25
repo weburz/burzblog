@@ -3,9 +3,11 @@ package auth
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/weburz/burzblog/internal/store"
 )
@@ -192,5 +194,131 @@ func TestOtherAccountsUnaffectedByOneLockedAccount(t *testing.T) {
 	}
 	if _, err := a.Authenticate(ctx, "sagar", "another long password"); err != nil {
 		t.Errorf("another account was locked out: %v", err)
+	}
+}
+
+// fillGate occupies every hashing slot until the test ends.
+func fillGate(t *testing.T, a *Service) {
+	t.Helper()
+	for i := 0; i < cap(a.gate); i++ {
+		a.gate <- struct{}{}
+	}
+	t.Cleanup(func() { emptyGate(a) })
+}
+
+// emptyGate frees the slots fillGate took, once.
+func emptyGate(a *Service) {
+	for i := 0; i < cap(a.gate); i++ {
+		select {
+		case <-a.gate:
+		default:
+		}
+	}
+}
+
+func TestAuthenticateBusyGate(t *testing.T) {
+	a, _, _ := setup(t)
+	a.wait = 50 * time.Millisecond
+	ctx := context.Background()
+	if _, err := a.Authenticate(ctx, "jarmos", "correct horse battery"); err != nil {
+		t.Fatalf("free gate: %v", err)
+	}
+	fillGate(t, a)
+	start := time.Now()
+	_, err := a.Authenticate(ctx, "jarmos", "correct horse battery")
+	if !errors.Is(err, ErrBusy) {
+		t.Fatalf("full gate: %v, want ErrBusy", err)
+	}
+	if took := time.Since(start); took > time.Second {
+		t.Errorf("busy answer took %v, want about the %v wait", took, a.wait)
+	}
+}
+
+func TestBusyDoesNotSpendAttempts(t *testing.T) {
+	a, _, _ := setup(t)
+	a.wait = time.Millisecond
+	ctx := context.Background()
+	fillGate(t, a)
+	for i := 0; i < userLimit+5; i++ {
+		if _, err := a.Authenticate(ctx, "jarmos", "wrong"); !errors.Is(err, ErrBusy) {
+			t.Fatalf("attempt %d: %v, want ErrBusy", i, err)
+		}
+	}
+	emptyGate(a)
+	if _, err := a.Authenticate(ctx, "jarmos", "correct horse battery"); err != nil {
+		t.Errorf("shed requests used up the budget: %v", err)
+	}
+}
+
+func TestClientLimit(t *testing.T) {
+	a, _, _ := setup(t)
+	a.wait = time.Second
+	fillGate(t, a)
+	flooder := WithClient(context.Background(), "203.0.113.9")
+	var wg sync.WaitGroup
+	for i := 0; i < a.perClient; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			a.Authenticate(flooder, "nobody", "x")
+		}()
+	}
+	for {
+		a.mu.Lock()
+		n := a.inflight["203.0.113.9"]
+		a.mu.Unlock()
+		if n == a.perClient {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	start := time.Now()
+	if _, err := a.Authenticate(flooder, "nobody", "x"); !errors.Is(err, ErrBusy) || time.Since(start) > 500*time.Millisecond {
+		t.Errorf("over-limit client: %v after %v, want an immediate ErrBusy", err, time.Since(start))
+	}
+	// The queued requests free their slot when the gate empties.
+	emptyGate(a)
+	wg.Wait()
+	a.mu.Lock()
+	left := len(a.inflight)
+	a.mu.Unlock()
+	if left != 0 {
+		t.Errorf("%d client entries leaked", left)
+	}
+}
+
+func TestSignInSurvivesFlood(t *testing.T) {
+	a, _, _ := setup(t)
+	a.wait = 5 * time.Second
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := 0; i < 64; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ctx := WithClient(context.Background(), fmt.Sprintf("198.51.100.%d", i%8))
+			for n := 0; ; n++ {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				a.Authenticate(ctx, fmt.Sprintf("nobody-%d-%d", i, n), "x")
+			}
+		}()
+	}
+	time.Sleep(200 * time.Millisecond)
+	start := time.Now()
+	_, err := a.Authenticate(WithClient(context.Background(), "192.0.2.1"), "jarmos", "correct horse battery")
+	took := time.Since(start)
+	close(stop)
+	wg.Wait()
+	if err != nil {
+		t.Fatalf("real sign-in during flood: %v", err)
+	}
+	// Eight flooding addresses hold at most clientLimit each; the real client
+	// waits behind the slots in use, not behind 64 queued requests.
+	if took > 3*time.Second {
+		t.Errorf("real sign-in took %v during the flood", took)
 	}
 }

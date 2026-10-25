@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -27,6 +28,7 @@ var (
 	ErrCredentials = errors.New("wrong username or password")
 	ErrRateLimited = errors.New("too many failed sign-in attempts")
 	ErrNoSession   = errors.New("not signed in")
+	ErrBusy        = errors.New("too many sign-ins are being checked")
 )
 
 // Argon2id parameters: OWASP's 19 MiB, 2 passes, 1 lane. Comfortable on a
@@ -121,18 +123,42 @@ func randomToken(prefix string) (string, error) {
 const TokenPrefix = "bzb_"
 
 // Sign-in limits per username. There is deliberately no instance-wide
-// limit: anyone could exhaust it and lock every author out. The gate below
-// bounds how much password hashing runs at once instead.
+// failure limit: anyone could exhaust it and lock every author out. The gate
+// below bounds how much password hashing runs at once instead, and sheds
+// requests (ErrBusy, never a lockout) that cannot get a slot soon.
 const (
 	window     = 15 * time.Minute
 	userLimit  = 10
 	SessionTTL = 12 * time.Hour
+
+	// gateWait is how long a sign-in queues for a hashing slot before it is
+	// told to retry, so a flood cannot build an unbounded queue.
+	gateWait = 2 * time.Second
+	// clientLimit caps the sign-ins one client address may have queued or
+	// hashing at once, so one flooding machine cannot fill the queue. It
+	// only separates clients when requests arrive from their own
+	// addresses: behind a reverse proxy (X-Forwarded-For is ignored on
+	// purpose) everyone shares the proxy's address, so the limit leaves room
+	// for a short queue behind the two hashing slots.
+	clientLimit = 4
 )
+
+type clientKey struct{}
+
+// WithClient tags ctx with the address a sign-in came from.
+func WithClient(ctx context.Context, addr string) context.Context {
+	return context.WithValue(ctx, clientKey{}, addr)
+}
 
 // Service signs people in against the store.
 type Service struct {
 	store *store.Store
 	gate  chan struct{}
+	wait  time.Duration
+	// inflight counts queued and hashing sign-ins per client address.
+	mu        sync.Mutex
+	inflight  map[string]int
+	perClient int
 	// dummy is verified when a username does not exist, so timing does not
 	// reveal which accounts exist.
 	dummy string
@@ -144,7 +170,8 @@ func New(s *store.Store) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Service{store: s, gate: make(chan struct{}, 2), dummy: dummy}, nil
+	return &Service{store: s, gate: make(chan struct{}, 2), wait: gateWait,
+		inflight: map[string]int{}, perClient: clientLimit, dummy: dummy}, nil
 }
 
 // Authenticate checks a username and password, with rate limiting.
@@ -153,6 +180,11 @@ func (a *Service) Authenticate(ctx context.Context, username, password string) (
 	if username == "" || password == "" || len(password) > MaxPassword || len(username) > 64 {
 		return nil, ErrCredentials
 	}
+	release, err := a.acquire(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	userKey := "user:" + strings.ToLower(username)
 	// Reserve the attempt before hashing so parallel guesses cannot all pass.
 	ok, err := a.store.ReserveLoginAttempt(ctx, userKey, userLimit, window)
@@ -161,12 +193,6 @@ func (a *Service) Authenticate(ctx context.Context, username, password string) (
 	}
 	if !ok {
 		return nil, ErrRateLimited
-	}
-	select {
-	case a.gate <- struct{}{}:
-		defer func() { <-a.gate }()
-	case <-ctx.Done():
-		return nil, ctx.Err()
 	}
 	user, err := a.store.UserByName(ctx, username)
 	hash := a.dummy
@@ -188,6 +214,39 @@ func (a *Service) Authenticate(ctx context.Context, username, password string) (
 		}
 	}
 	return user, nil
+}
+
+// acquire takes a hashing slot, waiting at most a.wait, and returns the
+// function that frees it. The slot is taken before the attempt is counted so
+// a shed request does not use up anyone's budget.
+func (a *Service) acquire(ctx context.Context) (func(), error) {
+	client, _ := ctx.Value(clientKey{}).(string)
+	a.mu.Lock()
+	if client != "" && a.inflight[client] >= a.perClient {
+		a.mu.Unlock()
+		return nil, ErrBusy
+	}
+	a.inflight[client]++
+	a.mu.Unlock()
+	free := func() {
+		a.mu.Lock()
+		if a.inflight[client]--; a.inflight[client] <= 0 {
+			delete(a.inflight, client)
+		}
+		a.mu.Unlock()
+	}
+	timer := time.NewTimer(a.wait)
+	defer timer.Stop()
+	select {
+	case a.gate <- struct{}{}:
+		return func() { <-a.gate; free() }, nil
+	case <-timer.C:
+		free()
+		return nil, ErrBusy
+	case <-ctx.Done():
+		free()
+		return nil, ctx.Err()
+	}
 }
 
 // NewSession starts a browser session and returns the cookie value.
