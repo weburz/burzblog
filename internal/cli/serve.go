@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/weburz/burzblog/internal/auth"
+	"github.com/weburz/burzblog/internal/post"
 	"github.com/weburz/burzblog/internal/server"
 	"github.com/weburz/burzblog/internal/store"
 )
@@ -183,8 +184,8 @@ func (a *App) userCmd() *cobra.Command {
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := store.NormalizeUsername(args[0])
-			if name == "" || len(name) > 64 || strings.ContainsAny(name, " \t\r\n") {
-				return errors.New("a username is 1 to 64 characters without spaces")
+			if name == "" || len(name) > 64 || strings.Contains(name, " ") || post.HasControl(name) {
+				return errors.New("a username is 1 to 64 characters without spaces or control characters")
 			}
 			st, err := open()
 			if err != nil {
@@ -200,7 +201,7 @@ func (a *App) userCmd() *cobra.Command {
 			} else if err != nil {
 				return err
 			}
-			fmt.Fprintf(a.Out, "%s Created %s. They can sign in to the panel or run `burzblog login`.\n", a.paint(green, "✓"), a.paint(bold, name))
+			fmt.Fprintf(a.Out, "%s Created %s. They can sign in to the panel or run `burzblog login`.\n", a.paint(green, "✓"), a.paint(bold, clean(name)))
 			return nil
 		},
 	}
@@ -227,7 +228,7 @@ func (a *App) userCmd() *cobra.Command {
 			if err := st.SetPassword(context.Background(), u.ID, hash, ""); err != nil {
 				return err
 			}
-			fmt.Fprintf(a.Out, "%s Changed the password for %s.\n", a.paint(green, "✓"), u.Username)
+			fmt.Fprintf(a.Out, "%s Changed the password for %s.\n", a.paint(green, "✓"), clean(u.Username))
 			return nil
 		},
 	}
@@ -249,7 +250,7 @@ func (a *App) userCmd() *cobra.Command {
 				fmt.Fprintln(a.Out, "No accounts yet. Create one with: burzblog user add <name>")
 			}
 			for _, u := range users {
-				fmt.Fprintf(a.Out, "%s  %s\n", u.Username, a.paint(dim, "since "+u.CreatedAt.Local().Format("2 Jan 2006")))
+				fmt.Fprintf(a.Out, "%s  %s\n", clean(u.Username), a.paint(dim, "since "+u.CreatedAt.Local().Format("2 Jan 2006")))
 			}
 			return nil
 		},

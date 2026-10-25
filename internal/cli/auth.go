@@ -58,7 +58,7 @@ func (a *App) loginCmd() *cobra.Command {
 			if old != nil && old.Server == server && old.TokenID != 0 && old.TokenID != tok.ID {
 				_ = client.New(server, tok.Secret, "").RevokeToken(c, old.TokenID)
 			}
-			fmt.Fprintf(a.Out, "%s Signed in to %s as %s.\n", a.paint(green, "✓"), server, a.paint(bold, tok.Username))
+			fmt.Fprintf(a.Out, "%s Signed in to %s as %s.\n", a.paint(green, "✓"), server, a.paint(bold, clean(tok.Username)))
 			fmt.Fprintln(a.Out, "  Try: burzblog list")
 			return nil
 		},
@@ -134,7 +134,7 @@ func (a *App) whoamiCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(a.Out, "%s on %s\n", a.paint(bold, name), cfg.Server)
+			fmt.Fprintf(a.Out, "%s on %s\n", a.paint(bold, clean(name)), cfg.Server)
 			return nil
 		},
 	}

@@ -56,8 +56,8 @@ func (a *App) listCmd() *cobra.Command {
 			w := tabwriter.NewWriter(a.Out, 0, 0, 2, ' ', 0)
 			fmt.Fprintln(w, a.paint(dim, "STATUS\tSLUG\tTITLE\tWORDS\tCHANGED"))
 			for _, p := range l.Items {
-				fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\n", a.status(p.Status), p.Slug, truncate(p.Title, 48), p.Words,
-					ago(p.UpdatedAt)+" by "+p.UpdatedBy)
+				fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\n", a.status(p.Status), clean(p.Slug), truncate(clean(p.Title), 48), p.Words,
+					ago(p.UpdatedAt)+" by "+clean(p.UpdatedBy))
 			}
 			w.Flush()
 			fmt.Fprintf(a.Out, "\n%s\n", a.paint(dim, fmt.Sprintf("%d drafts, %d published, %d archived",
@@ -78,7 +78,7 @@ func (a *App) status(s string) string {
 	case "draft":
 		return a.paint(yellow, "draft    ")
 	}
-	return a.paint(dim, s)
+	return a.paint(dim, clean(s))
 }
 
 func truncate(s string, n int) string {
@@ -110,7 +110,7 @@ func (a *App) newCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(a.Out, "%s Created draft %s.\n", a.paint(green, "✓"), a.paint(bold, p.Slug))
+			fmt.Fprintf(a.Out, "%s Created draft %s.\n", a.paint(green, "✓"), a.paint(bold, clean(p.Slug)))
 			if noEdit {
 				return nil
 			}
@@ -225,9 +225,9 @@ func (a *App) edit(cl *client.Client, cfg *Config, slug string) error {
 			if saved.Version == version {
 				fmt.Fprintln(a.Out, "No changes.")
 			} else {
-				fmt.Fprintf(a.Out, "%s Saved %s (version %d, %s).\n", a.paint(green, "✓"), a.paint(bold, saved.Slug), saved.Version, saved.Status)
+				fmt.Fprintf(a.Out, "%s Saved %s (version %d, %s).\n", a.paint(green, "✓"), a.paint(bold, clean(saved.Slug)), saved.Version, clean(saved.Status))
 				if saved.Status == "draft" {
-					fmt.Fprintf(a.Out, "  Publish it with: burzblog publish %s\n", saved.Slug)
+					fmt.Fprintf(a.Out, "  Publish it with: burzblog publish %s\n", clean(saved.Slug))
 				}
 			}
 			return nil
@@ -243,7 +243,7 @@ func (a *App) edit(cl *client.Client, cfg *Config, slug string) error {
 		if errors.As(err, &apiErr) && apiErr.Code == "conflict" {
 			who := "someone"
 			if apiErr.Current != nil {
-				who = apiErr.Current.UpdatedBy
+				who = clean(apiErr.Current.UpdatedBy)
 			}
 			return fmt.Errorf("%s saved %s while you were editing, so nothing was overwritten.\n"+
 				"       Your text is kept at %s\n"+
@@ -337,6 +337,11 @@ func (a *App) pullCmd() *cobra.Command {
 				return err
 			}
 			if out == "-" {
+				// Piped output stays byte for byte; a terminal must not
+				// act on control characters inside the post.
+				if a.outTerminal() {
+					doc = cleanLines(strings.ReplaceAll(doc, "\t", "    "))
+				}
 				_, err := io.WriteString(a.Out, doc)
 				return err
 			}
@@ -418,7 +423,7 @@ If the post changed on the server since you pulled it, push refuses; use
 			if version == 0 {
 				verb = "Created"
 			}
-			fmt.Fprintf(a.Out, "%s %s %s (version %d, %s).\n", a.paint(green, "✓"), verb, a.paint(bold, slug), saved.Version, saved.Status)
+			fmt.Fprintf(a.Out, "%s %s %s (version %d, %s).\n", a.paint(green, "✓"), verb, a.paint(bold, slug), saved.Version, clean(saved.Status))
 			return nil
 		},
 	}
@@ -446,7 +451,7 @@ func (a *App) statusCmd(action, short string) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(a.Out, "%s %s is now %s.\n", a.paint(green, "✓"), a.paint(bold, p.Slug), p.Status)
+			fmt.Fprintf(a.Out, "%s %s is now %s.\n", a.paint(green, "✓"), a.paint(bold, clean(p.Slug)), clean(p.Status))
 			if action == "publish" || action == "unpublish" {
 				fmt.Fprintln(a.Out, "  Reader sites with a deploy hook rebuild in a few seconds.")
 			}

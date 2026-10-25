@@ -1,6 +1,7 @@
 package post
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -54,6 +55,12 @@ func TestValidate(t *testing.T) {
 		"relative cover":   func(p *Post) { p.CoverURL = "/img.png" },
 		"script cover":     func(p *Post) { p.CoverURL = "javascript:alert(1)" },
 		"alt without url":  func(p *Post) { p.CoverAlt = "a cat" },
+		"tab in title":     func(p *Post) { p.Title = "a\tb" },
+		"escape in title":  func(p *Post) { p.Title = "\x1b]52;c;ZXZpbA==\x07hi" },
+		"del in title":     func(p *Post) { p.Title = "a\x7fb" },
+		"c1 in title":      func(p *Post) { p.Title = "a\u009bb" },
+		"c1 in desc":       func(p *Post) { p.Description = "a\u0085b" },
+		"escape in alt":    func(p *Post) { p.CoverURL = "https://x.test/a.png"; p.CoverAlt = "\x1b[2Jhi" },
 		"nul in body":      func(p *Post) { p.Body = "a\x00b" },
 		"huge body":        func(p *Post) { p.Body = strings.Repeat("x", MaxBody+1) },
 		"reserved extra":   func(p *Post) { p.Extra = "title: sneaky\n" },
@@ -66,6 +73,52 @@ func TestValidate(t *testing.T) {
 		err := Validate(p)
 		if err == nil || !IsFieldError(err) {
 			t.Errorf("%s: Validate = %v, want a FieldError", name, err)
+		}
+	}
+}
+
+func TestValidateControlCharacterMessage(t *testing.T) {
+	p := valid()
+	p.Description = "a\x1b[2Jb"
+	err := Validate(p)
+	var fe *FieldError
+	if !errors.As(err, &fe) || fe.Field != "description" || !strings.Contains(fe.Message, "control characters") {
+		t.Errorf("Validate = %v, want a description control-character error", err)
+	}
+}
+
+func TestValidateAcceptsOrdinaryText(t *testing.T) {
+	for name, title := range map[string]string{
+		"emoji":     "Shipping 🚀 on Friday 👩🏽‍💻",
+		"rtl":       "مرحبا بالعالم שלום",
+		"combining": "Café naïve",
+		"cjk":       "日本語のタイトル",
+		"zwj":       "a‍b",
+	} {
+		p := valid()
+		p.Title, p.Description = title, title
+		p.CoverURL, p.CoverAlt = "https://x.test/a.png", title
+		if err := Validate(p); err != nil {
+			t.Errorf("%s: Validate = %v", name, err)
+		}
+	}
+}
+
+func TestValidateBodyKeepsWhitespaceAndCodeSamples(t *testing.T) {
+	p := valid()
+	p.Body = "\tindented\r\nline\n```\n\x1b[31mred\x1b[0m\n```\n"
+	if err := Validate(p); err != nil {
+		t.Errorf("Validate = %v, want a body with tabs, CRLF and an ANSI sample accepted", err)
+	}
+}
+
+func TestHasControl(t *testing.T) {
+	for s, want := range map[string]bool{
+		"plain": false, "": false, "é🚀": false,
+		"\t": true, "\n": true, "\x00": true, "\x1b": true, "\x7f": true, "\u0080": true, "\u009f": true,
+	} {
+		if got := HasControl(s); got != want {
+			t.Errorf("HasControl(%q) = %v, want %v", s, got, want)
 		}
 	}
 }

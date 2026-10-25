@@ -100,15 +100,36 @@ func (c *Client) request(ctx context.Context, method, path string, body io.Reade
 	if c.UserAgent != "" {
 		req.Header.Set("User-Agent", c.UserAgent)
 	}
-	resp, err := c.HTTP.Do(req)
+	// Never follow a redirect: it could carry the password or token to
+	// plain http or to another host. Copy so a caller's own client is covered.
+	hc := *c.HTTP
+	hc.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	resp, err := hc.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("cannot reach %s: %w", c.Server, err)
+	}
+	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
+		defer resp.Body.Close()
+		return nil, redirectError(resp, path)
 	}
 	if resp.StatusCode >= 400 {
 		defer resp.Body.Close()
 		return nil, readError(resp)
 	}
 	return resp, nil
+}
+
+// redirectError explains a 3xx answer. It names the new address but never
+// follows it, and never includes the token.
+func redirectError(resp *http.Response, path string) error {
+	loc, err := resp.Location()
+	if err != nil {
+		return &Error{Status: resp.StatusCode, Code: "redirect", Message: fmt.Sprintf("The server at %s answered with a redirect without saying where. Check the address you gave to `burzblog login`.", resp.Request.URL.Host)}
+	}
+	loc.User, loc.RawQuery, loc.Fragment = nil, "", ""
+	loc.Path = strings.TrimSuffix(loc.Path, strings.SplitN(path, "?", 2)[0])
+	final := strings.TrimRight(loc.String(), "/")
+	return &Error{Status: resp.StatusCode, Code: "redirect", Message: fmt.Sprintf("The server redirected to %s. Run `burzblog login %s` with the address it redirects to.", final, final)}
 }
 
 func readError(resp *http.Response) error {

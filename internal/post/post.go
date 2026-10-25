@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -120,7 +121,18 @@ func Slugify(title string) string {
 	return strings.Trim(b.String(), "-")
 }
 
-// Validate checks every field of p.
+// HasControl reports whether s contains a control character: C0 (U+0000 to
+// U+001F, which includes tab, newline and escape), DEL, or C1 (U+0080 to
+// U+009F). Terminals act on these, so they are not allowed in single-line
+// text that the CLI prints.
+func HasControl(s string) bool {
+	return strings.IndexFunc(s, unicode.IsControl) >= 0
+}
+
+// Validate checks every field of p. Single-line fields reject every control
+// character, tabs included. The body keeps tabs and line breaks and is only
+// checked for NUL, so existing Markdown (ANSI samples in code blocks, say)
+// still saves; the CLI sanitizes anything it prints to a terminal.
 func Validate(p *Post) error {
 	if err := ValidateSlug(p.Slug); err != nil {
 		return err
@@ -143,6 +155,9 @@ func Validate(p *Post) error {
 		}
 		if strings.ContainsAny(c.value, "\x00\r\n") {
 			return &FieldError{c.field, "must be a single line."}
+		}
+		if HasControl(c.value) {
+			return &FieldError{c.field, "must not contain control characters such as tabs or escape sequences. Remove them and save again."}
 		}
 		if utf8.RuneCountInString(c.value) > c.max {
 			return &FieldError{c.field, fmt.Sprintf("must be at most %d characters.", c.max)}

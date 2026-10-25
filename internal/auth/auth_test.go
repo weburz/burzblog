@@ -129,6 +129,14 @@ func TestTokens(t *testing.T) {
 	if _, _, err := a.NewToken(ctx, u, "", store.ScopeWrite); err == nil {
 		t.Error("empty name accepted")
 	}
+	for _, name := range []string{"a\x1b]0;evil\x07", "a\tb", "a\nb", "a\x00b", "a\u009bb"} {
+		if _, _, err := a.NewToken(ctx, u, name, store.ScopeWrite); err == nil {
+			t.Errorf("token name %q accepted", name)
+		}
+	}
+	if _, _, err := a.NewToken(ctx, u, "Laptop 💻", store.ScopeWrite); err != nil {
+		t.Errorf("unicode token name rejected: %v", err)
+	}
 	if _, _, err := a.NewToken(ctx, u, "x", "admin"); err == nil {
 		t.Error("unknown scope accepted")
 	}
