@@ -90,6 +90,11 @@ the server sends that is printed (titles, names, error messages) has control
 characters replaced with U+FFFD, and `pull -o -` does the same when writing to
 a terminal.
 
+**Scheduled posts.** A scheduled draft publishes as it is at the due time,
+including edits made after scheduling, and still publishes if the session or
+token that scheduled it was revoked: revoking access does not cancel a
+schedule. Unschedule the post to stop it.
+
 **Data at rest.** One SQLite file, created `0600` in a `0700` directory. Revisions
 keep every earlier version of every post; they are only removed when an archived
 post is deleted on purpose.

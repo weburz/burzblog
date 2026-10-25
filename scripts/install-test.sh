@@ -135,6 +135,65 @@ else
   bad "missing release errors"; cat "$work/out"
 fi
 
+for v in 2.0.0 'v2.0' 'v1.0.0/../../x' 'v1.0.0;id' 'v1.0.0 x'; do
+  if run "BURZBLOG_VERSION=$v"; then
+    bad "bad version refused: $v"
+  elif grep -q "invalid version" "$work/out" && [ ! -e "$work/bin/burzblog" ]; then
+    pass "bad version refused: $v"
+  else
+    bad "bad version refused: $v"; cat "$work/out"
+  fi
+done
+
+for b in http://example.com/releases ftp://127.0.0.1/releases http://127.0.0.1.evil.com/releases http://localhost.evil.com/releases http://127.0.0.1:80@evil.com/releases; do
+  if run BURZBLOG_VERSION=v1.0.0 "BURZBLOG_BASE_URL=$b"; then
+    bad "non-https base refused: $b"
+  elif grep -q "BURZBLOG_BASE_URL must" "$work/out" && [ ! -e "$work/bin/burzblog" ]; then
+    pass "non-https base refused: $b"
+  else
+    bad "non-https base refused: $b"; cat "$work/out"
+  fi
+done
+
+# Install over an existing binary: new content, mode 755, no temp files left.
+run BURZBLOG_VERSION=v1.0.0 || true
+if env PATH="$fakebin:$PATH" BURZBLOG_BASE_URL="$base" BURZBLOG_INSTALL_DIR="$work/bin" BURZBLOG_VERSION=v2.0.0 \
+  sh "$installer" >"$work/out" 2>&1 &&
+  [ "$("$work/bin/burzblog")" = "burzblog v2.0.0" ] &&
+  [ "$(ls -A "$work/bin")" = burzblog ] &&
+  [ "$(find "$work/bin/burzblog" -perm 755)" ]; then
+  pass "install over existing binary leaves no temp files"
+else
+  bad "install over existing binary leaves no temp files"; cat "$work/out"; ls -A "$work/bin"
+fi
+
+# A failed install (bad checksum) over an existing binary keeps the old one.
+if env PATH="$fakebin:$PATH" BURZBLOG_BASE_URL="$base" BURZBLOG_INSTALL_DIR="$work/bin" BURZBLOG_VERSION=v3.0.0 \
+  sh "$installer" >"$work/out" 2>&1; then
+  bad "failed install keeps the old binary"
+elif [ "$("$work/bin/burzblog")" = "burzblog v2.0.0" ] && [ "$(ls -A "$work/bin")" = burzblog ]; then
+  pass "failed install keeps the old binary"
+else
+  bad "failed install keeps the old binary"; cat "$work/out"
+fi
+
+# Root never falls back to $HOME/.local/bin.
+if [ -w /usr/local/bin ]; then
+  echo "skip root fallback refused (/usr/local/bin is writable)"
+else
+  printf '#!/bin/sh\necho 0\n' >"$fakebin/id"
+  chmod +x "$fakebin/id"
+  if env PATH="$fakebin:$PATH" HOME="$work/home" BURZBLOG_BASE_URL="$base" BURZBLOG_VERSION=v1.0.0 \
+    sh "$installer" >"$work/out" 2>&1; then
+    bad "root fallback refused"
+  elif grep -q "BURZBLOG_INSTALL_DIR" "$work/out" && [ ! -e "$work/home" ]; then
+    pass "root fallback refused"
+  else
+    bad "root fallback refused"; cat "$work/out"
+  fi
+  rm -f "$fakebin/id"
+fi
+
 if sh "$installer" --help | grep -q "BURZBLOG_VERSION"; then
   pass "--help prints usage"
 else

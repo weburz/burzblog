@@ -159,21 +159,29 @@ Exit codes: 0 ok, 1 error, 2 usage, 3 conflict, 4 not found, 5 not signed in,
 }
 
 // clean makes server-supplied text safe to print on one line: every control
-// character (C0, DEL, C1, which terminals act on) becomes U+FFFD.
+// character (C0, DEL, C1, which terminals act on) and every invisible format
+// character (bidi overrides, zero-width spaces) becomes U+FFFD.
 func clean(s string) string {
 	return strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
+		if unsafeRune(r) {
 			return unicode.ReplacementChar
 		}
 		return r
 	}, s)
 }
 
+// unsafeRune reports whether r can hide or reorder text on a terminal. The
+// zero-width joiners (U+200C, U+200D) stay: emoji sequences and Persian or
+// Indic words need them.
+func unsafeRune(r rune) bool {
+	return unicode.IsControl(r) || (unicode.Is(unicode.Cf, r) && r != '\u200c' && r != '\u200d')
+}
+
 // cleanLines is clean for text that already spans lines, such as error
 // messages: line breaks are kept.
 func cleanLines(s string) string {
 	return strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) && r != '\n' {
+		if unsafeRune(r) && r != '\n' {
 			return unicode.ReplacementChar
 		}
 		return r
