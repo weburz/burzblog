@@ -46,9 +46,11 @@ const changePassword = async () => {
     current.value = next.value = repeat.value = "";
     toast.add({
       title: "Password changed",
-      description: "Other browsers were signed out. Terminal tokens keep working.",
+      description:
+        "Other browsers and terminal logins were signed out. Build tokens keep working.",
       color: "success",
     });
+    await load();
   } catch (cause) {
     passwordError.value = errorMessage(cause);
   } finally {
@@ -372,8 +374,8 @@ const scopeUse = (t: Token) =>
       <div class="settings-aside">
         <h2 id="account-heading" class="section-title">Password</h2>
         <p class="muted">
-          Changing it signs out every other browser. Terminal and build tokens keep
-          working.
+          Changing it signs out every other browser and every computer that ran
+          <code>burzblog login</code>. Build tokens keep working.
         </p>
       </div>
       <form class="settings-main password-form" @submit.prevent="changePassword">

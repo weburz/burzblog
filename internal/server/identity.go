@@ -64,12 +64,16 @@ func (s *Server) resolve(r *http.Request) (*identity, error) {
 }
 
 // withIdentity attaches the caller if there is one, without requiring it.
+// Export tokens may only call the export, so here they stay anonymous.
 func (s *Server) withIdentity(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := s.resolve(r)
 		if err != nil && !errors.Is(err, auth.ErrNoSession) {
 			s.internal(w, r, err)
 			return
+		}
+		if id != nil && id.token != nil && id.token.Scope != store.ScopeWrite {
+			id = nil
 		}
 		if id != nil {
 			r = r.WithContext(context.WithValue(r.Context(), identityKey{}, id))

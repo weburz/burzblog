@@ -206,7 +206,7 @@ func (a *App) userCmd() *cobra.Command {
 	}
 	passwd := &cobra.Command{
 		Use:   "passwd <username>",
-		Short: "Set a new password and sign the account out of every browser",
+		Short: "Set a new password; ends browser sessions and terminal logins",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			st, err := open()

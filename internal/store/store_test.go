@@ -321,3 +321,41 @@ func TestLoginAttempts(t *testing.T) {
 		}
 	}
 }
+
+func TestSetPasswordRevokesWriteTokensOnly(t *testing.T) {
+	ctx := context.Background()
+	s, err := Open(ctx, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	u, err := s.CreateUser(ctx, "jarmos", "hash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := s.CreateUser(ctx, "other", "hash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tok := range []struct {
+		hash  string
+		user  int64
+		scope string
+	}{{"w1", u.ID, ScopeWrite}, {"e1", u.ID, ScopeExport}, {"w2", other.ID, ScopeWrite}} {
+		if _, err := s.CreateToken(ctx, tok.user, tok.hash, tok.hash, tok.scope); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.SetPassword(ctx, u.ID, "new", ""); err != nil {
+		t.Fatal(err)
+	}
+	for hash, want := range map[string]bool{"w1": false, "e1": true, "w2": true} {
+		_, err := s.TokenByHash(ctx, hash)
+		if got := err == nil; got != want {
+			t.Errorf("token %s alive = %v, want %v (err %v)", hash, got, want, err)
+		}
+	}
+	if err := s.SetPassword(ctx, 9999, "new", ""); !errors.Is(err, ErrNotFound) {
+		t.Errorf("unknown user = %v, want ErrNotFound", err)
+	}
+}
