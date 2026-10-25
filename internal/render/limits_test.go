@@ -286,7 +286,10 @@ func TestBusyAfterMaxWait(t *testing.T) {
 
 func TestConcurrentRendersAreBounded(t *testing.T) {
 	// Many parallel previews of a heavy but allowed document all finish and
-	// agree with each other.
+	// agree with each other. The slot wait is lengthened so a loaded machine
+	// running -race cannot turn queueing into ErrBusy; that path has its own test.
+	defer func(old time.Duration) { maxWait = old }(maxWait)
+	maxWait = time.Minute
 	in := table(MaxTableColumns, MaxTableCells/MaxTableColumns-2)
 	want, err := HTML(context.Background(), in)
 	if err != nil {
