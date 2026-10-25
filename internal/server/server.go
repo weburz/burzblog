@@ -119,6 +119,7 @@ func (s *Server) routes() {
 	m.HandleFunc("POST /api/posts/{slug}/revisions/{version}/restore", s.write(s.restoreRevision))
 	m.HandleFunc("POST /api/preview", s.write(s.preview))
 	m.HandleFunc("GET /api/export.tar.gz", s.exporter(s.export))
+	m.HandleFunc("GET /api/backup.tar.gz", s.write(s.backup))
 
 	m.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusNotFound, "not_found", "There is no such API endpoint.", "")

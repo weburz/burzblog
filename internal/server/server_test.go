@@ -400,6 +400,98 @@ func TestExportAndScopes(t *testing.T) {
 	}
 }
 
+// readArchive returns the entries of a gzipped tar by name.
+func readArchive(t *testing.T, r io.Reader) map[string]string {
+	t.Helper()
+	gz, err := gzip.NewReader(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr := tar.NewReader(gz)
+	files := map[string]string{}
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			return files
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(tr)
+		files[hdr.Name] = string(body)
+	}
+}
+
+func TestBackup(t *testing.T) {
+	h := newHarness(t, func(c *Config) { c.Version = "1.2.3" })
+	h.login()
+	h.do("POST", "/api/posts", map[string]string{"title": "Just a draft"})
+	h.do("POST", "/api/posts", map[string]string{"title": "Live"})
+	h.do("POST", "/api/posts/live/publish", map[string]any{"version": 1})
+	h.do("POST", "/api/posts", map[string]string{"title": "Old"})
+	h.do("POST", "/api/posts/old/archive", map[string]any{"version": 1})
+
+	// A signed-in browser needs neither Origin nor CSRF to read.
+	req, _ := http.NewRequest("GET", h.ts.URL+"/api/backup.tar.gz", nil)
+	resp, err := h.client.Do(req)
+	if err != nil || resp.StatusCode != 200 {
+		t.Fatalf("session backup = %v %v", err, resp)
+	}
+	defer resp.Body.Close()
+	if cd := resp.Header.Get("Content-Disposition"); !strings.Contains(cd, "burzblog-backup-"+time.Now().UTC().Format("2006-01-02")+".tar.gz") {
+		t.Errorf("Content-Disposition = %q", cd)
+	}
+	if cc := resp.Header.Get("Cache-Control"); cc != "no-store" {
+		t.Errorf("Cache-Control = %q", cc)
+	}
+	files := readArchive(t, resp.Body)
+	if len(files) != 4 {
+		t.Errorf("entries = %v", files)
+	}
+	for name, status := range map[string]string{
+		"draft/just-a-draft.md": "status: draft", "published/live.md": "status: published", "archived/old.md": "status: draft",
+	} {
+		if body, ok := files[name]; !ok || !strings.Contains(body, status) {
+			t.Errorf("%s = %q (want %q)", name, body, status)
+		}
+	}
+	readme := files["README.txt"]
+	for _, want := range []string{"1.2.3", time.Now().UTC().Format("2006-01-02"), "burzblog push"} {
+		if !strings.Contains(readme, want) {
+			t.Errorf("README.txt lacks %q: %s", want, readme)
+		}
+	}
+
+	// A write token works.
+	_, out := h.do("POST", "/api/tokens", map[string]string{"name": "laptop", "scope": "write"})
+	req, _ = http.NewRequest("GET", h.ts.URL+"/api/backup.tar.gz", nil)
+	req.Header.Set("Authorization", "Bearer "+out["secret"].(string))
+	resp2, err := http.DefaultClient.Do(req)
+	if err != nil || resp2.StatusCode != 200 {
+		t.Fatalf("write token backup = %v %v", err, resp2)
+	}
+	if got := readArchive(t, resp2.Body); len(got) != 4 {
+		t.Errorf("write token entries = %v", got)
+	}
+	resp2.Body.Close()
+
+	// An export token is refused.
+	_, out = h.do("POST", "/api/tokens", map[string]string{"name": "vercel", "scope": "export"})
+	req, _ = http.NewRequest("GET", h.ts.URL+"/api/backup.tar.gz", nil)
+	req.Header.Set("Authorization", "Bearer "+out["secret"].(string))
+	resp3, _ := http.DefaultClient.Do(req)
+	resp3.Body.Close()
+	if resp3.StatusCode != 403 {
+		t.Errorf("export token backup = %d, want 403", resp3.StatusCode)
+	}
+
+	resp4, _ := http.Get(h.ts.URL + "/api/backup.tar.gz")
+	resp4.Body.Close()
+	if resp4.StatusCode != 401 {
+		t.Errorf("anonymous backup = %d, want 401", resp4.StatusCode)
+	}
+}
+
 func TestPanelAndHeaders(t *testing.T) {
 	h := newHarness(t, nil)
 	resp, err := http.Get(h.ts.URL + "/posts/anything")

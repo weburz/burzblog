@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"io"
 	"log/slog"
@@ -202,6 +204,88 @@ func TestTerminalWorkflow(t *testing.T) {
 	tokens, _ := e.store.Tokens(context.Background())
 	if len(tokens) != 0 {
 		t.Errorf("logout left tokens behind: %+v", tokens)
+	}
+}
+
+func TestBackup(t *testing.T) {
+	e := newEnv(t)
+	e.must("correct horse battery\n", "user", "add", "jarmos")
+	e.must("correct horse battery\n", "login", e.url, "-u", "jarmos")
+	e.must("", "new", "Only a draft", "--no-edit")
+	e.must("", "new", "Live one", "--no-edit")
+	e.must("", "publish", "live-one")
+	e.must("", "new", "Gone", "--no-edit")
+	e.must("", "archive", "gone")
+
+	dir := filepath.Join(t.TempDir(), "backup")
+	if out := e.must("", "backup", dir); !strings.Contains(out, "Backed up 3 posts") {
+		t.Errorf("backup = %q", out)
+	}
+	for name, status := range map[string]string{
+		"draft/only-a-draft.md": "status: draft", "published/live-one.md": "status: published", "archived/gone.md": "status: draft",
+	} {
+		if b, err := os.ReadFile(filepath.Join(dir, name)); err != nil || !strings.Contains(string(b), status) {
+			t.Errorf("%s = %q %v", name, b, err)
+		}
+	}
+	if b, err := os.ReadFile(filepath.Join(dir, "README.txt")); err != nil || !strings.Contains(string(b), "burzblog push") {
+		t.Errorf("README.txt = %q %v", b, err)
+	}
+	if _, errOut, code := e.run("", "backup", "a", "b"); code == 0 || errOut == "" {
+		t.Errorf("two directories: %d %q", code, errOut)
+	}
+}
+
+func TestReadBackup(t *testing.T) {
+	archive := func(entries ...tar.Header) *bytes.Buffer {
+		var buf bytes.Buffer
+		gz := gzip.NewWriter(&buf)
+		tw := tar.NewWriter(gz)
+		for _, h := range entries {
+			if h.Typeflag == 0 {
+				h.Typeflag = tar.TypeReg
+			}
+			h.Size = 2
+			if h.Typeflag != tar.TypeReg {
+				h.Size = 0
+			}
+			tw.WriteHeader(&h)
+			if h.Size > 0 {
+				tw.Write([]byte("x\n"))
+			}
+		}
+		tw.Close()
+		gz.Close()
+		return &buf
+	}
+	readme := tar.Header{Name: "README.txt"}
+
+	files, err := readBackup(archive(readme, tar.Header{Name: "draft/a.md"}, tar.Header{Name: "archived/b-2.md"}))
+	if err != nil || len(files) != 3 {
+		t.Fatalf("valid backup = %v %v", files, err)
+	}
+
+	bad := map[string][]tar.Header{
+		"traversal":      {readme, {Name: "../evil.md"}},
+		"nested":         {readme, {Name: "draft/../../evil.md"}},
+		"absolute":       {readme, {Name: "/etc/evil.md"}},
+		"unknown status": {readme, {Name: "trash/a.md"}},
+		"flat file":      {readme, {Name: "a.md"}},
+		"deep":           {readme, {Name: "draft/x/a.md"}},
+		"not markdown":   {readme, {Name: "draft/a.sh"}},
+		"bad slug":       {readme, {Name: "draft/Bad Name.md"}},
+		"other root":     {readme, {Name: "notes.txt"}},
+		"symlink":        {readme, {Name: "draft/a.md", Typeflag: tar.TypeSymlink, Linkname: "/etc/passwd"}},
+		"directory":      {readme, {Name: "draft/", Typeflag: tar.TypeDir}},
+		"no readme":      {{Name: "draft/a.md"}},
+	}
+	for name, entries := range bad {
+		if _, err := readBackup(archive(entries...)); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	if _, err := readBackup(strings.NewReader("not gzip")); err == nil {
+		t.Error("accepted a file that is not gzip")
 	}
 }
 

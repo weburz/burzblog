@@ -588,3 +588,99 @@ func readExport(r io.Reader) (map[string][]byte, error) {
 	}
 	return files, nil
 }
+
+func (a *App) backupCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "backup [dir]",
+		Short: "Download every post, drafts and archived included, as Markdown files",
+		Long: `Writes every post to <dir>/<status>/<slug>.md, plus a README.txt, where status
+is draft, published or archived. The directory defaults to
+burzblog-backup-<date> in the current folder.
+
+The backup holds current posts only. The database file is the complete backup,
+including history; see docs/self-hosting.md. Restore a file with burzblog push.`,
+		Example: `  burzblog backup
+  burzblog backup ~/backups/blog`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			dir := "burzblog-backup-" + time.Now().UTC().Format("2006-01-02")
+			if len(args) == 1 {
+				dir = args[0]
+			}
+			cl, _, err := a.client()
+			if err != nil {
+				return err
+			}
+			c, cancel := ctx()
+			defer cancel()
+			body, err := cl.Backup(c)
+			if err != nil {
+				return err
+			}
+			defer body.Close()
+			files, err := readBackup(body)
+			if err != nil {
+				return err
+			}
+			for name, data := range files {
+				path := filepath.Join(dir, filepath.FromSlash(name))
+				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+					return err
+				}
+				if err := writeFileAtomic(path, data, 0o644); err != nil {
+					return err
+				}
+			}
+			fmt.Fprintf(a.Out, "%s Backed up %d posts to %s.\n", a.paint(green, "✓"), len(files)-1, dir)
+			return nil
+		},
+	}
+	return cmd
+}
+
+// readBackup reads the backup archive fully before anything is written, and
+// accepts only README.txt and regular <status>/<slug>.md files.
+func readBackup(r io.Reader) (map[string][]byte, error) {
+	gz, err := gzip.NewReader(r)
+	if err != nil {
+		return nil, fmt.Errorf("the backup is not a gzip archive: %w", err)
+	}
+	tr := tar.NewReader(gz)
+	files := map[string][]byte{}
+	total := 0
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("read backup: %w", err)
+		}
+		if hdr.Typeflag != tar.TypeReg || !validBackupName(hdr.Name) {
+			return nil, fmt.Errorf("the backup contains an unexpected entry %q", hdr.Name)
+		}
+		var buf bytes.Buffer
+		n, err := io.Copy(&buf, io.LimitReader(tr, post.MaxBody+post.MaxExtra+1))
+		if err != nil {
+			return nil, fmt.Errorf("read backup: %w", err)
+		}
+		total += int(n)
+		if n > post.MaxBody+post.MaxExtra || total > 512<<20 {
+			return nil, errors.New("the backup is larger than expected")
+		}
+		files[hdr.Name] = buf.Bytes()
+	}
+	if _, ok := files["README.txt"]; !ok {
+		return nil, errors.New("the backup has no README.txt, so it is not a BurzBlog backup")
+	}
+	return files, nil
+}
+
+func validBackupName(name string) bool {
+	if name == "README.txt" {
+		return true
+	}
+	dir, file, ok := strings.Cut(name, "/")
+	return ok && post.ValidStatus(post.Status(dir)) && strings.HasSuffix(file, ".md") &&
+		post.ValidateSlug(strings.TrimSuffix(file, ".md")) == nil
+}

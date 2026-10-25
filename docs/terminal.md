@@ -87,6 +87,19 @@ If a save is refused because something in the file is invalid (for example an
 empty title or broken YAML), `edit` shows the reason and offers to reopen the
 editor; your text is kept either way.
 
+## Backing up your posts
+
+```sh
+burzblog backup                        # ./burzblog-backup-<date>/
+burzblog backup ~/backups/blog
+```
+
+Writes every post, drafts and archived ones too, to
+`<dir>/<status>/<slug>.md` with a `README.txt`. Restore a file with
+`burzblog push <file>.md`. History is not included; the database file is the
+complete backup (see [self-hosting](self-hosting.md#backups)). The panel offers
+the same download under **Settings → Backup**.
+
 ## Build machines
 
 For reader-site builds, use a build token from **Settings → Build tokens**

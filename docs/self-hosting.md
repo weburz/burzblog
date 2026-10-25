@@ -97,6 +97,12 @@ Or stop the service and copy `burzblog.db` (the `-wal` and `-shm` files are
 folded in on a clean stop). To restore, stop the service, put the file back as
 `burzblog.db` owned by `burzblog` with mode `0600`, and start it.
 
+For a plain-text copy of every post, drafts and archived ones included, use
+**Settings → Backup** in the panel or `burzblog backup [dir]`. It writes
+`<status>/<slug>.md` files and a `README.txt`; restore each with
+`burzblog push`. It holds current posts only: revisions, accounts and tokens
+live only in the database, so the database file remains the complete backup.
+
 For a plain-text copy of your published writing, `burzblog export --out dir`
 writes every published post as a Markdown file.
 

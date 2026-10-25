@@ -93,7 +93,7 @@ Write in the browser panel, or from here:
 		a.statusCmd("unpublish", "Turn a published post back into a draft"),
 		a.statusCmd("archive", "Hide a post from the list without deleting it"),
 		a.statusCmd("restore", "Bring an archived post back as a draft"),
-		a.openCmd(), a.exportCmd()} {
+		a.openCmd(), a.exportCmd(), a.backupCmd()} {
 		c.GroupID = "write"
 		root.AddCommand(c)
 	}
