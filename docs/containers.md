@@ -10,7 +10,7 @@ same single binary on a distroless base, about 20 MB.
 cp .env.example .env          # set BURZBLOG_ORIGIN, BURZBLOG_UID/GID
 mkdir -m 700 data             # owned by BURZBLOG_UID
 task docker:build
-docker compose run --rm burzblog user add jarmos
+docker compose run --rm burzblog user add ada
 docker compose up -d
 ```
 

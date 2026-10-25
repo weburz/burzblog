@@ -130,7 +130,7 @@ func TestEncodeDecodeRoundTrip(t *testing.T) {
 		Title:       "Web Authentication: Pros, Cons",
 		Description: "yes",
 		Status:      Published,
-		CoverURL:    "https://ik.imagekit.io/jarmos/a.svg",
+		CoverURL:    "https://images.example.com/a.svg",
 		CoverAlt:    "A guide.",
 		PublishedOn: &published,
 		Extra:       "sitemap:\n  loc: /blogs/auth-guide\n  priority: 1\n",
@@ -139,7 +139,7 @@ func TestEncodeDecodeRoundTrip(t *testing.T) {
 	doc := Encode(p)
 	for _, want := range []string{
 		"title: 'Web Authentication: Pros, Cons'", "description: \"yes\"", "status: published",
-		"publishedOn: 2026-04-25T01:46:48Z", "url: https://ik.imagekit.io/jarmos/a.svg",
+		"publishedOn: 2026-04-25T01:46:48Z", "url: https://images.example.com/a.svg",
 		"sitemap:\n  loc: /blogs/auth-guide",
 	} {
 		if !strings.Contains(doc, want) && !strings.Contains(doc, strings.ReplaceAll(want, "'", "\"")) {
@@ -157,7 +157,7 @@ func TestEncodeDecodeRoundTrip(t *testing.T) {
 	}
 }
 
-func TestDecodeJarmosPost(t *testing.T) {
+func TestDecodeNuxtContentPost(t *testing.T) {
 	doc := `---
 title:
   "Web Authentication Methods Explained: Pros, Cons, and Best Practices (2026
@@ -168,7 +168,7 @@ timestamps:
   publishedOn: 2026-04-25T01:46:48+00:00
 status: published
 coverImage:
-  url: https://ik.imagekit.io/jarmos/x.svg
+  url: https://images.example.com/x.svg
   alt: A comprehensive guide.
 sitemap:
   loc: /blogs/a

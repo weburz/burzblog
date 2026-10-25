@@ -62,14 +62,14 @@ func TestSchedulingIsAVersionedChange(t *testing.T) {
 	at := time.Date(2026, 11, 3, 9, 0, 0, 0, time.UTC)
 	p, _ := s.CreatePost(ctx, &post.Post{Slug: "a", Title: "A", Body: "text"}, "me")
 
-	scheduled, err := s.UpdatePost(ctx, "a", p.Version, "sagar", schedule(at, "sagar"))
+	scheduled, err := s.UpdatePost(ctx, "a", p.Version, "grace", schedule(at, "grace"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if scheduled.Version != 2 || scheduled.PublishAt == nil || !scheduled.PublishAt.Equal(at) || scheduled.PublishBy != "sagar" {
+	if scheduled.Version != 2 || scheduled.PublishAt == nil || !scheduled.PublishAt.Equal(at) || scheduled.PublishBy != "grace" {
 		t.Fatalf("scheduled post = %+v", scheduled)
 	}
-	if _, err := s.UpdatePost(ctx, "a", 1, "sagar", schedule(at, "sagar")); !errors.Is(err, ErrConflict) {
+	if _, err := s.UpdatePost(ctx, "a", 1, "grace", schedule(at, "grace")); !errors.Is(err, ErrConflict) {
 		t.Errorf("stale schedule = %v, want ErrConflict", err)
 	}
 	revs, _ := s.Revisions(ctx, "a")
@@ -77,7 +77,7 @@ func TestSchedulingIsAVersionedChange(t *testing.T) {
 		t.Errorf("revisions = %+v, want the version before scheduling", revs)
 	}
 
-	cleared, err := s.UpdatePost(ctx, "a", 2, "sagar", func(p *post.Post) error { p.PublishAt = nil; return nil })
+	cleared, err := s.UpdatePost(ctx, "a", 2, "grace", func(p *post.Post) error { p.PublishAt = nil; return nil })
 	if err != nil || cleared.PublishAt != nil || cleared.PublishBy != "" {
 		t.Errorf("unschedule = %+v, %v", cleared, err)
 	}

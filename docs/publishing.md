@@ -46,7 +46,7 @@ timestamps:
   publishedOn: 2026-04-25T01:46:48Z
   updatedOn: 2026-05-01T10:00:00Z
 coverImage:
-  url: https://ik.imagekit.io/you/cover.svg
+  url: https://images.example.com/cover.svg
   alt: A comprehensive guide to authentication in web applications.
 sitemap:
   loc: /blogs/a-comprehensive-guide-authentication-in-web-applications
@@ -68,13 +68,13 @@ The post body in Markdown.
   js-yaml would fail or resolve them into other fields.
 - Values that YAML readers could misread (`yes`, `on`, a bare date) are quoted.
 
-## Example: Nuxt Content on Vercel (jarmos.dev)
+## Example: Nuxt Content on Vercel
 
-jarmos.dev reads posts from a GitHub repository today:
+For example, a Nuxt Content site that reads posts from a GitHub repository:
 
 ```ts
 // content.config.ts (before)
-const source = { repository: "https://github.com/jarmos-san/blogposts", include: "blogs/**.md" };
+const source = { repository: "https://github.com/example/blogposts", include: "blogs/**.md" };
 ```
 
 Point it at a local folder instead:

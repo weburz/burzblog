@@ -18,8 +18,7 @@ var reserved = map[string]bool{
 const fence = "---"
 
 // Encode renders p as a Markdown document with YAML frontmatter, in the shape
-// Nuxt Content sites such as jarmos.dev read. The slug is not included: it is
-// the file name.
+// Nuxt Content sites read. The slug is not included: it is the file name.
 func Encode(p *Post) string {
 	root := &yaml.Node{Kind: yaml.MappingNode}
 	add := func(key string, value *yaml.Node) {

@@ -186,7 +186,7 @@ func TestSchedulerPublishesDuePostsOnce(t *testing.T) {
 		t.Fatalf("at the time: %d %v %v", n, next, err)
 	}
 	_, out := h.do("GET", "/api/posts/"+soon, nil)
-	if out["status"] != "published" || out["publishAt"] != nil || out["updatedBy"] != "jarmos" ||
+	if out["status"] != "published" || out["publishAt"] != nil || out["updatedBy"] != "ada" ||
 		out["publishedOn"] != t1.Format(time.RFC3339) || out["version"] != 3.0 {
 		t.Errorf("published post = %v", out)
 	}
@@ -243,13 +243,13 @@ func TestSchedulerPublishesPostsDueWhileDown(t *testing.T) {
 	// It keeps running: a post scheduled later and then due is picked up.
 	// Sessions are not tied to the test clock, so schedule through the store.
 	bg := context.Background()
-	created, err := h.store.CreatePost(bg, &post.Post{Slug: "later", Title: "Later"}, "jarmos")
+	created, err := h.store.CreatePost(bg, &post.Post{Slug: "later", Title: "Later"}, "ada")
 	if err != nil {
 		t.Fatal(err)
 	}
 	at := c.Now().Add(time.Hour)
-	if _, err := h.store.UpdatePost(bg, "later", created.Version, "jarmos", func(p *post.Post) error {
-		p.PublishAt, p.PublishBy = &at, "jarmos"
+	if _, err := h.store.UpdatePost(bg, "later", created.Version, "ada", func(p *post.Post) error {
+		p.PublishAt, p.PublishBy = &at, "ada"
 		return nil
 	}); err != nil {
 		t.Fatal(err)
@@ -312,7 +312,7 @@ func TestSchedulerPublishesCurrentContentAfterConcurrentEdit(t *testing.T) {
 	// The scheduler read version 2, then a writer saves version 3.
 	h.do("PUT", "/api/posts/"+slug, map[string]any{"version": 2, "title": "Edited", "body": "newer words"})
 
-	ok, err := h.srv.publishScheduled(ctx, slug, 2, "jarmos")
+	ok, err := h.srv.publishScheduled(ctx, slug, 2, "ada")
 	if !ok || err != nil {
 		t.Fatalf("publishScheduled = %v, %v", ok, err)
 	}
@@ -326,7 +326,7 @@ func TestSchedulerPublishesCurrentContentAfterConcurrentEdit(t *testing.T) {
 	h.schedule(other, 1, c.Now().Add(time.Hour))
 	c.advance(2 * time.Hour)
 	h.do("POST", "/api/posts/"+other+"/unschedule", map[string]any{"version": 2})
-	if ok, err := h.srv.publishScheduled(ctx, other, 2, "jarmos"); ok || err != nil {
+	if ok, err := h.srv.publishScheduled(ctx, other, 2, "ada"); ok || err != nil {
 		t.Errorf("publishScheduled on an unscheduled post = %v, %v", ok, err)
 	}
 	if _, out := h.do("GET", "/api/posts/"+other, nil); out["status"] != "draft" {

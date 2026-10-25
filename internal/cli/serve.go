@@ -183,7 +183,7 @@ func (a *App) userCmd() *cobra.Command {
 	add := &cobra.Command{
 		Use:     "add <username>",
 		Short:   "Create an account",
-		Example: "  burzblog user add jarmos --data /var/lib/burzblog",
+		Example: "  burzblog user add ada --data /var/lib/burzblog",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := store.NormalizeUsername(args[0])

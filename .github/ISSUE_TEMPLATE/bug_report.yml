@@ -1,0 +1,43 @@
+name: Bug report
+description: Something does not work as documented
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For security problems, do not open an issue. See the
+        [security policy](https://github.com/weburz/burzblog/security/policy).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected and what you got instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. burzblog serve
+        2. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: BurzBlog version
+      description: Output of `burzblog --version`.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Operating system and install method
+      placeholder: Raspberry Pi OS arm64, release binary, systemd
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or error output
+      description: Remove tokens, passwords and the deploy hook URL first.
+      render: text

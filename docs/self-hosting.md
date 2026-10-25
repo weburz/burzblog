@@ -47,7 +47,7 @@ Start it and create the first account:
 
 ```sh
 sudo systemctl enable --now burzblog
-sudo -u burzblog burzblog user add jarmos --data /var/lib/burzblog
+sudo -u burzblog burzblog user add ada --data /var/lib/burzblog
 journalctl -u burzblog -f
 ```
 

@@ -85,18 +85,18 @@ func (e *env) editor(script string) {
 
 func TestTerminalWorkflow(t *testing.T) {
 	e := newEnv(t)
-	e.must("correct horse battery\n", "user", "add", "jarmos")
-	if out := e.must("", "user", "list"); !strings.Contains(out, "jarmos") {
+	e.must("correct horse battery\n", "user", "add", "ada")
+	if out := e.must("", "user", "list"); !strings.Contains(out, "ada") {
 		t.Errorf("user list = %q", out)
 	}
 
 	if _, errOut, code := e.run("", "list"); code == 0 || !strings.Contains(errOut, "burzblog login") {
 		t.Errorf("list before login: %d %q", code, errOut)
 	}
-	if _, errOut, code := e.run("wrong password\n", "login", e.url, "-u", "jarmos"); code == 0 || !strings.Contains(errOut, "do not match") {
+	if _, errOut, code := e.run("wrong password\n", "login", e.url, "-u", "ada"); code == 0 || !strings.Contains(errOut, "do not match") {
 		t.Errorf("bad login: %d %q", code, errOut)
 	}
-	out := e.must("correct horse battery\n", "login", e.url, "-u", "jarmos")
+	out := e.must("correct horse battery\n", "login", e.url, "-u", "ada")
 	if !strings.Contains(out, "Signed in") {
 		t.Errorf("login = %q", out)
 	}
@@ -104,7 +104,7 @@ func TestTerminalWorkflow(t *testing.T) {
 	if err != nil || info.Mode().Perm() != 0o600 {
 		t.Errorf("config file: %v %v", info, err)
 	}
-	if out := e.must("", "whoami"); !strings.Contains(out, "jarmos") {
+	if out := e.must("", "whoami"); !strings.Contains(out, "ada") {
 		t.Errorf("whoami = %q", out)
 	}
 	if out := e.must("", "list"); !strings.Contains(out, "No posts yet") {
@@ -125,7 +125,7 @@ func TestTerminalWorkflow(t *testing.T) {
 		t.Fatalf("edit = %q", out)
 	}
 	p, _ := e.store.GetPost(context.Background(), "go-interfaces-explained")
-	if !strings.Contains(p.Body, "Hello from vim.") || p.UpdatedBy != "jarmos" {
+	if !strings.Contains(p.Body, "Hello from vim.") || p.UpdatedBy != "ada" {
 		t.Errorf("post after new+edit = %+v", p)
 	}
 
@@ -156,7 +156,7 @@ func TestTerminalWorkflow(t *testing.T) {
 
 	// Someone saves in the browser meanwhile.
 	cur, _ := e.store.GetPost(context.Background(), "go-interfaces-explained")
-	if _, err := e.store.UpdatePost(context.Background(), cur.Slug, cur.Version, "sagar", touch); err != nil {
+	if _, err := e.store.UpdatePost(context.Background(), cur.Slug, cur.Version, "grace", touch); err != nil {
 		t.Fatal(err)
 	}
 	if _, errOut, code := e.run("", "push", file); code == 0 || !strings.Contains(errOut, "changed on the server") {
@@ -217,8 +217,8 @@ func TestTerminalWorkflow(t *testing.T) {
 
 func TestBackup(t *testing.T) {
 	e := newEnv(t)
-	e.must("correct horse battery\n", "user", "add", "jarmos")
-	e.must("correct horse battery\n", "login", e.url, "-u", "jarmos")
+	e.must("correct horse battery\n", "user", "add", "ada")
+	e.must("correct horse battery\n", "login", e.url, "-u", "ada")
 	e.must("", "new", "Only a draft", "--no-edit")
 	e.must("", "new", "Live one", "--no-edit")
 	e.must("", "publish", "live-one")
@@ -346,9 +346,9 @@ func touch(p *post.Post) error {
 
 func TestPasswdRevokesTerminalLogins(t *testing.T) {
 	e := newEnv(t)
-	e.must("correct horse battery\n", "user", "add", "jarmos")
-	e.must("correct horse battery\n", "login", e.url, "-u", "jarmos")
-	u, _ := e.store.UserByName(context.Background(), "jarmos")
+	e.must("correct horse battery\n", "user", "add", "ada")
+	e.must("correct horse battery\n", "login", e.url, "-u", "ada")
+	u, _ := e.store.UserByName(context.Background(), "ada")
 	svc, _ := auth.New(e.store)
 	exportSecret, _, err := svc.NewToken(context.Background(), u, "vercel", store.ScopeExport)
 	if err != nil {
@@ -356,7 +356,7 @@ func TestPasswdRevokesTerminalLogins(t *testing.T) {
 	}
 	e.must("", "whoami")
 
-	e.must("a brand new password\n", "user", "passwd", "jarmos")
+	e.must("a brand new password\n", "user", "passwd", "ada")
 
 	if _, errOut, code := e.run("", "whoami"); code == 0 || !strings.Contains(errOut, "burzblog login") {
 		t.Errorf("whoami after passwd: %d %q, want a prompt to log in again", code, errOut)
@@ -364,7 +364,7 @@ func TestPasswdRevokesTerminalLogins(t *testing.T) {
 	if _, errOut, code := e.run("", "list"); code == 0 || !strings.Contains(errOut, "burzblog login") {
 		t.Errorf("list after passwd: %d %q, want a prompt to log in again", code, errOut)
 	}
-	e.must("a brand new password\n", "login", e.url, "-u", "jarmos")
+	e.must("a brand new password\n", "login", e.url, "-u", "ada")
 	e.must("", "whoami")
 
 	os.Remove(filepath.Join(e.config, "config.json"))

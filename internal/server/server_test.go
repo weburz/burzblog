@@ -43,7 +43,7 @@ func newHarness(t *testing.T, mutate func(*Config)) *harness {
 	}
 	t.Cleanup(func() { s.Close() })
 	hash, _ := auth.HashPassword(password)
-	if _, err := s.CreateUser(ctx, "jarmos", hash); err != nil {
+	if _, err := s.CreateUser(ctx, "ada", hash); err != nil {
 		t.Fatal(err)
 	}
 	a, err := auth.New(s)
@@ -115,7 +115,7 @@ func (h *harness) do(method, path string, body any) (*http.Response, map[string]
 
 func (h *harness) login() {
 	h.t.Helper()
-	resp, out := h.do("POST", "/api/login", map[string]string{"username": "jarmos", "password": password})
+	resp, out := h.do("POST", "/api/login", map[string]string{"username": "ada", "password": password})
 	if resp.StatusCode != 200 {
 		h.t.Fatalf("login = %d %v", resp.StatusCode, out)
 	}
@@ -134,7 +134,7 @@ func TestSessionLifecycle(t *testing.T) {
 	if _, out := h.do("GET", "/api/session", nil); out["authenticated"] != false {
 		t.Errorf("anonymous session = %v", out)
 	}
-	if resp, out := h.do("POST", "/api/login", map[string]string{"username": "jarmos", "password": "nope"}); resp.StatusCode != 401 || errCode(out) != "credentials" {
+	if resp, out := h.do("POST", "/api/login", map[string]string{"username": "ada", "password": "nope"}); resp.StatusCode != 401 || errCode(out) != "credentials" {
 		t.Errorf("bad login = %d %v", resp.StatusCode, out)
 	}
 	h.login()
@@ -142,7 +142,7 @@ func TestSessionLifecycle(t *testing.T) {
 	if len(cookie) != 1 || cookie[0].Name != "burzblog_session" {
 		t.Errorf("cookies = %v", cookie)
 	}
-	if _, out := h.do("GET", "/api/session", nil); out["authenticated"] != true || out["csrf"] != h.csrf || out["username"] != "jarmos" {
+	if _, out := h.do("GET", "/api/session", nil); out["authenticated"] != true || out["csrf"] != h.csrf || out["username"] != "ada" {
 		t.Errorf("session = %v", out)
 	}
 	h.do("POST", "/api/logout", nil)
@@ -171,7 +171,7 @@ func TestBrowserMutationsNeedOriginAndCSRF(t *testing.T) {
 		t.Errorf("foreign origin = %d", resp.StatusCode)
 	}
 
-	req, _ = http.NewRequest("POST", h.ts.URL+"/api/login", strings.NewReader(`{"username":"jarmos","password":"`+password+`"}`))
+	req, _ = http.NewRequest("POST", h.ts.URL+"/api/login", strings.NewReader(`{"username":"ada","password":"`+password+`"}`))
 	req.Header.Set("Content-Type", "application/json")
 	resp, _ = http.DefaultClient.Do(req)
 	resp.Body.Close()
@@ -185,7 +185,7 @@ func TestPostLifecycle(t *testing.T) {
 	h.login()
 
 	resp, out := h.do("POST", "/api/posts", map[string]string{"title": "Hello, World!"})
-	if resp.StatusCode != 201 || out["slug"] != "hello-world" || out["version"] != 1.0 || out["updatedBy"] != "jarmos" {
+	if resp.StatusCode != 201 || out["slug"] != "hello-world" || out["version"] != 1.0 || out["updatedBy"] != "ada" {
 		t.Fatalf("create = %d %v", resp.StatusCode, out)
 	}
 	if resp, out := h.do("POST", "/api/posts", map[string]string{"title": "Hello world"}); resp.StatusCode != 409 || errCode(out) != "slug_taken" {
@@ -284,7 +284,7 @@ func TestPreviewLimits(t *testing.T) {
 func TestCLITokenAndMarkdown(t *testing.T) {
 	h := newHarness(t, nil)
 	// No Origin, like the CLI.
-	req, _ := http.NewRequest("POST", h.ts.URL+"/api/auth/token", strings.NewReader(`{"username":"jarmos","password":"`+password+`","name":"laptop"}`))
+	req, _ := http.NewRequest("POST", h.ts.URL+"/api/auth/token", strings.NewReader(`{"username":"ada","password":"`+password+`","name":"laptop"}`))
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -768,7 +768,7 @@ func TestExportTokenIsAnonymousOnSession(t *testing.T) {
 		t.Errorf("export token session = %v, want anonymous", out)
 	}
 	_, out = h.as(writeSecret, "GET", "/api/session")
-	if out["authenticated"] != true || out["username"] != "jarmos" {
+	if out["authenticated"] != true || out["username"] != "ada" {
 		t.Errorf("write token session = %v", out)
 	}
 	_, out = h.do("GET", "/api/session", nil)
@@ -784,7 +784,7 @@ func TestPasswordChangeRevokesWriteTokens(t *testing.T) {
 	exportSecret := h.issueToken(store.ScopeExport)
 
 	other := h.secondBrowser()
-	if resp, out := other.do("POST", "/api/login", map[string]string{"username": "jarmos", "password": password}); resp.StatusCode != 200 {
+	if resp, out := other.do("POST", "/api/login", map[string]string{"username": "ada", "password": password}); resp.StatusCode != 200 {
 		t.Fatalf("second login = %d %v", resp.StatusCode, out)
 	}
 
