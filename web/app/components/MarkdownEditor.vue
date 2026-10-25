@@ -1,10 +1,25 @@
 <script setup lang="ts">
 import { ref } from "vue";
-import { codeBlock, link, prefixLines, wrap, type Edit } from "../utils/markdown";
+import {
+  codeBlock,
+  continueList,
+  horizontalRule,
+  image,
+  indentList,
+  link,
+  prefixLines,
+  table,
+  taskPrefix,
+  wrap,
+  type Edit,
+} from "../utils/markdown";
 
 const model = defineModel<string>({ required: true });
-defineProps<{ readonly?: boolean }>();
+const props = defineProps<{ readonly?: boolean }>();
 const area = ref<HTMLTextAreaElement | null>(null);
+const imageOpen = ref(false);
+// The selection when the image dialog opened; the dialog takes focus away.
+const imageRange = ref({ start: 0, end: 0, text: "" });
 
 // Apply an edit through insertText so the browser's undo history keeps it.
 const apply = (edit: Edit) => {
@@ -38,6 +53,11 @@ const run = (kind: string) => {
   const el = area.value;
   if (!el) return;
   const { value, selectionStart: s, selectionEnd: e } = el;
+  if (kind === "image") {
+    imageRange.value = { start: s, end: e, text: value.slice(s, e) };
+    imageOpen.value = true;
+    return;
+  }
   const edits: Record<string, () => Edit> = {
     bold: () => wrap(value, s, e, "**"),
     italic: () => wrap(value, s, e, "_"),
@@ -47,13 +67,40 @@ const run = (kind: string) => {
     quote: () => prefixLines(value, s, e, "> "),
     bullets: () => prefixLines(value, s, e, "- "),
     numbers: () => prefixLines(value, s, e, "1. "),
+    tasks: () => prefixLines(value, s, e, taskPrefix),
+    table: () => table(value, s, e),
+    rule: () => horizontalRule(value, s, e),
     link: () => link(value, s, e),
     block: () => codeBlock(value, s, e),
   };
   apply(edits[kind]!());
 };
 
+const insertImage = (alt: string, url: string) => {
+  const el = area.value;
+  if (!el) return;
+  const { start, end } = imageRange.value;
+  apply(image(el.value, start, end, alt, url));
+};
+
+// Enter continues a list and Tab indents a list item. Outside a list both keep
+// their normal behaviour, so Tab still moves focus out of the editor.
+const listKey = (event: KeyboardEvent): boolean => {
+  const el = area.value;
+  if (!el || props.readonly || event.isComposing) return false;
+  if (event.metaKey || event.ctrlKey || event.altKey) return false;
+  const { value, selectionStart: s, selectionEnd: e } = el;
+  let edit: Edit | null = null;
+  if (event.key === "Enter" && !event.shiftKey) edit = continueList(value, s, e);
+  else if (event.key === "Tab") edit = indentList(value, s, e, event.shiftKey);
+  if (!edit) return false;
+  event.preventDefault();
+  apply(edit);
+  return true;
+};
+
 const keydown = (event: KeyboardEvent) => {
+  if (listKey(event)) return;
   if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
   const key = event.key.toLowerCase();
   const map: Record<string, string> = { b: "bold", i: "italic", k: "link", e: "code" };
@@ -86,11 +133,15 @@ const tools = [
   { kind: "bold", icon: "i-lucide-bold", label: "Bold", keys: ["meta", "b"] },
   { kind: "italic", icon: "i-lucide-italic", label: "Italic", keys: ["meta", "i"] },
   { kind: "link", icon: "i-lucide-link", label: "Link", keys: ["meta", "k"] },
+  { kind: "image", icon: "i-lucide-image", label: "Image" },
   { kind: "quote", icon: "i-lucide-text-quote", label: "Quote" },
   { kind: "bullets", icon: "i-lucide-list", label: "Bulleted list" },
   { kind: "numbers", icon: "i-lucide-list-ordered", label: "Numbered list" },
+  { kind: "tasks", icon: "i-lucide-list-checks", label: "Task list" },
   { kind: "code", icon: "i-lucide-code", label: "Inline code", keys: ["meta", "e"] },
   { kind: "block", icon: "i-lucide-square-code", label: "Code block" },
+  { kind: "table", icon: "i-lucide-table", label: "Table" },
+  { kind: "rule", icon: "i-lucide-separator-horizontal", label: "Horizontal rule" },
 ];
 
 defineExpose({ focus: () => area.value?.focus(), element: area });
@@ -126,6 +177,11 @@ defineExpose({ focus: () => area.value?.focus(), element: area });
       :readonly="readonly"
       @keydown="keydown"
       @paste="paste"
+    />
+    <ImageDialog
+      v-model:open="imageOpen"
+      :selected="imageRange.text"
+      @insert="insertImage"
     />
   </div>
 </template>
