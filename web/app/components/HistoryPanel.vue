@@ -2,7 +2,7 @@
 import { computed, ref, watch } from "vue";
 import type { Revision, RevisionList, RevisionState, RevisionSummary } from "../types";
 import { errorMessage, request } from "../utils/api";
-import { changeSummary } from "../utils/changes";
+import { changeSummary, showsTitle } from "../utils/changes";
 import { lineDiff, diffTooLong } from "../utils/diff";
 import { editedLabel, exactTime } from "../utils/time";
 
@@ -147,10 +147,10 @@ const pick = async (rev: RevisionSummary) => {
           <li v-if="current">
             <div class="history-row history-current" aria-current="true">
               <span class="history-version">v{{ version }}</span>
-              <span class="history-title">{{ current.title || "Untitled" }}</span>
               <span class="history-change">{{ currentSummary }}</span>
               <StatusBadge :status="current.status" />
               <span class="muted">Current version</span>
+              <span class="history-title">“{{ current.title || "Untitled" }}”</span>
             </div>
           </li>
           <li v-for="(rev, index) in items" :key="rev.version">
@@ -158,16 +158,18 @@ const pick = async (rev: RevisionSummary) => {
               type="button"
               class="history-row"
               :disabled="loadingOne"
-              :aria-label="`Version ${rev.version}, ${rev.title || 'Untitled'}: ${summaryOf(index)}. ${rev.status}, saved ${exactTime(rev.savedAt)}${rev.savedBy ? ` by ${rev.savedBy}` : ''}`"
+              :aria-label="`Version ${rev.version}: ${summaryOf(index)}${showsTitle(items, index) ? `, titled ${rev.title || 'Untitled'}` : ''}. ${rev.status}, saved ${exactTime(rev.savedAt)}${rev.savedBy ? ` by ${rev.savedBy}` : ''}`"
               @click="pick(rev)"
             >
               <span class="history-version">v{{ rev.version }}</span>
-              <span class="history-title">{{ rev.title || "Untitled" }}</span>
               <span class="history-change">{{ summaryOf(index) }}</span>
               <StatusBadge :status="rev.status" />
               <time :datetime="rev.savedAt" :title="exactTime(rev.savedAt)" class="muted"
                 >{{ editedLabel(rev.savedAt)
                 }}<template v-if="rev.savedBy"> by {{ rev.savedBy }}</template></time
+              >
+              <span v-if="showsTitle(items, index)" class="history-title"
+                >“{{ rev.title || "Untitled" }}”</span
               >
             </button>
           </li>

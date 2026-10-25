@@ -370,6 +370,14 @@ func (a *App) confirm(question string, def bool) bool {
 	return def
 }
 
+// count renders "1 draft" or "2 drafts".
+func count(n int, singular, plural string) string {
+	if n == 1 {
+		return fmt.Sprintf("%d %s", n, singular)
+	}
+	return fmt.Sprintf("%d %s", n, plural)
+}
+
 func ago(t time.Time) string {
 	d := time.Since(t)
 	switch {
