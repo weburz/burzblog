@@ -2,7 +2,12 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import type { PostList, PostSummary } from "../types";
 import { request } from "../utils/api";
-import { actionCommands, goToCommands, paletteGroups } from "../utils/palette";
+import {
+  actionCommands,
+  goToCommands,
+  opensPalette,
+  paletteGroups,
+} from "../utils/palette";
 import { editedLabel } from "../utils/time";
 
 const open = defineModel<boolean>("open", { default: false });
@@ -17,11 +22,11 @@ const query = ref("");
 const posts = ref<PostSummary[]>([]);
 const loading = ref(false);
 
-// Typing in the editor is no reason to miss Ctrl/Cmd+K: it is a modifier
-// shortcut, so it ignores the single-key shortcuts switch and the focused field.
+// A modifier shortcut, so it ignores the single-key shortcuts switch and works
+// while typing. In the Markdown body plain Ctrl/Cmd+K stays the link shortcut.
 const toggleKey = (event: KeyboardEvent) => {
-  if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return;
-  if (event.key.toLowerCase() !== "k") return;
+  const target = event.target as HTMLElement | null;
+  if (!opensPalette(event, Boolean(target?.closest(".md-source")))) return;
   event.preventDefault();
   open.value = !open.value;
 };

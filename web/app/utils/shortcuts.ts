@@ -15,6 +15,10 @@ export const shortcutGroups: ShortcutGroup[] = [
     title: "Anywhere",
     items: [
       { label: "Search or jump", keys: ["meta", "k"] },
+      {
+        label: "Search or jump, also while writing the body",
+        keys: ["meta", "shift", "k"],
+      },
       { label: "Show keyboard shortcuts", keys: ["?"] },
     ],
   },
@@ -38,6 +42,7 @@ export const shortcutGroups: ShortcutGroup[] = [
     items: [
       { label: "Bold", keys: ["meta", "b"] },
       { label: "Italic", keys: ["meta", "i"] },
+      { label: "Link", keys: ["meta", "k"] },
       { label: "Inline code", keys: ["meta", "e"] },
     ],
   },

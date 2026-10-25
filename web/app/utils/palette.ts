@@ -22,6 +22,17 @@ export interface PaletteGroup {
   items: Record<string, unknown>[];
 }
 
+// Ctrl/Cmd+K opens the palette, except in the Markdown body, where it keeps
+// inserting a link (as on GitHub); Ctrl/Cmd+Shift+K opens it from anywhere.
+export const opensPalette = (
+  event: Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey">,
+  inBody: boolean,
+): boolean => {
+  if (!(event.metaKey || event.ctrlKey) || event.altKey) return false;
+  if (event.key.toLowerCase() !== "k") return false;
+  return event.shiftKey || !inBody;
+};
+
 // Saved slugs, newest first; anything that is not a list of strings is dropped.
 export const parseRecent = (raw: string | null): string[] => {
   try {

@@ -103,7 +103,7 @@ const keydown = (event: KeyboardEvent) => {
   if (listKey(event)) return;
   if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
   const key = event.key.toLowerCase();
-  const map: Record<string, string> = { b: "bold", i: "italic", e: "code" };
+  const map: Record<string, string> = { b: "bold", i: "italic", k: "link", e: "code" };
   if (map[key] && !event.shiftKey) {
     event.preventDefault();
     run(map[key]);
@@ -132,7 +132,7 @@ const tools = [
   { kind: "h3", icon: "i-lucide-heading-3", label: "Subheading" },
   { kind: "bold", icon: "i-lucide-bold", label: "Bold", keys: ["meta", "b"] },
   { kind: "italic", icon: "i-lucide-italic", label: "Italic", keys: ["meta", "i"] },
-  { kind: "link", icon: "i-lucide-link", label: "Link" },
+  { kind: "link", icon: "i-lucide-link", label: "Link", keys: ["meta", "k"] },
   { kind: "image", icon: "i-lucide-image", label: "Image" },
   { kind: "quote", icon: "i-lucide-text-quote", label: "Quote" },
   { kind: "bullets", icon: "i-lucide-list", label: "Bulleted list" },

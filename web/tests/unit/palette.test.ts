@@ -3,6 +3,7 @@ import type { PostSummary } from "../../app/types";
 import {
   actionCommands,
   goToCommands,
+  opensPalette,
   paletteGroups,
   parseRecent,
   pushRecent,
@@ -153,5 +154,42 @@ describe("built-in commands", () => {
     ]);
     commands.find((c) => c.id === "theme-dark")?.run();
     expect(handlers.theme).toHaveBeenCalledWith("dark");
+  });
+});
+
+describe("palette shortcut", () => {
+  const key = (init: Partial<KeyboardEventInit> & { key: string }) => ({
+    metaKey: false,
+    ctrlKey: false,
+    altKey: false,
+    shiftKey: false,
+    ...init,
+  });
+
+  it("opens on Ctrl or Cmd+K outside the body", () => {
+    expect(opensPalette(key({ key: "k", ctrlKey: true }), false)).toBe(true);
+    expect(opensPalette(key({ key: "K", metaKey: true }), false)).toBe(true);
+  });
+
+  it("leaves Ctrl or Cmd+K to the link shortcut in the body", () => {
+    expect(opensPalette(key({ key: "k", ctrlKey: true }), true)).toBe(false);
+    expect(opensPalette(key({ key: "k", metaKey: true }), true)).toBe(false);
+  });
+
+  it("opens on Ctrl or Cmd+Shift+K from anywhere, body included", () => {
+    expect(opensPalette(key({ key: "K", ctrlKey: true, shiftKey: true }), true)).toBe(
+      true,
+    );
+    expect(opensPalette(key({ key: "K", metaKey: true, shiftKey: true }), false)).toBe(
+      true,
+    );
+  });
+
+  it("ignores other keys, a bare K and Alt combinations", () => {
+    expect(opensPalette(key({ key: "j", ctrlKey: true }), false)).toBe(false);
+    expect(opensPalette(key({ key: "k" }), false)).toBe(false);
+    expect(opensPalette(key({ key: "k", ctrlKey: true, altKey: true }), false)).toBe(
+      false,
+    );
   });
 });
