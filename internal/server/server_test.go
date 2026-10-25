@@ -257,6 +257,28 @@ func TestPreview(t *testing.T) {
 	}
 }
 
+func TestPreviewLimits(t *testing.T) {
+	h := newHarness(t, nil)
+	h.login()
+	wide := "|" + strings.Repeat(" a |", 2000) + "\n|" + strings.Repeat("---|", 2000) + "\n|" + strings.Repeat(" b |", 2000) + "\n"
+	resp, out := h.do("POST", "/api/preview", map[string]string{"markdown": "# Title\n\n" + wide})
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("wide table status = %d, want 422", resp.StatusCode)
+	}
+	e, _ := out["error"].(map[string]any)
+	if e["code"] != "preview_limit" || !strings.Contains(e["detail"].(string), "The table on line 4 has 2000 columns") {
+		t.Errorf("wide table error = %v", e)
+	}
+	resp, _ = h.do("POST", "/api/preview", map[string]string{"markdown": strings.Repeat("> ", 100) + "x"})
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("deep nesting status = %d, want 422", resp.StatusCode)
+	}
+	resp, _ = h.do("POST", "/api/preview", map[string]string{"markdown": "| a | b |\n|---|---|\n| 1 | 2 |\n"})
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("normal table status = %d, want 200", resp.StatusCode)
+	}
+}
+
 func TestCLITokenAndMarkdown(t *testing.T) {
 	h := newHarness(t, nil)
 	// No Origin, like the CLI.

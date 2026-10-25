@@ -38,6 +38,19 @@ result is shown in a sandboxed iframe that cannot run scripts at all, with its
 own policy. Images in previews load from their `https://` URLs; that is the
 author's own content.
 
+**Preview cost.** Rendering is the one request whose cost depends on what is in
+it, and any session or write token can ask for it every 250 ms. So
+`POST /api/preview` is bounded in four ways. Before parsing, one linear pass
+refuses constructs whose cost grows faster than their size (very wide or
+numerous tables, deep nesting, huge numbers of lines or headings, paragraphs
+with thousands of unmatched emphasis, code or link markers); the limits are in
+[the API reference](api.md#preview-limits). Output is cut off at 8 MiB. Only
+two renders run at once and a third waits at most 5 seconds before getting a
+503. The body is still allowed up to the size of a post (2 MiB), so an author
+can preview anything they can save. The largest input these limits admit takes
+well under a second and allocates under 160 MiB in total (see
+`internal/render/limits_test.go`); a typical 2 MiB post takes about 0.15 s.
+
 **Input.** Request bodies are capped at 4 MiB and JSON rejects unknown fields.
 Frontmatter must be a plain mapping: YAML anchors, aliases and custom tags are
 refused. Slugs are limited to lowercase letters, digits and hyphens, so they

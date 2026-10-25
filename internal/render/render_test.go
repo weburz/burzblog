@@ -1,6 +1,8 @@
 package render
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -21,7 +23,7 @@ func TestHTML(t *testing.T) {
 		{"footnote", "a[^1]\n\n[^1]: note", []string{`class="footnote-ref"`, `id="fn:1"`}, nil},
 	}
 	for _, c := range cases {
-		got, err := HTML(c.in)
+		got, err := HTML(context.Background(), c.in)
 		if err != nil {
 			t.Fatalf("%s: %v", c.name, err)
 		}
@@ -36,7 +38,9 @@ func TestHTML(t *testing.T) {
 			}
 		}
 	}
-	if _, err := HTML(strings.Repeat("x", MaxInput+1)); err == nil {
-		t.Error("oversized input rendered")
+	_, err := HTML(context.Background(), strings.Repeat("x", MaxInput+1))
+	var limit *LimitError
+	if !errors.As(err, &limit) {
+		t.Errorf("oversized input: err = %v, want *LimitError", err)
 	}
 }
