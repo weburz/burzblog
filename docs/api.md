@@ -12,7 +12,10 @@ There are no unauthenticated content routes.
 | Website build | `Authorization: Bearer bzb_...` export token created in Settings | can only call `GET /api/export.tar.gz`; `GET /api/backup.tar.gz` answers 403 |
 
 Sessions last 12 hours. Each username gets ten sign-in attempts per 15 minutes;
-a successful sign-in resets the count. There is no instance-wide limit, so one
+a successful sign-in resets the count. When many sign-ins arrive at once and no
+password-checking slot frees within two seconds, or one client address already
+has two sign-ins waiting, the request is answered `503` `busy` with
+`Retry-After: 5`; it is not counted against the username. There is no instance-wide limit, so one
 attacker cannot lock every author out.
 
 ## Errors
@@ -25,7 +28,7 @@ specific cause when there is one.
 ```
 
 Codes include `authentication` (401), `credentials` (401), `rate_limited`
-(429), `origin`/`csrf`/`scope` (403), `not_found` (404), `validation` (422),
+(429), `busy` (503), `origin`/`csrf`/`scope` (403), `not_found` (404), `validation` (422),
 `slug_taken`, `conflict` and `state` (409), `version_required` (428).
 
 A `conflict` also carries the post as it is now, so clients can show both

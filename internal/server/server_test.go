@@ -645,3 +645,18 @@ func TestRevisionListSummarizesChanges(t *testing.T) {
 		t.Errorf("missing post revisions = %d", resp.StatusCode)
 	}
 }
+
+func TestBusyReply(t *testing.T) {
+	w := httptest.NewRecorder()
+	busy(w)
+	if w.Code != http.StatusServiceUnavailable || w.Header().Get("Retry-After") != "5" {
+		t.Errorf("busy = %d, Retry-After %q", w.Code, w.Header().Get("Retry-After"))
+	}
+	var out map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil || errCode(out) != "busy" {
+		t.Errorf("busy body = %s (%v)", w.Body.String(), err)
+	}
+	if msg := out["error"].(map[string]any)["message"].(string); !strings.Contains(msg, "Try again") {
+		t.Errorf("busy message %q does not say what to do", msg)
+	}
+}

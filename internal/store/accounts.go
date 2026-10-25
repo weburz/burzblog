@@ -250,6 +250,9 @@ func (s *Store) DeleteToken(ctx context.Context, id int64) error {
 	return nil
 }
 
+// pruneBatch is how many expired login_attempts rows one reservation removes.
+const pruneBatch = 20
+
 // ReserveLoginAttempt counts an attempt for key before the password is
 // checked, atomically, and reports whether the key had attempts left in the
 // current window. Concurrent requests cannot all slip under the limit.
@@ -261,6 +264,13 @@ func (s *Store) ReserveLoginAttempt(ctx context.Context, key string, limit int, 
 	}
 	defer tx.Rollback()
 	now := s.now().Unix()
+	// Expired rows count as absent, so drop a few on every attempt; the table
+	// then stays about as big as the sign-ins of one window.
+	if _, err := tx.ExecContext(ctx, `DELETE FROM login_attempts WHERE key IN
+		(SELECT key FROM login_attempts WHERE window_start <= ? LIMIT ?)`,
+		now-int64(window.Seconds()), pruneBatch); err != nil {
+		return false, fmt.Errorf("prune login attempts: %w", err)
+	}
 	var start int64
 	var failures int
 	err = tx.QueryRowContext(ctx, "SELECT window_start, failures FROM login_attempts WHERE key = ?", key).

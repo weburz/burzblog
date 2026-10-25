@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -319,5 +320,48 @@ func TestLoginAttempts(t *testing.T) {
 		if ok, _ := s.ReserveLoginAttempt(ctx, "k", 3, time.Minute); !ok {
 			t.Fatalf("attempt %d after clearing refused", i+1)
 		}
+	}
+}
+
+func TestLoginAttemptsPruned(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+	now := time.Unix(1_800_000_000, 0)
+	s.SetClock(func() time.Time { return now })
+	for i := 0; i < 5; i++ {
+		if ok, err := s.ReserveLoginAttempt(ctx, fmt.Sprintf("old-%d", i), 3, time.Minute); !ok || err != nil {
+			t.Fatalf("old-%d refused: %v", i, err)
+		}
+	}
+	count := func() int {
+		var n int
+		if err := s.db.QueryRowContext(ctx, "SELECT count(*) FROM login_attempts").Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	now = now.Add(30 * time.Second)
+	if ok, _ := s.ReserveLoginAttempt(ctx, "live", 3, time.Minute); !ok {
+		t.Fatal("live refused")
+	}
+	if got := count(); got != 6 {
+		t.Fatalf("rows before expiry = %d, want 6: nothing is old enough to prune", got)
+	}
+	now = now.Add(31 * time.Second)
+	if ok, _ := s.ReserveLoginAttempt(ctx, "newer", 3, time.Minute); !ok {
+		t.Fatal("newer refused")
+	}
+	// The five old rows expired and were pruned; live (31 s old) and newer stay.
+	if got := count(); got != 2 {
+		t.Errorf("rows after expiry = %d, want 2", got)
+	}
+	// A live row keeps counting after pruning ran.
+	for i := 0; i < 2; i++ {
+		if ok, _ := s.ReserveLoginAttempt(ctx, "live", 3, time.Minute); !ok {
+			t.Fatalf("live attempt %d refused", i+2)
+		}
+	}
+	if ok, _ := s.ReserveLoginAttempt(ctx, "live", 3, time.Minute); ok {
+		t.Error("live row was pruned: limit no longer enforced")
 	}
 }
