@@ -408,32 +408,22 @@ code {
 .list-find {
   display: flex;
   align-items: center;
-  gap: 8px 12px;
-  flex-wrap: wrap;
-}
-.list-search {
-  width: min(320px, 100%);
-}
-.list-sort {
-  display: flex;
-  align-items: center;
   gap: 8px;
 }
-.list-sort-label {
-  font-size: 13px;
-  color: var(--bb-text-2);
+.list-search {
+  width: 280px;
 }
 .list-sort-select {
-  width: 11rem;
+  width: 12.5rem;
 }
 @media (max-width: 640px) {
-  .list-find,
-  .list-sort,
-  .list-search {
+  .list-find {
     width: 100%;
+    flex-wrap: wrap;
   }
+  .list-search,
   .list-sort-select {
-    flex: 1 1 auto;
+    flex: 1 1 100%;
     width: auto;
   }
 }
@@ -742,6 +732,12 @@ code {
 }
 .md-editor {
   margin-top: 24px;
+}
+/* Focus mode drops the gutter the caret bar sits in; the caret is enough. */
+.editor-shell[data-focus="true"] .title-field:focus-visible,
+.editor-shell[data-focus="true"] .description-field:focus-visible,
+.editor-shell[data-focus="true"] .md-source:focus-visible {
+  box-shadow: none;
 }
 .md-tools {
   position: sticky;

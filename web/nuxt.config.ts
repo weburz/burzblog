@@ -26,6 +26,7 @@ export default defineNuxtConfig({
         "lucide:monitor",
         "lucide:sun",
         "lucide:moon",
+        "lucide:arrow-down-up",
         "lucide:triangle-alert",
       ],
     },
