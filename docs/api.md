@@ -35,14 +35,14 @@ versions: `{ "error": {...}, "current": { ...post } }`.
 
 | | |
 |---|---|
-| `GET /api/session` | `{authenticated, username, csrf}`; works without signing in |
+| `GET /api/session` | `{authenticated, username, csrf}`; works without signing in. An export token is anonymous here (`authenticated: false`) |
 | `POST /api/login` | `{username, password}` → session cookie |
 | `POST /api/logout` | ends the session |
 | `POST /api/auth/token` | `{username, password, name}` → write token `{id, name, scope, secret}`; the secret is returned once |
 | `GET /api/tokens` | every token (without secrets) |
 | `POST /api/tokens` | `{name, scope: "write" or "export"}` → new token with its secret |
 | `DELETE /api/tokens/{id}` | revoke |
-| `POST /api/account/password` | `{current, next}`; signs out every other browser |
+| `POST /api/account/password` | `{current, next}`; signs out every other browser and revokes every write token (`burzblog login`); export tokens keep working |
 | `GET /api/settings` | `{username, origin, version, deploy}` |
 | `POST /api/deploy` | request a website rebuild now |
 

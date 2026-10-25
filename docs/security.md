@@ -17,7 +17,9 @@ is no self sign-up; accounts are created on the host with `burzblog user add`.
 SHA-256 digest is stored. Every change also needs the session's CSRF token in a
 header and an `Origin` header equal to the configured origin; sign-in requires
 the origin too, so another site cannot sign a browser into a different account.
-Changing a password ends every other session.
+Changing a password (in Settings or with `burzblog user passwd`) ends every other
+session and revokes the account's write tokens in the same transaction, so a
+credential minted by someone who knew the old password does not outlive the reset.
 
 **API tokens.** `bzb_` plus 256 random bits, shown once, stored as a SHA-256
 digest. Write tokens (from `burzblog login`) can do what a signed-in user can.
@@ -25,6 +27,11 @@ Export tokens can only download published posts; the full backup
 (`/api/backup.tar.gz`, drafts and archived posts included) needs a session or a
 write token. Both are listed in Settings
 with their last use and can be revoked there.
+
+Export tokens are kept when a password changes: they cannot write, and revoking
+them would silently break the website build. Revoke one in Settings if it leaks.
+Outside `GET /api/export.tar.gz` an export token is refused with 403 `scope`, and
+`GET /api/session` treats it as anonymous, so it cannot read the username.
 
 **The panel.** Served with a Content Security Policy that allows only the
 panel's own scripts (inline bootstrap scripts by hash), no framing, no

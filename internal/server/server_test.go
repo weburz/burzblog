@@ -645,3 +645,152 @@ func TestRevisionListSummarizesChanges(t *testing.T) {
 		t.Errorf("missing post revisions = %d", resp.StatusCode)
 	}
 }
+
+// issueToken mints a token as the signed-in browser and returns its secret.
+func (h *harness) issueToken(scope string) string {
+	h.t.Helper()
+	resp, out := h.do("POST", "/api/tokens", map[string]string{"name": scope, "scope": scope})
+	if resp.StatusCode != 201 && resp.StatusCode != 200 {
+		h.t.Fatalf("create %s token = %d %v", scope, resp.StatusCode, out)
+	}
+	return out["secret"].(string)
+}
+
+// as sends a request with only a bearer token: no cookie, no CSRF.
+func (h *harness) as(secret, method, path string) (*http.Response, map[string]any) {
+	h.t.Helper()
+	req, _ := http.NewRequest(method, h.ts.URL+path, nil)
+	req.Header.Set("Authorization", "Bearer "+secret)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	out := map[string]any{}
+	_ = json.Unmarshal(raw, &out)
+	return resp, out
+}
+
+// secondBrowser returns a client with its own cookie jar on the same server.
+func (h *harness) secondBrowser() *harness {
+	jar, _ := cookiejar.New(nil)
+	return &harness{t: h.t, ts: h.ts, store: h.store, client: &http.Client{Jar: jar}}
+}
+
+func TestExportTokenOnlyCallsExport(t *testing.T) {
+	h := newHarness(t, nil)
+	h.login()
+	exportSecret := h.issueToken(store.ScopeExport)
+	writeSecret := h.issueToken(store.ScopeWrite)
+
+	// Every route in routes() that reads the caller. /api/login, /api/logout
+	// and /api/auth/token ignore bearer tokens, and /healthz and the panel are
+	// public, so they are not listed.
+	routes := []struct {
+		method, path string
+		export       int // status for an export token
+	}{
+		{"GET", "/api/export.tar.gz", 200},
+		{"GET", "/api/session", 200}, // anonymous, see TestExportTokenIsAnonymousOnSession
+		{"GET", "/api/tokens", 403},
+		{"POST", "/api/tokens", 403},
+		{"DELETE", "/api/tokens/999999", 403},
+		{"POST", "/api/account/password", 403},
+		{"GET", "/api/settings", 403},
+		{"POST", "/api/deploy", 403},
+		{"GET", "/api/posts", 403},
+		{"POST", "/api/posts", 403},
+		{"GET", "/api/posts/x", 403},
+		{"PUT", "/api/posts/x", 403},
+		{"DELETE", "/api/posts/x", 403},
+		{"POST", "/api/posts/x/publish", 403},
+		{"GET", "/api/posts/x/markdown", 403},
+		{"PUT", "/api/posts/x/markdown", 403},
+		{"GET", "/api/posts/x/revisions", 403},
+		{"GET", "/api/posts/x/revisions/1", 403},
+		{"POST", "/api/posts/x/revisions/1/restore", 403},
+		{"POST", "/api/preview", 403},
+		{"GET", "/api/backup.tar.gz", 403},
+	}
+	for _, rt := range routes {
+		t.Run(rt.method+" "+rt.path, func(t *testing.T) {
+			resp, out := h.as(exportSecret, rt.method, rt.path)
+			if resp.StatusCode != rt.export {
+				t.Errorf("export token = %d %v, want %d", resp.StatusCode, out, rt.export)
+			}
+			if rt.export == 403 && errCode(out) != "scope" {
+				t.Errorf("error code = %q, want scope", errCode(out))
+			}
+			if rt.export == 403 {
+				// The same route accepts a write token (it may still answer
+				// 404 or 400 for the made-up post).
+				if resp, _ := h.as(writeSecret, rt.method, rt.path); resp.StatusCode == 401 || resp.StatusCode == 403 {
+					t.Errorf("write token = %d, want it allowed", resp.StatusCode)
+				}
+			}
+		})
+	}
+}
+
+func TestExportTokenIsAnonymousOnSession(t *testing.T) {
+	h := newHarness(t, nil)
+	h.login()
+	exportSecret := h.issueToken(store.ScopeExport)
+	writeSecret := h.issueToken(store.ScopeWrite)
+
+	_, out := h.as(exportSecret, "GET", "/api/session")
+	if out["authenticated"] != false || out["username"] != nil {
+		t.Errorf("export token session = %v, want anonymous", out)
+	}
+	_, out = h.as(writeSecret, "GET", "/api/session")
+	if out["authenticated"] != true || out["username"] != "jarmos" {
+		t.Errorf("write token session = %v", out)
+	}
+	_, out = h.do("GET", "/api/session", nil)
+	if out["authenticated"] != true || out["csrf"] == nil {
+		t.Errorf("browser session = %v", out)
+	}
+}
+
+func TestPasswordChangeRevokesWriteTokens(t *testing.T) {
+	h := newHarness(t, nil)
+	h.login()
+	writeSecret := h.issueToken(store.ScopeWrite)
+	exportSecret := h.issueToken(store.ScopeExport)
+
+	other := h.secondBrowser()
+	if resp, out := other.do("POST", "/api/login", map[string]string{"username": "jarmos", "password": password}); resp.StatusCode != 200 {
+		t.Fatalf("second login = %d %v", resp.StatusCode, out)
+	}
+
+	resp, out := h.do("POST", "/api/account/password", map[string]string{"current": "wrong wrong wrong", "next": "a brand new password"})
+	if resp.StatusCode != 400 {
+		t.Fatalf("wrong current password = %d %v", resp.StatusCode, out)
+	}
+	if resp, _ := h.as(writeSecret, "GET", "/api/posts"); resp.StatusCode != 200 {
+		t.Errorf("failed change revoked the write token: %d", resp.StatusCode)
+	}
+
+	resp, out = h.do("POST", "/api/account/password", map[string]string{"current": password, "next": "a brand new password"})
+	if resp.StatusCode != 200 {
+		t.Fatalf("change password = %d %v", resp.StatusCode, out)
+	}
+	if resp, _ := h.as(writeSecret, "GET", "/api/posts"); resp.StatusCode != 401 {
+		t.Errorf("write token after change = %d, want 401", resp.StatusCode)
+	}
+	if resp, _ := h.as(exportSecret, "GET", "/api/export.tar.gz"); resp.StatusCode != 200 {
+		t.Errorf("export token after change = %d, want 200", resp.StatusCode)
+	}
+	if resp, _ := h.do("GET", "/api/posts", nil); resp.StatusCode != 200 {
+		t.Errorf("current browser after change = %d, want 200", resp.StatusCode)
+	}
+	if _, out := other.do("GET", "/api/session", nil); out["authenticated"] != false {
+		t.Errorf("other browser after change = %v, want signed out", out)
+	}
+	_, list := h.do("GET", "/api/tokens", nil)
+	items := list["items"].([]any)
+	if len(items) != 1 || items[0].(map[string]any)["scope"] != store.ScopeExport {
+		t.Errorf("tokens after change = %v, want only the export token", items)
+	}
+}

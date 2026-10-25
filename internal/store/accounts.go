@@ -77,8 +77,10 @@ func (s *Store) Users(ctx context.Context) ([]User, error) {
 	return list, rows.Err()
 }
 
-// SetPassword replaces a user's password hash and signs them out everywhere
-// except, optionally, the session keepSession.
+// SetPassword replaces a user's password hash, signs them out everywhere
+// except, optionally, the session keepSession, and revokes their write
+// tokens (CLI logins). Export tokens stay: they cannot change anything, and
+// revoking them would silently break the website build.
 func (s *Store) SetPassword(ctx context.Context, userID int64, passwordHash, keepSession string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -94,6 +96,9 @@ func (s *Store) SetPassword(ctx context.Context, userID int64, passwordHash, kee
 	}
 	if _, err := tx.ExecContext(ctx, "DELETE FROM sessions WHERE user_id = ? AND token_hash != ?", userID, keepSession); err != nil {
 		return fmt.Errorf("end sessions: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM tokens WHERE user_id = ? AND scope = ?", userID, ScopeWrite); err != nil {
+		return fmt.Errorf("revoke write tokens: %w", err)
 	}
 	return tx.Commit()
 }

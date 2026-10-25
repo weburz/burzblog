@@ -335,3 +335,32 @@ func touch(p *post.Post) error {
 	p.Body += "\nBrowser edit.\n"
 	return nil
 }
+
+func TestPasswdRevokesTerminalLogins(t *testing.T) {
+	e := newEnv(t)
+	e.must("correct horse battery\n", "user", "add", "jarmos")
+	e.must("correct horse battery\n", "login", e.url, "-u", "jarmos")
+	u, _ := e.store.UserByName(context.Background(), "jarmos")
+	svc, _ := auth.New(e.store)
+	exportSecret, _, err := svc.NewToken(context.Background(), u, "vercel", store.ScopeExport)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.must("", "whoami")
+
+	e.must("a brand new password\n", "user", "passwd", "jarmos")
+
+	if _, errOut, code := e.run("", "whoami"); code == 0 || !strings.Contains(errOut, "burzblog login") {
+		t.Errorf("whoami after passwd: %d %q, want a prompt to log in again", code, errOut)
+	}
+	if _, errOut, code := e.run("", "list"); code == 0 || !strings.Contains(errOut, "burzblog login") {
+		t.Errorf("list after passwd: %d %q, want a prompt to log in again", code, errOut)
+	}
+	e.must("a brand new password\n", "login", e.url, "-u", "jarmos")
+	e.must("", "whoami")
+
+	os.Remove(filepath.Join(e.config, "config.json"))
+	e.vars["BURZBLOG_SERVER"] = e.url
+	e.vars["BURZBLOG_TOKEN"] = exportSecret
+	e.must("", "export", "--out", t.TempDir())
+}
