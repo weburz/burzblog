@@ -270,7 +270,7 @@ const origin = typeof window === "undefined" ? "" : window.location.origin;
           v-model="search"
           type="search"
           icon="i-lucide-search"
-          placeholder="Search titles and slugs"
+          placeholder="Search posts"
           aria-label="Search posts"
           class="list-search"
         >

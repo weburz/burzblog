@@ -143,10 +143,13 @@ func (s *Store) CreatePost(ctx context.Context, p *post.Post, by string) (*post.
 	if err := insertTags(ctx, tx, created.ID, p.Tags); err != nil {
 		return nil, err
 	}
+	created.Tags = p.Tags
+	if err := indexPost(ctx, tx, created); err != nil {
+		return nil, err
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit create: %w", err)
 	}
-	created.Tags = p.Tags
 	return created, nil
 }
 
@@ -165,12 +168,16 @@ type Filter struct {
 	Status post.Status
 	// Scheduled limits results to drafts with a publish time.
 	Scheduled bool
-	// Query matches title, slug or description, case-insensitively.
+	// Query is searched for in title, description, body, tags, author and
+	// slug as plain words, all of which must appear, the last one as a
+	// prefix, ignoring case and accents. Without Sort, better matches
+	// come first. A Query without a word in it filters nothing.
 	Query string
 	// Tag limits results to posts with this tag. It is normalized like a
 	// post's tags, so "Machine Learning" finds "machine-learning".
 	Tag string
-	// Sort orders the result; empty means SortUpdated.
+	// Sort orders the result; empty means SortUpdated, or best match first
+	// when there is a Query.
 	Sort Sort
 	// Limit caps the number of posts returned and Offset skips that many
 	// first, for paging; zero Limit means all of them.
@@ -289,10 +296,14 @@ func (s *Store) Tags(ctx context.Context) ([]TagCount, error) {
 // f.Sort says otherwise, and the count per status regardless of the filter.
 // An unknown sort is an error.
 func (s *Store) ListPosts(ctx context.Context, f Filter) ([]Summary, Counts, error) {
-	if f.Sort == "" {
-		f.Sort = SortUpdated
-	}
+	match := matchExpr(f.Query)
 	order, ok := orderBy[f.Sort]
+	switch {
+	case f.Sort == "" && match != "":
+		order, ok = rankedOrder, true
+	case f.Sort == "":
+		order, ok = orderBy[SortUpdated], true
+	}
 	if !ok {
 		return nil, Counts{}, fmt.Errorf("list posts: unknown sort %q", f.Sort)
 	}
@@ -301,7 +312,11 @@ func (s *Store) ListPosts(ctx context.Context, f Filter) ([]Summary, Counts, err
 		return nil, counts, err
 	}
 
-	where, args := []string{}, []any{}
+	from, args := "posts", []any{}
+	if match != "" {
+		from, args = searchSource(match)
+	}
+	where := []string{}
 	if f.Scheduled {
 		where = append(where, "status = 'draft' AND publish_at IS NOT NULL")
 	} else if f.Status != "" {
@@ -310,18 +325,13 @@ func (s *Store) ListPosts(ctx context.Context, f Filter) ([]Summary, Counts, err
 	} else {
 		where = append(where, "status != 'archived'")
 	}
-	if q := strings.TrimSpace(f.Query); q != "" {
-		like := "%" + strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`).Replace(strings.ToLower(q)) + "%"
-		where = append(where, `(lower(title) LIKE ? ESCAPE '\' OR slug LIKE ? ESCAPE '\' OR lower(description) LIKE ? ESCAPE '\')`)
-		args = append(args, like, like, like)
-	}
 	if f.Tag != "" {
 		// A tag that normalizes to nothing matches no post.
 		where = append(where, "id IN (SELECT post_id FROM post_tags WHERE tag = ?)")
 		args = append(args, post.NormalizeTag(f.Tag))
 	}
 	cond := strings.Join(where, " AND ")
-	page := " FROM posts WHERE " + cond + " ORDER BY " + order
+	page := " FROM " + from + " WHERE " + cond + " ORDER BY " + order
 	listArgs := args
 	if f.Limit > 0 {
 		page += " LIMIT ? OFFSET ?"
@@ -370,7 +380,7 @@ func (s *Store) ListPosts(ctx context.Context, f Filter) ([]Summary, Counts, err
 	}
 	counts.Matched = len(list)
 	if f.Limit > 0 && (f.Offset > 0 || len(list) == f.Limit) {
-		if err := s.db.QueryRowContext(ctx, "SELECT count(*) FROM posts WHERE "+cond, args...).Scan(&counts.Matched); err != nil {
+		if err := s.db.QueryRowContext(ctx, "SELECT count(*) FROM "+from+" WHERE "+cond, args...).Scan(&counts.Matched); err != nil {
 			return nil, counts, fmt.Errorf("count matching posts: %w", err)
 		}
 	}
@@ -472,6 +482,9 @@ func (s *Store) UpdatePost(ctx context.Context, slug string, version int64, by s
 		}
 	}
 	updated.Tags = next.Tags
+	if err := indexPost(ctx, tx, updated); err != nil {
+		return nil, err
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit update: %w", err)
 	}
@@ -536,6 +549,9 @@ func (s *Store) DeletePost(ctx context.Context, slug string, version int64) erro
 	}
 	if _, err := tx.ExecContext(ctx, "DELETE FROM posts WHERE id = ?", current.ID); err != nil {
 		return fmt.Errorf("delete post: %w", err)
+	}
+	if err := unindexPost(ctx, tx, current.ID); err != nil {
+		return err
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit delete: %w", err)

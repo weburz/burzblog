@@ -217,8 +217,8 @@ func TestListPosts(t *testing.T) {
 		t.Errorf("query GO = %+v", list)
 	}
 	list, _, _ = s.ListPosts(ctx, Filter{Query: "%"})
-	if len(list) != 1 || list[0].Slug != "rust" {
-		t.Errorf("query %% should match the literal percent only: %+v", list)
+	if len(list) != 2 {
+		t.Errorf("query %% has no word, so it should filter nothing: %+v", list)
 	}
 	list, _, _ = s.ListPosts(ctx, Filter{Status: post.Archived})
 	if len(list) != 1 || list[0].Slug != "old" {

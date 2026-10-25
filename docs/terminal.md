@@ -70,7 +70,7 @@ tells you the address to use, for example `burzblog login https://blog.example.c
 ## Everyday commands
 
 ```sh
-burzblog list                          # newest first; --status draft|scheduled|published|archived, --search text,
+burzblog list                          # newest first; --status draft|scheduled|published|archived, --search text (also in post bodies),
                                        # --sort updated|published|title|created, --tag name (`ls` works too)
 burzblog new "Understanding Go interfaces"   # creates a draft and opens it in your editor
                                        # (only in a terminal; --no-edit skips it, --slug sets the URL name)
