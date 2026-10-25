@@ -56,12 +56,12 @@ func (s *Store) CreatePost(ctx context.Context, p *post.Post, by string) (*post.
 	now := s.stamp()
 	row := s.db.QueryRowContext(ctx, `INSERT INTO posts
 		(slug, title, description, status, body, cover_url, cover_alt, extra, published_on, updated_on,
-		 created_at, updated_at, updated_by, version)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+		 created_at, updated_at, updated_by, version, words)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
 		ON CONFLICT (slug) DO NOTHING
 		RETURNING `+postColumns,
 		p.Slug, p.Title, p.Description, string(p.Status), p.Body, p.CoverURL, p.CoverAlt, p.Extra,
-		nullTime(p.PublishedOn), nullTime(p.UpdatedOn), now, now, by)
+		nullTime(p.PublishedOn), nullTime(p.UpdatedOn), now, now, by, post.CountWords(p.Body))
 	created, err := scanPost(row)
 	if errors.Is(err, ErrNotFound) {
 		return nil, ErrTaken
@@ -84,6 +84,9 @@ type Filter struct {
 	Query string
 	// Sort orders the result; empty means SortUpdated.
 	Sort Sort
+	// Limit caps the number of posts returned and Offset skips that many
+	// first, for paging; zero Limit means all of them.
+	Limit, Offset int
 }
 
 // Sort names an ordering of ListPosts.
@@ -127,33 +130,25 @@ type Summary struct {
 }
 
 // Counts is the number of posts in each status. Scheduled counts the drafts
-// that have a publish time, so it is part of Draft, not on top of it.
+// that have a publish time, so it is part of Draft, not on top of it. Matched
+// is the number of posts the filter matches, before Limit and Offset.
 type Counts struct {
-	Draft, Published, Archived, Scheduled int
+	Draft, Published, Archived, Scheduled, Matched int
 }
 
-// ListPosts returns matching posts, most recently changed first unless
-// f.Sort says otherwise, and the count per status regardless of the filter.
-// An unknown sort is an error.
-func (s *Store) ListPosts(ctx context.Context, f Filter) ([]Summary, Counts, error) {
+// StatusCounts returns the number of posts in each status.
+func (s *Store) StatusCounts(ctx context.Context) (Counts, error) {
 	var counts Counts
-	if f.Sort == "" {
-		f.Sort = SortUpdated
-	}
-	order, ok := orderBy[f.Sort]
-	if !ok {
-		return nil, counts, fmt.Errorf("list posts: unknown sort %q", f.Sort)
-	}
 	rows, err := s.db.QueryContext(ctx, "SELECT status, count(*) FROM posts GROUP BY status")
 	if err != nil {
-		return nil, counts, fmt.Errorf("count posts: %w", err)
+		return counts, fmt.Errorf("count posts: %w", err)
 	}
 	for rows.Next() {
 		var status string
 		var n int
 		if err := rows.Scan(&status, &n); err != nil {
 			rows.Close()
-			return nil, counts, fmt.Errorf("count posts: %w", err)
+			return counts, fmt.Errorf("count posts: %w", err)
 		}
 		switch post.Status(status) {
 		case post.Draft:
@@ -166,11 +161,29 @@ func (s *Store) ListPosts(ctx context.Context, f Filter) ([]Summary, Counts, err
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
-		return nil, counts, fmt.Errorf("count posts: %w", err)
+		return counts, fmt.Errorf("count posts: %w", err)
 	}
 	if err := s.db.QueryRowContext(ctx, "SELECT count(*) FROM posts WHERE status = 'draft' AND publish_at IS NOT NULL").
 		Scan(&counts.Scheduled); err != nil {
-		return nil, counts, fmt.Errorf("count scheduled posts: %w", err)
+		return counts, fmt.Errorf("count scheduled posts: %w", err)
+	}
+	return counts, nil
+}
+
+// ListPosts returns matching posts, most recently changed first unless
+// f.Sort says otherwise, and the count per status regardless of the filter.
+// An unknown sort is an error.
+func (s *Store) ListPosts(ctx context.Context, f Filter) ([]Summary, Counts, error) {
+	if f.Sort == "" {
+		f.Sort = SortUpdated
+	}
+	order, ok := orderBy[f.Sort]
+	if !ok {
+		return nil, Counts{}, fmt.Errorf("list posts: unknown sort %q", f.Sort)
+	}
+	counts, err := s.StatusCounts(ctx)
+	if err != nil {
+		return nil, counts, err
 	}
 
 	where, args := []string{}, []any{}
@@ -187,9 +200,15 @@ func (s *Store) ListPosts(ctx context.Context, f Filter) ([]Summary, Counts, err
 		where = append(where, `(lower(title) LIKE ? ESCAPE '\' OR slug LIKE ? ESCAPE '\' OR lower(description) LIKE ? ESCAPE '\')`)
 		args = append(args, like, like, like)
 	}
-	rows, err = s.db.QueryContext(ctx, `SELECT slug, title, description, status, body, published_on,
-		publish_at, updated_at, updated_by, version FROM posts WHERE `+strings.Join(where, " AND ")+
-		" ORDER BY "+order, args...)
+	cond := strings.Join(where, " AND ")
+	query := `SELECT slug, title, description, status, words, published_on,
+		publish_at, updated_at, updated_by, version FROM posts WHERE ` + cond + " ORDER BY " + order
+	listArgs := args
+	if f.Limit > 0 {
+		query += " LIMIT ? OFFSET ?"
+		listArgs = append(append([]any{}, args...), f.Limit, max(f.Offset, 0))
+	}
+	rows, err := s.db.QueryContext(ctx, query, listArgs...)
 	if err != nil {
 		return nil, counts, fmt.Errorf("list posts: %w", err)
 	}
@@ -197,14 +216,13 @@ func (s *Store) ListPosts(ctx context.Context, f Filter) ([]Summary, Counts, err
 	list := []Summary{}
 	for rows.Next() {
 		var sm Summary
-		var status, body, updated string
+		var status, updated string
 		var publishedOn, publishAt sql.NullString
-		if err := rows.Scan(&sm.Slug, &sm.Title, &sm.Description, &status, &body, &publishedOn, &publishAt,
+		if err := rows.Scan(&sm.Slug, &sm.Title, &sm.Description, &status, &sm.Words, &publishedOn, &publishAt,
 			&updated, &sm.UpdatedBy, &sm.Version); err != nil {
 			return nil, counts, fmt.Errorf("list posts: %w", err)
 		}
 		sm.Status = post.Status(status)
-		sm.Words = post.CountWords(body)
 		sm.PublishedOn = timePtr(publishedOn)
 		sm.PublishAt = timePtr(publishAt)
 		sm.UpdatedAt = parseStamp(updated)
@@ -212,6 +230,12 @@ func (s *Store) ListPosts(ctx context.Context, f Filter) ([]Summary, Counts, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, counts, fmt.Errorf("list posts: %w", err)
+	}
+	counts.Matched = len(list)
+	if f.Limit > 0 && (f.Offset > 0 || len(list) == f.Limit) {
+		if err := s.db.QueryRowContext(ctx, "SELECT count(*) FROM posts WHERE "+cond, args...).Scan(&counts.Matched); err != nil {
+			return nil, counts, fmt.Errorf("count matching posts: %w", err)
+		}
 	}
 	return list, counts, nil
 }
@@ -271,21 +295,21 @@ func (s *Store) UpdatePost(ctx context.Context, slug string, version int64, by s
 	now := s.stamp()
 	if _, err := tx.ExecContext(ctx, `INSERT INTO revisions
 		(post_id, version, slug, title, description, status, body, cover_url, cover_alt, extra,
-		 published_on, updated_on, saved_at, saved_by)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 published_on, updated_on, saved_at, saved_by, words)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		current.ID, current.Version, current.Slug, current.Title, current.Description, string(current.Status),
 		current.Body, current.CoverURL, current.CoverAlt, current.Extra, nullTime(current.PublishedOn),
-		nullTime(current.UpdatedOn), current.UpdatedAt.Format(time.RFC3339Nano), current.UpdatedBy); err != nil {
+		nullTime(current.UpdatedOn), current.UpdatedAt.Format(time.RFC3339Nano), current.UpdatedBy, post.CountWords(current.Body)); err != nil {
 		return nil, fmt.Errorf("keep revision: %w", err)
 	}
 	updated, err := scanPost(tx.QueryRowContext(ctx, `UPDATE posts SET
 		slug = ?, title = ?, description = ?, status = ?, body = ?, cover_url = ?, cover_alt = ?, extra = ?,
 		published_on = ?, updated_on = ?, publish_at = ?, publish_by = ?, updated_at = ?, updated_by = ?,
-		version = version + 1
+		words = ?, version = version + 1
 		WHERE id = ? RETURNING `+postColumns,
 		next.Slug, next.Title, next.Description, string(next.Status), next.Body, next.CoverURL, next.CoverAlt,
 		next.Extra, nullTime(next.PublishedOn), nullTime(next.UpdatedOn), nullTime(next.PublishAt), next.PublishBy,
-		now, by, current.ID))
+		now, by, post.CountWords(next.Body), current.ID))
 	if err != nil {
 		return nil, err
 	}
@@ -377,7 +401,7 @@ func (s *Store) Revisions(ctx context.Context, slug string) ([]Revision, error) 
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT version, slug, title, description, status, body, cover_url, cover_alt,
+	rows, err := s.db.QueryContext(ctx, `SELECT version, slug, title, description, status, words, cover_url, cover_alt,
 		extra, published_on, updated_on, saved_at, saved_by
 		FROM revisions WHERE post_id = ? ORDER BY version DESC LIMIT 200`, p.ID)
 	if err != nil {
@@ -387,13 +411,12 @@ func (s *Store) Revisions(ctx context.Context, slug string) ([]Revision, error) 
 	list := []Revision{}
 	for rows.Next() {
 		var r Revision
-		var status, saved, body string
+		var status, saved string
 		var publishedOn, updatedOn sql.NullString
-		if err := rows.Scan(&r.Version, &r.Post.Slug, &r.Post.Title, &r.Post.Description, &status, &body,
+		if err := rows.Scan(&r.Version, &r.Post.Slug, &r.Post.Title, &r.Post.Description, &status, &r.Words,
 			&r.Post.CoverURL, &r.Post.CoverAlt, &r.Post.Extra, &publishedOn, &updatedOn, &saved, &r.SavedBy); err != nil {
 			return nil, fmt.Errorf("list revisions: %w", err)
 		}
-		r.Words = post.CountWords(body)
 		r.Post.Status = post.Status(status)
 		r.Post.PublishedOn = timePtr(publishedOn)
 		r.Post.UpdatedOn = timePtr(updatedOn)
@@ -430,39 +453,64 @@ func (s *Store) Revision(ctx context.Context, slug string, version int64) (*Revi
 	return &r, nil
 }
 
-// AllPosts returns every post in full, whatever its status, by status and
-// slug.
-func (s *Store) AllPosts(ctx context.Context) ([]*post.Post, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT "+postColumns+" FROM posts ORDER BY status, slug")
-	if err != nil {
-		return nil, fmt.Errorf("list all posts: %w", err)
-	}
-	defer rows.Close()
-	var list []*post.Post
-	for rows.Next() {
-		p, err := scanPost(rows)
+// ForEachPost calls fn with every post in full, whatever its status, by
+// status and slug, one at a time so a large blog is never held in memory.
+func (s *Store) ForEachPost(ctx context.Context, fn func(*post.Post) error) error {
+	return s.forEach(ctx, "", fn)
+}
+
+// ForEachPublished calls fn with every published post in full, by slug, one
+// at a time.
+func (s *Store) ForEachPublished(ctx context.Context, fn func(*post.Post) error) error {
+	return s.forEach(ctx, "status = 'published' AND ", fn)
+}
+
+// forEachBatch is how many posts forEach reads per query.
+const forEachBatch = 100
+
+// forEach reads posts in (status, slug) order in small batches and calls fn
+// between queries, so a slow reader of an export never holds one of the few
+// database connections while it downloads.
+func (s *Store) forEach(ctx context.Context, where string, fn func(*post.Post) error) error {
+	var lastStatus, lastSlug string
+	for {
+		rows, err := s.db.QueryContext(ctx, "SELECT "+postColumns+" FROM posts WHERE "+where+
+			"(status, slug) > (?, ?) ORDER BY status, slug LIMIT ?", lastStatus, lastSlug, forEachBatch)
 		if err != nil {
-			return nil, err
+			return fmt.Errorf("list posts: %w", err)
 		}
-		list = append(list, p)
+		var batch []*post.Post
+		for rows.Next() {
+			p, err := scanPost(rows)
+			if err != nil {
+				rows.Close()
+				return err
+			}
+			batch = append(batch, p)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("list posts: %w", err)
+		}
+		for _, p := range batch {
+			if err := fn(p); err != nil {
+				return err
+			}
+		}
+		if len(batch) < forEachBatch {
+			return nil
+		}
+		last := batch[len(batch)-1]
+		lastStatus, lastSlug = string(last.Status), last.Slug
 	}
-	return list, rows.Err()
 }
 
 // PublishedPosts returns every published post in full, by slug.
 func (s *Store) PublishedPosts(ctx context.Context) ([]*post.Post, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT "+postColumns+" FROM posts WHERE status = 'published' ORDER BY slug")
-	if err != nil {
-		return nil, fmt.Errorf("list published posts: %w", err)
-	}
-	defer rows.Close()
 	var list []*post.Post
-	for rows.Next() {
-		p, err := scanPost(rows)
-		if err != nil {
-			return nil, err
-		}
+	err := s.ForEachPublished(ctx, func(p *post.Post) error {
 		list = append(list, p)
-	}
-	return list, rows.Err()
+		return nil
+	})
+	return list, err
 }

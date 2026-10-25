@@ -75,6 +75,7 @@ type Post struct {
 // List is a page of posts with counts per status.
 type List struct {
 	Items  []Post         `json:"items"`
+	Total  int            `json:"total"`
 	Counts map[string]int `json:"counts"`
 }
 

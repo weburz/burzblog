@@ -85,6 +85,11 @@ func (s *Server) postError(w http.ResponseWriter, r *http.Request, err error, cu
 	}
 }
 
+// maxPageSize caps ?limit= on the post list.
+const maxPageSize = 500
+
+// listPosts lists post summaries (never bodies). Without ?limit= it returns
+// every match, as the CLI expects; the panel pages with limit and offset.
 func (s *Server) listPosts(w http.ResponseWriter, r *http.Request) {
 	status := post.Status(r.URL.Query().Get("status"))
 	scheduled := status == "scheduled"
@@ -100,7 +105,26 @@ func (s *Server) listPosts(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusUnprocessableEntity, "validation", "Sort must be updated, published, title or created.", "sort")
 		return
 	}
-	list, counts, err := s.store.ListPosts(r.Context(), store.Filter{Status: status, Scheduled: scheduled, Query: r.URL.Query().Get("q"), Sort: sort})
+	limit, offset := 0, 0
+	for _, f := range []struct {
+		name string
+		dst  *int
+	}{{"limit", &limit}, {"offset", &offset}} {
+		name, dst := f.name, f.dst
+		raw := r.URL.Query().Get(name)
+		if raw == "" {
+			continue
+		}
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 0 || (name == "limit" && (n < 1 || n > maxPageSize)) {
+			fail(w, http.StatusUnprocessableEntity, "validation",
+				fmt.Sprintf("Limit must be 1 to %d and offset 0 or more.", maxPageSize), name)
+			return
+		}
+		*dst = n
+	}
+	list, counts, err := s.store.ListPosts(r.Context(), store.Filter{Status: status, Scheduled: scheduled,
+		Query: r.URL.Query().Get("q"), Sort: sort, Limit: limit, Offset: offset})
 	if err != nil {
 		s.internal(w, r, err)
 		return
@@ -115,6 +139,7 @@ func (s *Server) listPosts(w http.ResponseWriter, r *http.Request) {
 	}
 	reply(w, http.StatusOK, map[string]any{
 		"items": items,
+		"total": counts.Matched,
 		"counts": map[string]int{"draft": counts.Draft, "published": counts.Published, "archived": counts.Archived,
 			"scheduled": counts.Scheduled},
 	})
@@ -509,75 +534,67 @@ func (s *Server) preview(w http.ResponseWriter, r *http.Request) {
 }
 
 // export streams every published post as <slug>.md in a gzipped tar, for
-// reader builds.
+// reader builds. Posts are read and written one at a time, so memory use does
+// not grow with the blog.
 func (s *Server) export(w http.ResponseWriter, r *http.Request) {
-	posts, err := s.store.PublishedPosts(r.Context())
+	counts, err := s.store.StatusCounts(r.Context())
 	if err != nil {
 		s.internal(w, r, err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/gzip")
 	w.Header().Set("Content-Disposition", `attachment; filename="burzblog-export.tar.gz"`)
-	w.Header().Set("X-BurzBlog-Posts", strconv.Itoa(len(posts)))
+	w.Header().Set("X-BurzBlog-Posts", strconv.Itoa(counts.Published))
 	gz := gzip.NewWriter(w)
 	tw := tar.NewWriter(gz)
-	for _, p := range posts {
-		doc := post.Encode(p)
-		hdr := &tar.Header{
-			Name: p.Slug + ".md", Mode: 0o644, Size: int64(len(doc)), ModTime: p.UpdatedAt,
-			Typeflag: tar.TypeReg, Format: tar.FormatPAX,
-		}
-		if err := tw.WriteHeader(hdr); err != nil {
-			s.log.Error("export failed", "err", err)
-			return
-		}
-		if _, err := io.WriteString(tw, doc); err != nil {
-			s.log.Error("export failed", "err", err)
-			return
-		}
+	err = s.store.ForEachPublished(r.Context(), func(p *post.Post) error {
+		return addToTar(tw, p.Slug+".md", post.Encode(p), p.UpdatedAt)
+	})
+	if err == nil {
+		err = tw.Close()
 	}
-	if err := tw.Close(); err != nil {
-		s.log.Error("export failed", "err", err)
-		return
+	if err == nil {
+		err = gz.Close()
 	}
-	if err := gz.Close(); err != nil {
+	if err != nil {
 		s.log.Error("export failed", "err", err)
 	}
+}
+
+func addToTar(tw *tar.Writer, name, doc string, modTime time.Time) error {
+	hdr := &tar.Header{
+		Name: name, Mode: 0o644, Size: int64(len(doc)), ModTime: modTime,
+		Typeflag: tar.TypeReg, Format: tar.FormatPAX,
+	}
+	if err := tw.WriteHeader(hdr); err != nil {
+		return err
+	}
+	_, err := io.WriteString(tw, doc)
+	return err
 }
 
 // backup streams every post, drafts and archived ones included, as
 // <status>/<slug>.md in a gzipped tar with a README.txt, for a full copy of
 // the writing. Revisions are not included.
 func (s *Server) backup(w http.ResponseWriter, r *http.Request) {
-	posts, err := s.store.AllPosts(r.Context())
+	counts, err := s.store.StatusCounts(r.Context())
 	if err != nil {
 		s.internal(w, r, err)
 		return
 	}
+	posts := counts.Draft + counts.Published + counts.Archived
 	now := time.Now().UTC()
 	w.Header().Set("Content-Type", "application/gzip")
 	w.Header().Set("Content-Disposition", `attachment; filename="burzblog-backup-`+now.Format("2006-01-02")+`.tar.gz"`)
 	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("X-BurzBlog-Posts", strconv.Itoa(len(posts)))
+	w.Header().Set("X-BurzBlog-Posts", strconv.Itoa(posts))
 	gz := gzip.NewWriter(w)
 	tw := tar.NewWriter(gz)
-	add := func(name, doc string, modTime time.Time) error {
-		hdr := &tar.Header{
-			Name: name, Mode: 0o644, Size: int64(len(doc)), ModTime: modTime,
-			Typeflag: tar.TypeReg, Format: tar.FormatPAX,
-		}
-		if err := tw.WriteHeader(hdr); err != nil {
-			return err
-		}
-		_, err := io.WriteString(tw, doc)
-		return err
-	}
-	err = add("README.txt", backupReadme(now, s.cfg.Version, len(posts)), now)
-	for _, p := range posts {
-		if err != nil {
-			break
-		}
-		err = add(string(p.Status)+"/"+p.Slug+".md", post.Encode(p), p.UpdatedAt)
+	err = addToTar(tw, "README.txt", backupReadme(now, s.cfg.Version, posts), now)
+	if err == nil {
+		err = s.store.ForEachPost(r.Context(), func(p *post.Post) error {
+			return addToTar(tw, string(p.Status)+"/"+p.Slug+".md", post.Encode(p), p.UpdatedAt)
+		})
 	}
 	if err == nil {
 		err = tw.Close()

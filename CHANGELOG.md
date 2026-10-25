@@ -20,6 +20,17 @@ All notable changes are recorded here, following
   into BurzBlog. It skips posts that already exist unless `--update` is given,
   and supports `--recursive`, `--draft`, `--dry-run` and `--json`.
 
+### Changed
+
+- The post list opens fast on a large blog: word counts are stored with each
+  post and revision (a migration counts the existing ones once, the first time
+  the new version starts), so listing no longer reads every body. `GET
+  /api/posts` takes optional `limit` and `offset` and reports `total`; the panel
+  shows 100 posts at a time with "Show more". Without `limit` the API returns
+  every post as before.
+- `export.tar.gz` and `backup.tar.gz` read posts one at a time instead of
+  holding the whole blog in memory.
+
 ## [2.0.0] - 2026-10-25
 
 ### Changed
