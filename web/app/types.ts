@@ -50,6 +50,8 @@ export interface PostSummary {
 // Scheduled drafts are counted in draft as well.
 export interface PostList {
   items: PostSummary[];
+  // Posts matching the filter, of which items holds the first page(s).
+  total: number;
   counts: Record<PostStatus | "scheduled", number>;
 }
 
