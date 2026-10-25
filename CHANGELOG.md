@@ -8,6 +8,13 @@ All notable changes are recorded here, following
 
 ### Added
 
+- `burzblog diff <file.md|slug> [file.md]` shows a unified, colored diff from
+  the server's current post to a local file and says whether the file is based
+  on the server's current version or an older one. It exits 0 when identical
+  and 1 when different, and supports `--json`. `burzblog status [dir]` lists
+  each `<slug>.md` file as up to date, modified locally, changed on server,
+  both changed or not on server. A refused `push` now points to
+  `burzblog diff <file>`.
 - `burzblog import <file.md|dir>...` brings existing `<slug>.md` files, such as
   a Nuxt Content `content/blog/` folder or the output of `burzblog export`,
   into BurzBlog. It skips posts that already exist unless `--update` is given,

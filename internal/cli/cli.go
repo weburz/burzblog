@@ -66,6 +66,10 @@ func (a *App) Execute(args []string) int {
 	root.SetOut(a.Out)
 	root.SetErr(a.Err)
 	if err := root.Execute(); err != nil {
+		// diff reports "different" by exit code alone.
+		if err == errDiffers {
+			return ExitError
+		}
 		// Cobra validates flags and arguments before any hook runs, so an
 		// error before that point is a usage error.
 		var ee *exitError
@@ -125,13 +129,13 @@ Exit codes: 0 ok, 1 error, 2 usage, 3 conflict, 4 not found, 5 not signed in,
 		},
 	}
 	root.PersistentFlags().BoolVar(&a.asJSON, "json", false,
-		"print results (list, whoami, new, pull, push, publish, unpublish, archive, restore, backup, import) and errors as JSON")
+		"print results (list, whoami, new, pull, push, diff, status, publish, unpublish, archive, restore, backup, import) and errors as JSON")
 	root.AddGroup(
 		&cobra.Group{ID: "write", Title: "Writing:"},
 		&cobra.Group{ID: "account", Title: "Connecting:"},
 		&cobra.Group{ID: "host", Title: "Running the server:"},
 	)
-	for _, c := range []*cobra.Command{a.listCmd(), a.newCmd(), a.editCmd(), a.pullCmd(), a.pushCmd(),
+	for _, c := range []*cobra.Command{a.listCmd(), a.newCmd(), a.editCmd(), a.pullCmd(), a.pushCmd(), a.diffCmd(), a.fileStatusCmd(),
 		a.statusCmd("publish", "Publish a post so reader sites include it"),
 		a.statusCmd("unpublish", "Turn a published post back into a draft"),
 		a.scheduleCmd(),
