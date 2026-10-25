@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import type { Revision, RevisionList, RevisionState, RevisionSummary } from "../types";
 import { errorMessage, request } from "../utils/api";
 import { changeSummary } from "../utils/changes";
@@ -35,13 +35,23 @@ watch(open, async (value) => {
   }
 });
 
-// Each version is described by the save that came after it; the newest is
-// compared with the post as it is now.
+// Each row says what that version changed compared with the one before it.
+// The oldest has nothing to compare with: v1 is where the post began, and an
+// older start means the list was cut off.
 const summaryOf = (index: number): string => {
   const list = items.value;
-  const after = list?.[index - 1] ?? current.value;
-  return list && after ? changeSummary(list[index]!, after) : "";
+  const rev = list?.[index];
+  if (!list || !rev) return "";
+  const before = list[index + 1];
+  if (before) return changeSummary(before, rev);
+  return rev.version === 1 ? "Created" : "";
 };
+// The post as it is now heads the list, with what the latest save changed.
+const currentSummary = computed(() => {
+  const latest = items.value?.[0];
+  if (!current.value) return "";
+  return latest ? changeSummary(latest, current.value) : "Created";
+});
 
 const pick = async (rev: RevisionSummary) => {
   loadingOne.value = true;
@@ -132,6 +142,15 @@ const pick = async (rev: RevisionSummary) => {
           No earlier versions yet. They appear here each time you save.
         </p>
         <ol v-else-if="items" class="history-list">
+          <li v-if="current">
+            <div class="history-row history-current" aria-current="true">
+              <span class="history-version">v{{ version }}</span>
+              <span class="history-title">{{ current.title || "Untitled" }}</span>
+              <span class="history-change">{{ currentSummary }}</span>
+              <StatusBadge :status="current.status" />
+              <span class="muted">Current version</span>
+            </div>
+          </li>
           <li v-for="(rev, index) in items" :key="rev.version">
             <button
               type="button"

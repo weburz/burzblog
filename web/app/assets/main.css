@@ -809,9 +809,18 @@ code {
 .history-row .badge {
   grid-area: badge;
 }
-.history-row time {
+.history-row time,
+.history-current > .muted {
   grid-area: when;
   font-size: 13px;
+}
+.history-current {
+  cursor: default;
+  background: var(--bb-blue-soft);
+  border-radius: var(--bb-radius-s);
+}
+.history-current:hover {
+  background: var(--bb-blue-soft);
 }
 .history-head {
   margin: -8px 0 12px -10px;
