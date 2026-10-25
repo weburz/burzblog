@@ -18,7 +18,6 @@ const emit = defineEmits<{ confirm: [] }>();
     v-model:open="open"
     :title="title"
     :description="body"
-    :close="false"
     :content="{ onCloseAutoFocus: closeFocus }"
   >
     <template #footer>

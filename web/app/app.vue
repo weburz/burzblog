@@ -154,6 +154,7 @@ useHead({
         title="Your session ended"
         description="Sign in again to keep going. Anything you have not saved is still on this page."
         :dismissible="false"
+        :close="false"
       >
         <template #body>
           <LoginForm

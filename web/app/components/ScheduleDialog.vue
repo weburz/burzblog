@@ -42,7 +42,6 @@ const submit = () => {
     v-model:open="open"
     title="Schedule this post"
     description="The post stays a draft until then, and publishes itself."
-    :close="false"
     :content="{ onCloseAutoFocus: closeFocus }"
   >
     <template #body>

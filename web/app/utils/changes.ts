@@ -24,3 +24,11 @@ export const changeSummary = (before: RevisionState, after: RevisionState): stri
   ].filter(Boolean);
   return parts.length ? parts.join(", ") : "No visible change";
 };
+
+// Whether a history row should name the post. Every row would repeat the same
+// title, so only the first version and the saves that renamed it say it.
+// `versions` runs newest first, so the one before is the next entry.
+export const showsTitle = (versions: RevisionState[], index: number): boolean => {
+  const before = versions[index + 1];
+  return !before || before.title !== versions[index]?.title;
+};
