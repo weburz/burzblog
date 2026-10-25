@@ -64,7 +64,12 @@ export const request = async <T>(
   method = "GET",
   body?: unknown,
 ): Promise<T> => {
-  if (method !== "GET" && !csrf && !path.startsWith("/api/login") && path !== "/api/setup")
+  if (
+    method !== "GET" &&
+    !csrf &&
+    !path.startsWith("/api/login") &&
+    path !== "/api/setup"
+  )
     await refreshCsrf();
   let response = await send(path, method, body);
   if (response.status === 403 && method !== "GET") {
