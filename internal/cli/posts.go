@@ -85,7 +85,7 @@ func (a *App) listCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVarP(&status, "status", "s", "", "only draft, published, scheduled or archived posts")
-	cmd.Flags().StringVarP(&search, "search", "q", "", "match title, slug or description")
+	cmd.Flags().StringVarP(&search, "search", "q", "", "search titles, descriptions, text, tags and authors")
 	cmd.Flags().StringVar(&sort, "sort", "", "order by updated (default), published, title or created")
 	cmd.Flags().StringVarP(&tag, "tag", "t", "", "only posts with this tag")
 	return cmd

@@ -22,7 +22,7 @@ import (
 const wordsPerMinute = 200
 
 // contentReply is a published post as the content API returns it. Body is only
-// set on the single-post route. contentJSON is the one place that maps a post
+// set on the single-post route and Snippet only on a search. contentJSON is the one place that maps a post
 // to it, so a new post field is added here and appears in both routes.
 type contentReply struct {
 	Slug           string     `json:"slug"`
@@ -42,6 +42,7 @@ type contentReply struct {
 	ReadingMinutes int        `json:"readingMinutes"`
 	Version        int64      `json:"version"`
 	Body           *string    `json:"body,omitempty"`
+	Snippet        string     `json:"snippet,omitempty"`
 }
 
 func contentJSON(p *post.Post, words int, withBody bool) contentReply {
@@ -102,8 +103,9 @@ func (s *Server) publishedPost(w http.ResponseWriter, r *http.Request) (*post.Po
 	return p, true
 }
 
-// contentList lists published posts, newest published first, paged like
-// /api/posts. Without ?limit= every match is returned.
+// contentList lists published posts, newest published first or, with ?q=,
+// best match first with a plain-text snippet, paged like /api/posts. Without
+// ?limit= every match is returned.
 func (s *Server) contentList(w http.ResponseWriter, r *http.Request) {
 	limit, offset, ok := pageParams(w, r)
 	if !ok {
@@ -116,7 +118,9 @@ func (s *Server) contentList(w http.ResponseWriter, r *http.Request) {
 	}
 	items := make([]contentReply, 0, len(list))
 	for _, l := range list {
-		items = append(items, contentJSON(l.Post, l.Words, false))
+		item := contentJSON(l.Post, l.Words, false)
+		item.Snippet = l.Snippet
+		items = append(items, item)
 	}
 	s.replyDigest(w, r, map[string]any{"items": items, "total": total})
 }

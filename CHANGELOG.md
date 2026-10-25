@@ -8,6 +8,14 @@ All notable changes are recorded here, following
 
 ### Added
 
+- Search finds words in post bodies, not only titles, slugs and descriptions.
+  `?q=` on `GET /api/posts` and `GET /api/content/posts`, the panel's posts
+  search box and `burzblog list --search` use an FTS5 index over title,
+  description, body, tags, author and slug that ignores case and accents. The
+  words you type are plain words, never search syntax: all must appear and
+  the last matches as a prefix. Without `sort`, the best match comes first and
+  titles weigh most. Content API search results carry a plain-text `snippet`.
+  Migration 5 builds the index for existing posts.
 - Posts have blog metadata: `tags` (one list for topics and categories, at most
   20 lowercase hyphenated tags), an `author` (new posts start with the creating
   account), and SEO fields `seoTitle`, `seoDescription` and `canonicalUrl`.

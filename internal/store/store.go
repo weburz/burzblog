@@ -190,6 +190,12 @@ var migrations = []string{
 	ALTER TABLE revisions ADD COLUMN seo_title TEXT NOT NULL DEFAULT '';
 	ALTER TABLE revisions ADD COLUMN seo_description TEXT NOT NULL DEFAULT '';
 	ALTER TABLE revisions ADD COLUMN canonical_url TEXT NOT NULL DEFAULT '';`,
+	// Full-text search over posts (see search.go). Revisions are not indexed.
+	// backfillSearch indexes the posts that exist.
+	`CREATE VIRTUAL TABLE posts_fts USING fts5 (
+		title, description, body, tags, author, slug,
+		tokenize = 'unicode61 remove_diacritics 2', prefix = '2 3 4'
+	);`,
 }
 
 // migrationSteps run in the migration's transaction after its SQL, for work
@@ -197,6 +203,7 @@ var migrations = []string{
 var migrationSteps = map[int]func(context.Context, *sql.Tx) error{
 	3: backfillWords,
 	4: backfillMetadata,
+	5: backfillSearch,
 }
 
 // backfillWords counts the words of the posts and revisions that existed

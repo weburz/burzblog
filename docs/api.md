@@ -85,7 +85,7 @@ Single-line fields reject control characters, tabs included, like `title`.
 
 | | |
 |---|---|
-| `GET /api/posts?status=&q=&tag=&sort=&limit=&offset=` | `{items, total, counts}`; items have no body, but carry `tags` and `author`; `tag` keeps only posts with that tag (normalized like a post's tags, so `Machine Learning` finds `machine-learning`) and combines with the other filters, sorting and paging; `limit` (1 to 500) and `offset` page the result, and without `limit` every match is returned; `total` is the number of matches before paging, `counts` ignores the filter and paging; a bad `limit` or `offset` is a 422; without `status`, archived posts are left out; `status` is `draft`, `published`, `archived` or `scheduled` (drafts with a `publishAt`); `counts` has `draft`, `published`, `archived` and `scheduled`, and scheduled drafts are counted in `draft` too; `sort` is `updated` (default, newest first), `published` (newest first, unpublished last), `title` (A to Z, ignoring case) or `created` (newest first); any other value is a 422; items carry `publishAt` |
+| `GET /api/posts?status=&q=&tag=&sort=&limit=&offset=` | `{items, total, counts}`; items have no body, but carry `tags` and `author`; `q` searches title, description, body, tags, author and slug (see below); `tag` keeps only posts with that tag (normalized like a post's tags, so `Machine Learning` finds `machine-learning`) and combines with the other filters, sorting and paging; `limit` (1 to 500) and `offset` page the result, and without `limit` every match is returned; `total` is the number of matches before paging, `counts` ignores the filter and paging; a bad `limit` or `offset` is a 422; without `status`, archived posts are left out; `status` is `draft`, `published`, `archived` or `scheduled` (drafts with a `publishAt`); `counts` has `draft`, `published`, `archived` and `scheduled`, and scheduled drafts are counted in `draft` too; `sort` is `updated` (default, newest first), `published` (newest first, unpublished last), `title` (A to Z, ignoring case) or `created` (newest first); any other value is a 422; items carry `publishAt` |
 | `POST /api/posts` | `{title, slug?, ...}` → new draft; the slug is made from the title when omitted |
 | `GET /api/posts/{slug}` | one post |
 | `PUT /api/posts/{slug}` | `{version, slug, title, description, body, coverUrl, coverAlt, extra, tags, author, seoTitle, seoDescription, canonicalUrl, publishedOn, updatedOn}`; `version` must be current, a new `slug` renames. Like the other fields, a missing `tags` or `author` saves as empty |
@@ -107,6 +107,22 @@ author and SEO fields).
 field is equal, so the panel can say what a save changed by comparing a
 revision with the next one, or with `current` for the newest. Digests are
 opaque and may change between releases.
+
+### Search
+
+`q` on `GET /api/posts` and `GET /api/content/posts` searches the title,
+description, body, tags, author and slug of posts, ignoring case and accents.
+What you type is read as plain words: every word must appear and the last one
+matches as a prefix, so `gol` finds `golang`. Quotes, `*`, `-`, `OR`, `NEAR`,
+`title:` and the like are not search syntax; punctuation separates words and
+`OR` is just a word. At most 16 words count. A `q` without any word filters
+nothing. Without `sort`, results come best match first (title matches weigh
+most, then description, tags, slug, author and body); with `sort` the sort wins.
+`total` and paging work as without `q`. In the content API each item of a
+search also has `snippet`, up to about 24 words of the Markdown body near the
+match, as plain text (Markdown syntax included, never HTML): escape it before
+you put it in a page. Drafts, scheduled and archived posts are never in content
+API results.
 
 ### Preview limits
 
@@ -180,7 +196,7 @@ whether one exists. Without a credential every route answers 401.
 
 | | |
 |---|---|
-| `GET /api/content/posts?q=&tag=&limit=&offset=` | `{items, total}`: published posts, newest published first (posts without a `publishedOn` last); `limit` (1 to 500), `offset`, `total` and their errors work as in `GET /api/posts`; `q` matches title, slug or description, case-insensitively; `tag` keeps posts with that tag, normalized like `GET /api/posts?tag=` |
+| `GET /api/content/posts?q=&tag=&limit=&offset=` | `{items, total}`: published posts, newest published first (posts without a `publishedOn` last); `limit` (1 to 500), `offset`, `total` and their errors work as in `GET /api/posts`; `q` searches as in `GET /api/posts` (see below) and returns the best match first, with a plain-text `snippet` on each item; `tag` keeps posts with that tag, normalized like `GET /api/posts?tag=` |
 | `GET /api/content/posts/{slug}` | one published post as JSON, with `body` |
 | `GET /api/content/posts/{slug}?format=markdown` | `text/markdown`: the post's frontmatter document, byte for byte what `export.tar.gz` holds as `<slug>.md`; `format` is `json` (default) or `markdown`, anything else is a 422 |
 | `GET /api/content/posts/{slug}/html` | `{slug, version, html}`: the body rendered and sanitized like `POST /api/preview`, with the same [limits](#preview-limits) (422 `preview_limit`, 503 `busy`) |

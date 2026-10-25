@@ -4,39 +4,43 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"strings"
 
 	"github.com/weburz/burzblog/internal/post"
 )
 
 // Listing is a published post without its body, as the content API lists it.
 // Words is the stored word count, which the post itself does not carry.
+// Snippet is set by a search: a short plain-text excerpt of the Markdown body
+// near the match, which a caller must escape before putting it in a page.
 type Listing struct {
-	Post  *post.Post
-	Words int
+	Post    *post.Post
+	Words   int
+	Snippet string
 }
 
 // ListPublished returns published posts, newest published first, and how many
-// match before limit and offset apply. A zero limit returns every match. query
-// matches title, slug or description like ListPosts does, and a non-empty tag
-// keeps only posts with that tag, normalized like ListPosts. Bodies are not read.
+// match before limit and offset apply. A zero limit returns every match. A
+// query is searched for like Filter.Query does, best match first, and a
+// non-empty tag keeps only posts with that tag, normalized like ListPosts.
+// Bodies are not returned.
 func (s *Store) ListPublished(ctx context.Context, query, tag string, limit, offset int) ([]Listing, int, error) {
-	where, args := "status = 'published'", []any{}
+	match := matchExpr(query)
+	from, args, order := "posts", []any{}, orderBy[SortPublished]
+	if match != "" {
+		from, args = searchSource(match)
+		order = rankedOrder
+	}
+	where := "status = 'published'"
 	if tag != "" {
 		where += " AND id IN (SELECT post_id FROM post_tags WHERE tag = ?)"
 		args = append(args, post.NormalizeTag(tag))
 	}
-	if q := strings.TrimSpace(query); q != "" {
-		like := "%" + strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`).Replace(strings.ToLower(q)) + "%"
-		where += ` AND (lower(title) LIKE ? ESCAPE '\' OR slug LIKE ? ESCAPE '\' OR lower(description) LIKE ? ESCAPE '\')`
-		args = append(args, like, like, like)
-	}
 	var total int
-	if err := s.db.QueryRowContext(ctx, "SELECT count(*) FROM posts WHERE "+where, args...).Scan(&total); err != nil {
+	if err := s.db.QueryRowContext(ctx, "SELECT count(*) FROM "+from+" WHERE "+where, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count published posts: %w", err)
 	}
 	stmt := `SELECT id, slug, title, description, cover_url, cover_alt, words, published_on, updated_on,
-		updated_at, version, author, seo_title, seo_description, canonical_url FROM posts WHERE ` + where + " ORDER BY " + orderBy[SortPublished]
+		updated_at, version, author, seo_title, seo_description, canonical_url FROM ` + from + ` WHERE ` + where + " ORDER BY " + order
 	if limit > 0 {
 		stmt += " LIMIT ? OFFSET ?"
 		args = append(args, limit, max(offset, 0))
@@ -73,6 +77,19 @@ func (s *Store) ListPublished(ctx context.Context, query, tag string, limit, off
 	}
 	for _, l := range list {
 		l.Post.Tags = tags[l.Post.ID]
+	}
+	if match != "" {
+		ids := make([]int64, len(list))
+		for i, l := range list {
+			ids[i] = l.Post.ID
+		}
+		excerpts, err := snippets(ctx, s.db, match, ids)
+		if err != nil {
+			return nil, 0, err
+		}
+		for i := range list {
+			list[i].Snippet = excerpts[ids[i]]
+		}
 	}
 	return list, total, nil
 }
