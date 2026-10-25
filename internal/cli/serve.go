@@ -112,7 +112,7 @@ URL. Settings can also come from the environment:
 		},
 	}
 	cmd.Flags().StringVar(&addr, "addr", "", "address to listen on (default 127.0.0.1:8080)")
-	cmd.Flags().StringVar(&data, "data", "", "directory for the database (default $STATE_DIRECTORY or ./burzblog-data)")
+	cmd.Flags().StringVar(&data, "data", "", "directory for the database (default $BURZBLOG_DATA, $STATE_DIRECTORY or ./burzblog-data)")
 	cmd.Flags().StringVar(&origin, "origin", "", "public URL people open, e.g. https://blog.example.com (default http://<addr>)")
 	cmd.Flags().StringVar(&hook, "deploy-hook", "", "URL to POST after published posts change; prefer BURZBLOG_DEPLOY_HOOK, it is a secret")
 	return cmd
@@ -181,8 +181,10 @@ func (a *App) userCmd() *cobra.Command {
 	}
 
 	add := &cobra.Command{
-		Use:     "add <username>",
-		Short:   "Create an account",
+		Use:   "add <username>",
+		Short: "Create an account",
+		Long: `Creates an account and asks for its password, at least 12 characters. Without a
+terminal the password is read from standard input.`,
 		Example: "  burzblog user add ada --data /var/lib/burzblog",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -209,9 +211,10 @@ func (a *App) userCmd() *cobra.Command {
 		},
 	}
 	passwd := &cobra.Command{
-		Use:   "passwd <username>",
-		Short: "Set a new password; ends browser sessions and terminal logins",
-		Args:  cobra.ExactArgs(1),
+		Use:     "passwd <username>",
+		Short:   "Set a new password; ends browser sessions and terminal logins",
+		Example: "  burzblog user passwd ada --data /var/lib/burzblog",
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			st, err := open()
 			if err != nil {

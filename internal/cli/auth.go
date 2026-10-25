@@ -19,7 +19,8 @@ func (a *App) loginCmd() *cobra.Command {
 		Use:   "login <server>",
 		Short: "Sign in to a BurzBlog server from this computer",
 		Example: `  burzblog login https://blog.example.com
-  burzblog login https://blog.example.com --username ada`,
+  burzblog login https://blog.example.com --username ada
+  echo "$PASSWORD" | burzblog login https://blog.example.com -u ada --password-stdin`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			server, err := normalizeServer(args[0])
