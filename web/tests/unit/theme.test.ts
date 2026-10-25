@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { asThemePreference, isDark, themeBootScript, themeKey } from "../../app/utils/theme";
+import {
+  asThemePreference,
+  isDark,
+  themeBootScript,
+  themeKey,
+} from "../../app/utils/theme";
 
 describe("asThemePreference", () => {
   it("keeps light and dark", () => {
