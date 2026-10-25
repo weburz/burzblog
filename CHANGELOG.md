@@ -40,14 +40,6 @@ All notable changes are recorded here, following
   names `$BURZBLOG_DATA`, `pull -o` says the file must be named `<slug>.md`, and
   `login`, `open`, `schedule` and `user` gained examples.
 
-### Fixed
-
-- Saving a published post with no publish date, such as pushing a file without
-  `timestamps.publishedOn`, keeps its first publish date instead of resetting it
-  to the time of the save.
-
-### Changed
-
 - The post list opens fast on a large blog: word counts are stored with each
   post and revision (a migration counts the existing ones once, the first time
   the new version starts), so listing no longer reads every body. `GET
@@ -56,6 +48,31 @@ All notable changes are recorded here, following
   every post as before.
 - `export.tar.gz` and `backup.tar.gz` read posts one at a time instead of
   holding the whole blog in memory.
+- History rows lead with what changed, and show the post title only where it
+  changed. Every dialog that can be dismissed has a close button, a missing page
+  inside the panel explains itself and links back, long titles wrap on phones,
+  and the terminal pluralizes counts ("1 draft").
+
+### Fixed
+
+- Saving a published post with no publish date, such as pushing a file without
+  `timestamps.publishedOn`, keeps its first publish date instead of resetting it
+  to the time of the save.
+
+### Security
+
+- The install script swaps the binary in with a rename in the target folder,
+  so an interrupted install never leaves a broken `burzblog`; it only fetches
+  over HTTPS, checks the version string, stops on Ctrl-C and never falls back
+  to a home folder when run as root.
+- `burzblog import --update` refuses a file whose frontmatter `slug` differs
+  from its file name, and warns about it otherwise.
+- Terminal output replaces invisible Unicode format characters, such as
+  right-to-left overrides, as well as control characters.
+- The website serves its own fonts and sets a strict Content Security Policy,
+  so visitors' browsers contact no third party.
+- Exports and backups read posts in batches, so a slow download does not hold
+  a database connection.
 
 ## [2.0.0] - 2026-10-25
 
