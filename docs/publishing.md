@@ -13,7 +13,7 @@ In the panel, open **Settings → Your website → New build token**. Copy the t
 (it starts with `bzb_` and is shown once) and store it as a secret environment
 variable in your host, for example `BURZBLOG_TOKEN` in Vercel.
 
-A build token can only download published posts. It cannot read drafts, change
+A build token can only read published posts. It cannot read drafts, change
 anything or sign in. Revoke it in Settings at any time.
 
 ## 2. Download posts in the build

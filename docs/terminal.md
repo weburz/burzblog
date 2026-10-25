@@ -281,7 +281,7 @@ instead of logging in:
 BURZBLOG_SERVER=https://blog.example.com BURZBLOG_TOKEN=bzb_... burzblog export --out content/blogs --clean
 ```
 
-Build tokens can only download published posts. See [publishing](publishing.md).
+Build tokens can only read published posts. See [publishing](publishing.md).
 
 ## Scripts and AI agents
 
@@ -303,7 +303,7 @@ burzblog login https://blog.example.com -u agent      # once, asks for the passw
 python3 -c 'import json,os; print(json.load(open(os.path.expanduser("~/.config/burzblog/config.json")))["token"])'
 
 export BURZBLOG_SERVER=https://blog.example.com
-export BURZBLOG_TOKEN=bzb_...        # a write token; build tokens only work for `export`
+export BURZBLOG_TOKEN=bzb_...        # a write token; build tokens only work for `export` and the content API
 burzblog whoami --json
 ```
 

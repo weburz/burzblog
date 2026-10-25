@@ -1,7 +1,7 @@
 # HTTP API
 
-Everything the panel and the CLI do goes through this JSON API under `/api`.
-There are no unauthenticated content routes.
+Everything the panel, the CLI and the website do goes through this JSON API
+under `/api`. There are no unauthenticated content routes.
 
 ## Authentication
 
@@ -9,7 +9,7 @@ There are no unauthenticated content routes.
 |---|---|---|
 | Browser panel | `HttpOnly`, `SameSite=Strict` session cookie from `POST /api/login` (`__Host-burzblog` over HTTPS, `burzblog_session` over plain HTTP) | `Origin` equal to the configured origin, and `X-CSRF-Token` from `GET /api/session` |
 | CLI | `Authorization: Bearer bzb_...` write token from `POST /api/auth/token` | nothing else |
-| Website build | `Authorization: Bearer bzb_...` export token created in Settings (a build token in the panel) | can only call `GET /api/export.tar.gz`; `GET /api/backup.tar.gz` answers 403 |
+| Website build | `Authorization: Bearer bzb_...` export token created in Settings (a build token in the panel) | can only read published content: `GET /api/export.tar.gz` and `GET /api/content/*`; every other route, `GET /api/backup.tar.gz` included, answers 403 `scope` |
 
 Sessions last 12 hours. Each username gets ten sign-in attempts per 15 minutes;
 a successful sign-in resets the count. When many sign-ins arrive at once and no
@@ -167,6 +167,36 @@ are stored as `draft`; the folder says `archived`). Revisions are not included:
 back up the database file for those (see [self-hosting](self-hosting.md#backups)).
 The response is `Content-Disposition: attachment` with a dated name such as
 `burzblog-backup-2026-10-25.tar.gz`, and `Cache-Control: no-store`.
+
+## Content API
+
+Read-only access to published posts, for a website that fetches posts when it
+builds or runs. Export tokens, write tokens and sessions may call it; it shows
+the same data as the export. Drafts, scheduled and archived posts answer `404
+not_found` exactly like a slug that does not exist, so a caller cannot tell
+whether one exists. Without a credential every route answers 401.
+
+| | |
+|---|---|
+| `GET /api/content/posts?q=&tag=&limit=&offset=` | `{items, total}`: published posts, newest published first (posts without a `publishedOn` last); `limit` (1 to 500), `offset`, `total` and their errors work as in `GET /api/posts`; `q` matches title, slug or description, case-insensitively; `tag` keeps posts with that tag, normalized like `GET /api/posts?tag=` |
+| `GET /api/content/posts/{slug}` | one published post as JSON, with `body` |
+| `GET /api/content/posts/{slug}?format=markdown` | `text/markdown`: the post's frontmatter document, byte for byte what `export.tar.gz` holds as `<slug>.md`; `format` is `json` (default) or `markdown`, anything else is a 422 |
+| `GET /api/content/posts/{slug}/html` | `{slug, version, html}`: the body rendered and sanitized like `POST /api/preview`, with the same [limits](#preview-limits) (422 `preview_limit`, 503 `busy`) |
+| `GET /api/content/tags` | `{items: [{tag, count}]}`: tags of published posts by name, with how many published posts carry each; tags used only by drafts, scheduled or archived posts are left out |
+
+An item is `{slug, title, description, coverUrl, coverAlt, tags, author,
+seoTitle, seoDescription, canonicalUrl, publishedOn, updatedOn, updatedAt,
+words, readingMinutes, version}`; `tags` is always a list. The single post adds
+`body` (Markdown, without frontmatter). `readingMinutes` is `words` at 200 a
+minute, rounded up. Status, the accounts that saved it and `extra` are not part
+of it; `extra` is in the `format=markdown` document.
+
+Responses carry `ETag` and `Cache-Control: private, max-age=60`, and
+`If-None-Match` (a tag, a list of tags or `*`) answers `304` without a body.
+The tag of a post is its `version` (`"3"`, `"3-md"` for Markdown, `"3-html"`
+for HTML); the tag of the list and of the tags is a digest of the response. Publishing,
+unpublishing or editing a post changes them, so a cached copy is at most 60
+seconds old.
 
 ## Health
 

@@ -32,15 +32,33 @@ credential minted by someone who knew the old password does not outlive the rese
 
 **API tokens.** `bzb_` plus 256 random bits, shown once, stored as a SHA-256
 digest. Write tokens (from `burzblog login`) can do what a signed-in user can.
-Export tokens can only download published posts; the full backup
+Export tokens can only read published content (the export and the
+`GET /api/content/*` routes, which show the same data); the full backup
 (`/api/backup.tar.gz`, drafts and archived posts included) needs a session or a
 write token. Both are listed in Settings
 with their last use and can be revoked there.
 
 Export tokens are kept when a password changes: they cannot write, and revoking
 them would silently break the website build. Revoke one in Settings if it leaks.
-Outside `GET /api/export.tar.gz` an export token is refused with 403 `scope`, and
-`GET /api/session` treats it as anonymous, so it cannot read the username.
+Outside the export and the content API an export token is refused with 403
+`scope`, and `GET /api/session` treats it as anonymous, so it cannot read the
+username.
+
+**Content API.** `GET /api/content/*` serves published posts as JSON, Markdown
+and sanitized HTML to a website. It needs a session or any token, so it is not
+an unauthenticated content route, and it adds no data the export does not
+already give an export token. A draft, scheduled or archived post answers
+exactly like a missing slug, so the API cannot be used to learn which exist.
+Its responses are `Cache-Control: private, max-age=60` with an `ETag` instead
+of `no-store`: the website fetches the same posts often, and revalidating with
+`If-None-Match` keeps that cheap on a small host. `private` keeps shared caches
+and proxies from storing a response meant for one authorized caller, `Vary:
+Authorization, Cookie` keys it to the credential, and the worst case is a post
+shown up to a minute after an edit or an unpublish. Errors (including the 404s)
+stay `no-store`, and the other security headers and the `default-src 'none'`
+policy still apply. The HTML route renders through the preview path, so it has
+the same input limits and render slots. CORS is not enabled: a website calls
+the API from its server or build, not from a visitor's browser.
 
 **The panel.** Served with a Content Security Policy that allows only the
 panel's own scripts (inline bootstrap scripts by hash), no framing, no

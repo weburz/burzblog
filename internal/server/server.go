@@ -128,7 +128,11 @@ func (s *Server) routes() {
 	m.HandleFunc("GET /api/posts/{slug}/revisions/{version}", s.write(s.getRevision))
 	m.HandleFunc("POST /api/posts/{slug}/revisions/{version}/restore", s.write(s.restoreRevision))
 	m.HandleFunc("POST /api/preview", s.write(s.preview))
-	m.HandleFunc("GET /api/export.tar.gz", s.exporter(s.export))
+	m.HandleFunc("GET /api/export.tar.gz", s.reader(s.export))
+	m.HandleFunc("GET /api/content/posts", s.reader(s.contentList))
+	m.HandleFunc("GET /api/content/posts/{slug}", s.reader(s.contentPost))
+	m.HandleFunc("GET /api/content/posts/{slug}/html", s.reader(s.contentHTML))
+	m.HandleFunc("GET /api/content/tags", s.reader(s.contentTags))
 	m.HandleFunc("GET /api/backup.tar.gz", s.write(s.backup))
 
 	m.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {

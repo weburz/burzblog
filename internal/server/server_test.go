@@ -702,7 +702,7 @@ func (h *harness) secondBrowser() *harness {
 	return &harness{t: h.t, ts: h.ts, store: h.store, client: &http.Client{Jar: jar}}
 }
 
-func TestExportTokenOnlyCallsExport(t *testing.T) {
+func TestExportTokenOnlyReadsPublishedContent(t *testing.T) {
 	h := newHarness(t, nil)
 	h.login()
 	exportSecret := h.issueToken(store.ScopeExport)
@@ -716,6 +716,7 @@ func TestExportTokenOnlyCallsExport(t *testing.T) {
 		export       int // status for an export token
 	}{
 		{"GET", "/api/export.tar.gz", 200},
+		{"GET", "/api/content/posts", 200},
 		{"GET", "/api/session", 200}, // anonymous, see TestExportTokenIsAnonymousOnSession
 		{"GET", "/api/tokens", 403},
 		{"POST", "/api/tokens", 403},

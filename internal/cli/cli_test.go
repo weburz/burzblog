@@ -339,7 +339,7 @@ func TestExportWithEnvironmentToken(t *testing.T) {
 	if !strings.Contains(out, "Exported 1") {
 		t.Errorf("export with env token = %q", out)
 	}
-	if _, errOut, code := e.run("", "list"); code == 0 || !strings.Contains(errOut, "only download published posts") {
+	if _, errOut, code := e.run("", "list"); code == 0 || !strings.Contains(errOut, "only read published posts") {
 		t.Errorf("export token listing: %d %q", code, errOut)
 	}
 }
