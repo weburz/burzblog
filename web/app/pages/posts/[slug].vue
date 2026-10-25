@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import type { Post, PostDraft } from "../../types";
 import { ApiError, errorMessage, request } from "../../utils/api";
+import { returnFocusTo } from "../../utils/focus";
 import { countWords, lengthLabel } from "../../utils/markdown";
 import { diffTooLong, lineDiff } from "../../utils/diff";
 import { editedLabel, exactTime } from "../../utils/time";
@@ -34,6 +35,21 @@ const confirm = reactive({
   run: () => {},
 });
 const justSaved = ref(false);
+// Dialogs opened from the More menu give focus back to its button when they close.
+const moreButton = ref<{ $el: HTMLElement } | null>(null);
+const menuOpener = ref<HTMLElement | null>(null);
+const fromMenu = (open: () => void) => () => {
+  menuOpener.value = moreButton.value?.$el ?? null;
+  open();
+};
+const closeFocus = returnFocusTo(() => {
+  const opener = menuOpener.value;
+  menuOpener.value = null;
+  return opener;
+});
+// The Undo toast of the latest Unpublish or Archive; it must not outlive this page.
+let undoToast: string | number | undefined;
+onUnmounted(() => undoToast !== undefined && toast.remove(undoToast));
 const shortcutsOpen = useState("shortcuts-open", () => false);
 const { focused, toggle: toggleFocus } = useFocusedWriting();
 const titleField = ref<HTMLTextAreaElement | null>(null);
@@ -62,7 +78,9 @@ watch(dirty, (value) => (dirtyFlag.value = value), { immediate: true });
 const archived = computed(() => post.value?.status === "archived");
 useHead({
   title: () =>
-    (draft.value?.title || post.value?.slug || "Post") + (dirty.value ? " •" : ""),
+    missing.value
+      ? "Post not found"
+      : (draft.value?.title || post.value?.slug || "Post") + (dirty.value ? " •" : ""),
 });
 
 // Unsaved work is mirrored into this browser, so a crash or closed tab does
@@ -188,9 +206,13 @@ const useTheirs = () => {
   comparing.value = false;
 };
 
-const action = async (name: "publish" | "unpublish" | "archive" | "restore") => {
-  if (!post.value) return;
-  if (dirty.value && !(await save())) return;
+const action = async (
+  name: "publish" | "unpublish" | "archive" | "restore",
+  silent = false,
+): Promise<boolean> => {
+  if (!post.value) return false;
+  if (dirty.value && !(await save())) return false;
+  const wasPublished = post.value.status === "published";
   acting.value = true;
   try {
     const p = await request<Post>(
@@ -201,21 +223,37 @@ const action = async (name: "publish" | "unpublish" | "archive" | "restore") => 
       },
     );
     show(p);
+    if (silent) return true;
     const messages = {
       publish: ["Published", "Sites with a deploy hook rebuild in a few seconds."],
-      unpublish: [
-        "Unpublished",
-        "It is a draft again and leaves your site on the next build.",
-      ],
+      unpublish: ["Unpublished", "It will leave your site on the next build."],
       archive: ["Archived", "Find it under Archived on the posts list."],
       restore: ["Restored", "It is a draft again."],
     } as const;
-    toast.add({
+    // Unpublish and Archive take effect at once, so they come with an Undo.
+    // Undoing an Archive of a live post restores it, then puts it back on the site.
+    const undoArchive = async () => {
+      if (!wasPublished) await action("restore");
+      else if (await action("restore", true)) await action("publish");
+    };
+    const undo =
+      name === "unpublish"
+        ? () => action("publish")
+        : name === "archive"
+          ? undoArchive
+          : null;
+    const added = toast.add({
       title: messages[name][0],
       description: messages[name][1],
       color: "success",
       icon: "i-lucide-check",
+      ...(undo && {
+        duration: 10000,
+        actions: [{ label: "Undo", color: "neutral", variant: "outline", onClick: undo }],
+      }),
     });
+    undoToast = undo ? added.id : undefined;
+    return true;
   } catch (cause) {
     if (cause instanceof ApiError && cause.code === "conflict" && cause.current)
       conflict.value = cause.current;
@@ -225,6 +263,7 @@ const action = async (name: "publish" | "unpublish" | "archive" | "restore") => 
         description: errorMessage(cause),
         color: "error",
       });
+    return false;
   } finally {
     acting.value = false;
   }
@@ -366,7 +405,7 @@ const menu = computed(() => {
       label: "Delete for good…",
       icon: "i-lucide-trash-2",
       color: "error" as const,
-      onSelect: remove,
+      onSelect: fromMenu(remove),
     });
   }
   return [
@@ -374,12 +413,12 @@ const menu = computed(() => {
       {
         label: "Post settings",
         icon: "i-lucide-sliders-horizontal",
-        onSelect: () => (detailsOpen.value = true),
+        onSelect: fromMenu(() => (detailsOpen.value = true)),
       },
       {
         label: "History",
         icon: "i-lucide-history",
-        onSelect: () => (historyOpen.value = true),
+        onSelect: fromMenu(() => (historyOpen.value = true)),
       },
     ],
     [
@@ -604,6 +643,7 @@ const primary = computed(() => {
   </div>
   <p v-else-if="!post || !draft" class="loading" role="status">Opening the post…</p>
   <div v-else class="editor-shell" :data-mode="layout" :data-focus="focused">
+    <h1 class="sr-only">Editing {{ draft.title || "Untitled" }}</h1>
     <header class="editor-bar">
       <UTooltip v-if="focused" text="Leave focus mode" :kbds="['escape']">
         <UButton
@@ -657,6 +697,7 @@ const primary = computed(() => {
         </UTooltip>
         <UDropdownMenu :items="menu" :content="{ align: 'end' }">
           <UButton
+            ref="moreButton"
             icon="i-lucide-ellipsis"
             color="neutral"
             variant="ghost"
@@ -878,6 +919,7 @@ const primary = computed(() => {
       :status="post.status"
       :saved-slug="post.slug"
       :readonly="archived"
+      :close-focus="closeFocus"
     />
     <HistoryPanel
       v-model:open="historyOpen"
@@ -885,6 +927,7 @@ const primary = computed(() => {
       :version="post.version"
       :body="draft.body"
       :dirty="dirty"
+      :close-focus="closeFocus"
       @restore="restoreRevision"
     />
     <ConfirmDialog
@@ -893,6 +936,7 @@ const primary = computed(() => {
       :body="confirm.body"
       :confirm-label="confirm.label"
       :confirm-color="confirm.color"
+      :close-focus="closeFocus"
       @confirm="runConfirm"
     />
   </div>

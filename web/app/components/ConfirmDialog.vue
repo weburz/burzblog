@@ -5,6 +5,7 @@ withDefaults(
     body: string;
     confirmLabel: string;
     confirmColor?: "primary" | "error" | "neutral";
+    closeFocus?: (event: Event) => void;
   }>(),
   { confirmColor: "primary" },
 );
@@ -13,7 +14,13 @@ const emit = defineEmits<{ confirm: [] }>();
 </script>
 
 <template>
-  <UModal v-model:open="open" :title="title" :description="body" :close="false">
+  <UModal
+    v-model:open="open"
+    :title="title"
+    :description="body"
+    :close="false"
+    :content="{ onCloseAutoFocus: closeFocus }"
+  >
     <template #footer>
       <div class="flex w-full justify-end gap-2">
         <UButton color="neutral" variant="ghost" autofocus @click="open = false"

@@ -176,7 +176,7 @@ test("posts list filters, searches and is usable by keyboard", async ({ page }, 
   await expect(page.locator(".post-row")).toHaveCount(1);
   await expect(page).toHaveURL(/q=keyboard/);
   await page.getByRole("button", { name: /^Published/ }).click();
-  await expect(page.getByText("No published posts match")).toBeVisible();
+  await expect(page.locator(".empty-title")).toHaveText(/No published posts match/);
   await page.getByRole("button", { name: "Show all posts" }).click();
   await expect(page.getByLabel("Search posts")).toHaveValue("");
 });

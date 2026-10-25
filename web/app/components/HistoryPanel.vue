@@ -12,6 +12,7 @@ const props = defineProps<{
   version: number;
   body: string;
   dirty: boolean;
+  closeFocus?: (event: Event) => void;
 }>();
 const emit = defineEmits<{ restore: [version: number] }>();
 
@@ -74,6 +75,7 @@ const pick = async (rev: RevisionSummary) => {
     title="History"
     :description="`Every save is kept. You are on version ${version}.`"
     :ui="{ content: 'max-w-2xl' }"
+    :content="{ onCloseAutoFocus: closeFocus }"
   >
     <template #body>
       <p v-if="error" class="alert" role="alert">{{ error }}</p>

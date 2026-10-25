@@ -21,6 +21,7 @@ const copy = async () => {
     <pre
       class="terminal"
       :class="{ 'terminal-wrap': !multiline }"
+      role="group"
       tabindex="0"
       :aria-label="label"
     ><code>{{ value }}</code></pre>
@@ -30,10 +31,14 @@ const copy = async () => {
       variant="outline"
       :icon="copied ? 'i-lucide-check' : 'i-lucide-copy'"
       class="copy-button"
+      :aria-label="`Copy ${label}`"
       @click="copy"
       >{{ copied ? "Copied" : "Copy" }}</UButton
     >
-    <p v-if="failed" class="field-hint" role="status">
+    <span class="sr-only" role="status">{{
+      copied ? "Copied" : failed ? "Copy failed" : ""
+    }}</span>
+    <p v-if="failed" class="field-hint">
       Your browser blocked copying. Select the text and copy it instead.
     </p>
   </div>
