@@ -64,9 +64,12 @@ To build from source:
 
 ```sh
 task build                                   # bin/burzblog with the panel inside
-bin/burzblog user add ada                    # create an account (asks for a password)
 bin/burzblog serve                           # http://127.0.0.1:8080
 ```
+
+On a new data directory `serve` prints a one-time setup link,
+`http://127.0.0.1:8080/setup#token=...`. Open it to create the first account in
+the browser, or run `bin/burzblog user add ada` instead.
 
 Then, from any computer:
 

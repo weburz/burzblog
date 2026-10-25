@@ -104,6 +104,8 @@ func (s *Server) routes() {
 	m.HandleFunc("GET /healthz", s.healthz)
 
 	m.HandleFunc("GET /api/session", s.withIdentity(s.session))
+	m.HandleFunc("GET /api/setup", s.setupStatus)
+	m.HandleFunc("POST /api/setup", s.setup)
 	m.HandleFunc("POST /api/login", s.login)
 	m.HandleFunc("POST /api/logout", s.logout)
 	m.HandleFunc("POST /api/auth/token", s.issueCLIToken)

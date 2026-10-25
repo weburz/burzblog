@@ -8,6 +8,14 @@ All notable changes are recorded here, following
 
 ### Added
 
+- First-run setup in the browser. While the server has no accounts,
+  `burzblog serve` logs a one-time setup link (`<origin>/setup#token=...`,
+  valid for an hour, restart for a new one) next to the existing
+  `burzblog user add` alternative. Opening it shows "Create the first account"
+  and signs the new account in. The sign-in page now says when there are no
+  accounts yet. New endpoints `GET /api/setup` and `POST /api/setup`; see the
+  [API](docs/api.md) and [security model](docs/security.md#what-is-protected-and-how).
+
 - `burzblog diff <file.md|slug> [file.md]` shows a unified, colored diff from
   the server's current post to a local file and says whether the file is based
   on the server's current version or an older one. It exits 0 when identical
