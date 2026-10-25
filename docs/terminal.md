@@ -5,8 +5,23 @@ on your computer are working copies.
 
 ## Install
 
-`burzblog` is one file with nothing else to install. Download the build for
-your computer from the [latest release](https://github.com/weburz/burzblog/releases/latest):
+On Linux and macOS, one line installs the latest release:
+
+```sh
+curl -fsSL https://burzblog.weburz.com/install.sh | sh
+```
+
+It picks the build for your computer, checks it against the release's
+`SHA256SUMS`, and installs it to `/usr/local/bin` if that is writable,
+otherwise `~/.local/bin` (it never runs `sudo` for you). Set
+`BURZBLOG_VERSION=v2.0.0` to pin a version or `BURZBLOG_INSTALL_DIR` to choose
+the directory. Prefer to check what you run? Read the script first:
+`curl -fsSL https://burzblog.weburz.com/install.sh | less`. The script only
+works once the repository and its releases are public.
+
+To install by hand instead, `burzblog` is one file with nothing else to
+install. Download the build for your computer from the
+[latest release](https://github.com/weburz/burzblog/releases/latest):
 
 | Computer | File |
 |---|---|
