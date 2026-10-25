@@ -25,6 +25,17 @@ type Config struct {
 	Origin string
 	// DeployHook is POSTed after published content changes (optional).
 	DeployHook string
+	// SiteURL is the public address of the website that serves the posts,
+	// e.g. https://example.com. Feeds and the sitemap need it for absolute
+	// links; without it they answer 409 and the export leaves them out.
+	SiteURL string
+	// SiteTitle, SiteDescription and SiteLanguage describe the website in
+	// feeds. They default to the site's host, the title and "en".
+	SiteTitle, SiteDescription, SiteLanguage string
+	// PostPath is where a post lives on the website, with {slug} in it
+	// (default /blog/{slug}). TagPath, with {tag}, adds tag pages to the
+	// sitemap when set.
+	PostPath, TagPath string
 	// Panel is the built browser panel (index.html and _nuxt/). Nil serves
 	// a short notice instead.
 	Panel fs.FS
@@ -37,6 +48,7 @@ type Config struct {
 type Server struct {
 	cfg       Config
 	origin    *url.URL
+	site      *site
 	store     *store.Store
 	auth      *auth.Service
 	panel     *panel
@@ -64,6 +76,9 @@ func New(cfg Config, s *store.Store, a *auth.Service) (*Server, error) {
 		if err != nil || (hook.Scheme != "https" && hook.Scheme != "http") || hook.Host == "" {
 			return nil, errors.New("deploy hook must be a full http(s) URL")
 		}
+	}
+	if srv.site, err = newSite(cfg); err != nil {
+		return nil, err
 	}
 	srv.deploy = newDeployer(cfg.DeployHook, cfg.Logger)
 	srv.scheduler = newScheduler()
@@ -135,6 +150,10 @@ func (s *Server) routes() {
 	m.HandleFunc("GET /api/content/posts/{slug}", s.reader(s.contentPost))
 	m.HandleFunc("GET /api/content/posts/{slug}/html", s.reader(s.contentHTML))
 	m.HandleFunc("GET /api/content/tags", s.reader(s.contentTags))
+	for _, f := range feedFormats {
+		m.HandleFunc("GET /api/content/"+f.file, s.reader(s.contentFeed(f)))
+	}
+	m.HandleFunc("GET /api/content/"+sitemapFile, s.reader(s.contentSitemap))
 	m.HandleFunc("GET /api/backup.tar.gz", s.write(s.backup))
 
 	m.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {

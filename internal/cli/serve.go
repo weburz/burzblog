@@ -34,6 +34,7 @@ func (a *App) dataDir(flag string) string {
 
 func (a *App) serveCmd() *cobra.Command {
 	var addr, data, origin, hook string
+	var cfg server.Config // holds the site settings until serving
 	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "Run the BurzBlog server and browser panel",
@@ -43,7 +44,14 @@ one SQLite file in the data directory.
 Put it behind a TLS proxy (Caddy, nginx) and set --origin to the public
 URL. Settings can also come from the environment:
 
-  BURZBLOG_ADDR, BURZBLOG_DATA, BURZBLOG_ORIGIN, BURZBLOG_DEPLOY_HOOK`,
+  BURZBLOG_ADDR, BURZBLOG_DATA, BURZBLOG_ORIGIN, BURZBLOG_DEPLOY_HOOK
+
+Feeds and the sitemap (GET /api/content/feed.xml, feed.atom, feed.json and
+sitemap.xml, also in the export archive) are made for your website and need its
+public address:
+
+  BURZBLOG_SITE_URL, BURZBLOG_SITE_TITLE, BURZBLOG_SITE_DESCRIPTION,
+  BURZBLOG_SITE_LANGUAGE, BURZBLOG_POST_PATH, BURZBLOG_TAG_PATH`,
 		Example: `  burzblog serve
   burzblog serve --addr 127.0.0.1:8080 --data /var/lib/burzblog --origin https://blog.example.com`,
 		Args: cobra.NoArgs,
@@ -51,6 +59,12 @@ URL. Settings can also come from the environment:
 			addr = firstOf(addr, a.Getenv("BURZBLOG_ADDR"), "127.0.0.1:8080")
 			origin = firstOf(origin, a.Getenv("BURZBLOG_ORIGIN"), "http://"+addr)
 			hook = firstOf(hook, a.Getenv("BURZBLOG_DEPLOY_HOOK"))
+			cfg.SiteURL = firstOf(cfg.SiteURL, a.Getenv("BURZBLOG_SITE_URL"))
+			cfg.SiteTitle = firstOf(cfg.SiteTitle, a.Getenv("BURZBLOG_SITE_TITLE"))
+			cfg.SiteDescription = firstOf(cfg.SiteDescription, a.Getenv("BURZBLOG_SITE_DESCRIPTION"))
+			cfg.SiteLanguage = firstOf(cfg.SiteLanguage, a.Getenv("BURZBLOG_SITE_LANGUAGE"))
+			cfg.PostPath = firstOf(cfg.PostPath, a.Getenv("BURZBLOG_POST_PATH"))
+			cfg.TagPath = firstOf(cfg.TagPath, a.Getenv("BURZBLOG_TAG_PATH"))
 			dir := a.dataDir(data)
 
 			log := slog.New(slog.NewTextHandler(a.Err, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -66,7 +80,8 @@ URL. Settings can also come from the environment:
 			if err != nil {
 				return err
 			}
-			srv, err := server.New(server.Config{Origin: origin, DeployHook: hook, Panel: a.Panel, Version: a.Version, Logger: log}, st, svc)
+			cfg.Origin, cfg.DeployHook, cfg.Panel, cfg.Version, cfg.Logger = origin, hook, a.Panel, a.Version, log
+			srv, err := server.New(cfg, st, svc)
 			if err != nil {
 				return err
 			}
@@ -114,6 +129,12 @@ URL. Settings can also come from the environment:
 	cmd.Flags().StringVar(&data, "data", "", "directory for the database (default $BURZBLOG_DATA, $STATE_DIRECTORY or ./burzblog-data)")
 	cmd.Flags().StringVar(&origin, "origin", "", "public URL people open, e.g. https://blog.example.com (default http://<addr>)")
 	cmd.Flags().StringVar(&hook, "deploy-hook", "", "URL to POST after published posts change; prefer BURZBLOG_DEPLOY_HOOK, it is a secret")
+	cmd.Flags().StringVar(&cfg.SiteURL, "site-url", "", "public address of your website, e.g. https://example.com; needed for feeds and the sitemap")
+	cmd.Flags().StringVar(&cfg.SiteTitle, "site-title", "", "website name in feeds (default the site's host)")
+	cmd.Flags().StringVar(&cfg.SiteDescription, "site-description", "", "website description in feeds (default the title)")
+	cmd.Flags().StringVar(&cfg.SiteLanguage, "site-language", "", "language of the website, e.g. en or pt-BR (default en)")
+	cmd.Flags().StringVar(&cfg.PostPath, "post-path", "", "where a post lives on your website (default "+server.DefaultPostPath+")")
+	cmd.Flags().StringVar(&cfg.TagPath, "tag-path", "", "where a tag page lives on your website, e.g. /tags/{tag}; adds them to the sitemap")
 	return cmd
 }
 

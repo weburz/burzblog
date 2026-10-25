@@ -51,7 +51,7 @@ versions: `{ "error": {...}, "current": { ...post } }`.
 | `POST /api/tokens` | `{name, scope: "write" or "export"}` → new token with its secret |
 | `DELETE /api/tokens/{id}` | revoke |
 | `POST /api/account/password` | `{current, next}`; signs out every other browser and revokes every write token (`burzblog login`); export tokens keep working |
-| `GET /api/settings` | `{username, origin, version, deploy}` |
+| `GET /api/settings` | `{username, origin, version, deploy, site}`; `site` is `{configured, feeds}` plus, when a site URL is set, `{url, title, description, language, postPath, tagPath}` (`feeds` lists the feed and sitemap routes, empty when not configured) |
 | `POST /api/deploy` | request a website rebuild now; 409 `deploy_unconfigured` when no deploy hook is set |
 
 ## Posts
@@ -161,7 +161,7 @@ post's metadata fields above; other keys under `seo` stay in `extra`.
 |---|---|
 | `GET /api/posts/{slug}/markdown` | `text/markdown`, with `ETag: "<version>"` |
 | `PUT /api/posts/{slug}/markdown` | `If-Match: "<version>"` saves; `If-None-Match: *` creates a new post |
-| `GET /api/export.tar.gz` | every published post as `<slug>.md` in a gzipped tar; export tokens allowed |
+| `GET /api/export.tar.gz` | every published post as `<slug>.md` in a gzipped tar, then `feed.xml`, `feed.atom`, `feed.json` and `sitemap.xml` when a [site URL](#feeds-and-sitemap) is set; export tokens allowed |
 | `GET /api/backup.tar.gz` | every post, drafts and archived included, as `<status>/<slug>.md` plus a `README.txt` in a gzipped tar; session or write token, not export tokens |
 
 The backup holds current posts only, always with a `status` line (archived posts
@@ -186,6 +186,11 @@ whether one exists. Without a credential every route answers 401.
 | `GET /api/content/posts/{slug}/html` | `{slug, version, html}`: the body rendered and sanitized like `POST /api/preview`, with the same [limits](#preview-limits) (422 `preview_limit`, 503 `busy`) |
 | `GET /api/content/tags` | `{items: [{tag, count}]}`: tags of published posts by name, with how many published posts carry each; tags used only by drafts, scheduled or archived posts are left out |
 
+| `GET /api/content/feed.xml` | RSS 2.0, `application/rss+xml`; see [Feeds and sitemap](#feeds-and-sitemap) |
+| `GET /api/content/feed.atom` | Atom 1.0, `application/atom+xml` |
+| `GET /api/content/feed.json` | JSON Feed 1.1, `application/feed+json` |
+| `GET /api/content/sitemap.xml` | sitemap, `application/xml` |
+
 An item is `{slug, title, description, coverUrl, coverAlt, tags, author,
 seoTitle, seoDescription, canonicalUrl, publishedOn, updatedOn, updatedAt,
 words, readingMinutes, version}`; `tags` is always a list. The single post adds
@@ -199,6 +204,36 @@ The tag of a post is its `version` (`"3"`, `"3-md"` for Markdown, `"3-html"`
 for HTML); the tag of the list and of the tags is a digest of the response. Publishing,
 unpublishing or editing a post changes them, so a cached copy is at most 60
 seconds old.
+
+### Feeds and sitemap
+
+Readers never talk to BurzBlog, so feeds and the sitemap are made for the
+website to serve. They sit behind the same credential as the rest of the content
+API and are also in the export archive. They need the website's public address
+for absolute links: start the server with `--site-url` (see
+[self-hosting](self-hosting.md#settings)). Without it each route answers `409
+site_url_missing` with the flag to set, and the export leaves the files out.
+
+- The feeds hold the newest published posts: `?limit=` (1 to 100, default 20)
+  and `?tag=` (normalized like the post list) choose which. Each item has the
+  title, link, id, dates, description, author, tags as categories and the body
+  as sanitized HTML (the same renderer and limits as `/html`). A post the
+  renderer refuses (422 `preview_limit` there) or cannot render in time keeps its
+  description only, so the feed still answers 200. Links in the body are written
+  as the author wrote them; relative ones are not rewritten.
+- Links and ids are `<site URL><post path>` with `{slug}` replaced, by default
+  `https://example.com/blog/<slug>`, so they stay stable when the server moves.
+  RSS items carry `guid isPermaLink="true"`, `pubDate` in RFC 822 form and the
+  author in `dc:creator`; Atom and JSON Feed use RFC 3339 dates. A post's
+  "updated" date is its `updatedOn`, else `publishedOn`, else the last save.
+- The sitemap lists every published post with `lastmod` (the same date), then a
+  page per tag at the tag path when `--tag-path` is set. A sitemap file may hold
+  50,000 URLs; BurzBlog does not write an index, so beyond that the newest posts
+  are listed and tag pages are dropped first, and the server logs a warning.
+- Like the other content routes they answer with an `ETag`, `304` for
+  `If-None-Match` and `Cache-Control: private, max-age=60`. The tag is a digest
+  of the site settings, the request and each included post's slug and version,
+  so a `304` costs no rendering.
 
 ## Health
 

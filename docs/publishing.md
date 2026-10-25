@@ -33,7 +33,10 @@ longer published:
 BURZBLOG_SERVER=https://blog.example.com BURZBLOG_TOKEN=bzb_... burzblog export --out content/blogs --clean
 ```
 
-The archive contains one `<slug>.md` per published post and nothing else.
+The archive contains one `<slug>.md` per published post. When BurzBlog knows
+your website's address it also holds `feed.xml`, `feed.atom`, `feed.json` and
+`sitemap.xml` at the top level; see [Feeds and sitemap](#feeds-and-sitemap).
+`burzblog export` writes them next to the posts, and `--clean` leaves them alone.
 
 ## The file format
 
@@ -141,6 +144,49 @@ a manual publish, so with a hook configured the site rebuilds a few seconds
 later. Without a hook, the post appears at your next build. Scheduling itself
 does not trigger a rebuild. If BurzBlog was stopped at the scheduled time, the
 post publishes when it starts again.
+
+## Feeds and sitemap
+
+BurzBlog makes an RSS feed, an Atom feed, a JSON Feed and a sitemap for your
+website to publish. Readers never contact BurzBlog, so the site copies the files
+at build time and serves them itself. Tell BurzBlog where the site lives:
+
+```sh
+BURZBLOG_SITE_URL=https://jarmos.dev
+BURZBLOG_SITE_TITLE="Jarmos"
+BURZBLOG_SITE_DESCRIPTION="Notes on software"
+BURZBLOG_POST_PATH=/blog/{slug}      # the default
+BURZBLOG_TAG_PATH=/blog/tags/{tag}   # optional: tag pages in the sitemap
+```
+
+Post links are `https://jarmos.dev/blog/<slug>`, so `--post-path` must match the
+route your site uses (the default fits a Nuxt Content layout with
+`content/blogs/<slug>.md` served at `/blog/<slug>`). Then either take the files
+from the archive you already download:
+
+```sh
+curl -fsSL -H "Authorization: Bearer $BURZBLOG_TOKEN" \
+  "$BURZBLOG_SERVER/api/export.tar.gz" | tar -xz -C content/blogs
+mv content/blogs/feed.* content/blogs/sitemap.xml public/
+```
+
+or fetch only what you need, which also lets you ask for a tag feed or more
+posts (`?limit=` up to 100, `?tag=`):
+
+```sh
+for f in feed.xml feed.atom feed.json sitemap.xml; do
+  curl -fsSL -H "Authorization: Bearer $BURZBLOG_TOKEN" "$BURZBLOG_SERVER/api/content/$f" -o "public/$f"
+done
+```
+
+Files in `public/` are served at `/feed.xml` and `/sitemap.xml` after
+`nuxt generate`. Reference them from your pages with
+`<link rel="alternate" type="application/rss+xml" href="/feed.xml">` and in
+`robots.txt` as `Sitemap: https://jarmos.dev/sitemap.xml`. Without a site URL
+the routes answer `409 site_url_missing` and the archive has no such files.
+Feed items hold each post as sanitized HTML; links inside a post are written as
+the author wrote them, so use absolute links in posts that readers will open
+from a feed reader. **Settings → Your website** shows whether the site URL is set.
 
 ## Previews and images
 

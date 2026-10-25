@@ -756,7 +756,9 @@ func (a *App) exportCmd() *cobra.Command {
 		Use:   "export --out <dir>",
 		Short: "Download every published post as <slug>.md files (for reader site builds)",
 		Long: `Writes each published post to <dir>/<slug>.md with frontmatter, ready for
-Nuxt Content or another static site generator.
+Nuxt Content or another static site generator. When the server knows your
+website address (--site-url), feed.xml, feed.atom, feed.json and sitemap.xml
+are written there too.
 
 In CI, set BURZBLOG_SERVER and BURZBLOG_TOKEN (a build token from
 Settings) instead of running burzblog login.`,
@@ -778,7 +780,7 @@ Settings) instead of running burzblog login.`,
 				return err
 			}
 			defer body.Close()
-			files, err := readExport(body)
+			files, site, err := readExport(body)
 			if err != nil {
 				return err
 			}
@@ -797,9 +799,11 @@ Settings) instead of running burzblog login.`,
 					}
 				}
 			}
-			for name, data := range files {
-				if err := writeFileAtomic(filepath.Join(out, name), data, 0o644); err != nil {
-					return err
+			for _, set := range []map[string][]byte{files, site} {
+				for name, data := range set {
+					if err := writeFileAtomic(filepath.Join(out, name), data, 0o644); err != nil {
+						return err
+					}
 				}
 			}
 			fmt.Fprintf(a.Out, "%s Exported %s to %s", a.paint(green, "✓"), count(len(files), "published post", "published posts"), out)
@@ -815,15 +819,23 @@ Settings) instead of running burzblog login.`,
 	return cmd
 }
 
+// siteFiles are the feeds and sitemap an export holds when the server knows
+// the website's address. They are written next to the posts.
+var siteFiles = map[string]bool{"feed.xml": true, "feed.atom": true, "feed.json": true, "sitemap.xml": true}
+
+// maxSiteFile bounds one feed or sitemap in an export.
+const maxSiteFile = 64 << 20
+
 // readExport reads the export archive fully before anything is written, and
-// accepts only flat <slug>.md regular files.
-func readExport(r io.Reader) (map[string][]byte, error) {
+// accepts only flat <slug>.md regular files and the site files. Posts are
+// returned by file name, site files separately.
+func readExport(r io.Reader) (posts, site map[string][]byte, err error) {
 	gz, err := gzip.NewReader(r)
 	if err != nil {
-		return nil, fmt.Errorf("the export is not a gzip archive: %w", err)
+		return nil, nil, fmt.Errorf("the export is not a gzip archive: %w", err)
 	}
 	tr := tar.NewReader(gz)
-	files := map[string][]byte{}
+	posts, site = map[string][]byte{}, map[string][]byte{}
 	total := 0
 	for {
 		hdr, err := tr.Next()
@@ -831,24 +843,33 @@ func readExport(r io.Reader) (map[string][]byte, error) {
 			break
 		}
 		if err != nil {
-			return nil, fmt.Errorf("read export: %w", err)
+			return nil, nil, fmt.Errorf("read export: %w", err)
 		}
 		slug := strings.TrimSuffix(hdr.Name, ".md")
-		if hdr.Typeflag != tar.TypeReg || !strings.HasSuffix(hdr.Name, ".md") || post.ValidateSlug(slug) != nil {
-			return nil, fmt.Errorf("the export contains an unexpected entry %q", hdr.Name)
+		isSite := siteFiles[hdr.Name]
+		if hdr.Typeflag != tar.TypeReg || (!isSite && (!strings.HasSuffix(hdr.Name, ".md") || post.ValidateSlug(slug) != nil)) {
+			return nil, nil, fmt.Errorf("the export contains an unexpected entry %q", hdr.Name)
+		}
+		limit := int64(post.MaxBody + post.MaxExtra)
+		if isSite {
+			limit = maxSiteFile
 		}
 		var buf bytes.Buffer
-		n, err := io.Copy(&buf, io.LimitReader(tr, post.MaxBody+post.MaxExtra+1))
+		n, err := io.Copy(&buf, io.LimitReader(tr, limit+1))
 		if err != nil {
-			return nil, fmt.Errorf("read export: %w", err)
+			return nil, nil, fmt.Errorf("read export: %w", err)
 		}
 		total += int(n)
-		if n > post.MaxBody+post.MaxExtra || total > 512<<20 {
-			return nil, errors.New("the export is larger than expected")
+		if n > limit || total > 512<<20 {
+			return nil, nil, errors.New("the export is larger than expected")
 		}
-		files[hdr.Name] = buf.Bytes()
+		if isSite {
+			site[hdr.Name] = buf.Bytes()
+		} else {
+			posts[hdr.Name] = buf.Bytes()
+		}
 	}
-	return files, nil
+	return posts, site, nil
 }
 
 func (a *App) backupCmd() *cobra.Command {

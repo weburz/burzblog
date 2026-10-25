@@ -22,7 +22,13 @@ type contentHarness struct {
 
 func newContentHarness(t *testing.T) *contentHarness {
 	t.Helper()
-	h := newHarness(t, nil)
+	return newContentHarnessWith(t, nil)
+}
+
+// newContentHarnessWith is newContentHarness with a changed Config.
+func newContentHarnessWith(t *testing.T, mutate func(*Config)) *contentHarness {
+	t.Helper()
+	h := newHarness(t, mutate)
 	h.login()
 	mk := func(slug, body string) {
 		if resp, out := h.do("POST", "/api/posts", map[string]any{"title": slug, "slug": slug, "body": body,
