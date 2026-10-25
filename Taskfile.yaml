@@ -45,6 +45,9 @@ tasks:
           -o dist/burzblog-{{.VERSION}}-{{splitList "/" .ITEM | first}}-{{splitList "/" .ITEM | last}}{{if eq (splitList "/" .ITEM | first) "windows"}}.exe{{end}}
           ./cmd/burzblog
       - cd dist && sha256sum burzblog-{{.VERSION}}-* > SHA256SUMS-{{.VERSION}}
+  install:test:
+    desc: Test site/install.sh against a local fake release server
+    cmd: scripts/install-test.sh
   format:
     desc: Format Go and web sources
     cmds:
