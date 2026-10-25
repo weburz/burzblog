@@ -1,5 +1,27 @@
 /* BurzBlog site. Colors and type come from the panel (web/app/assets/main.css):
    burzblue slate, one yellow accent, Sofia Sans for text, JetBrains Mono for code. */
+/* Self-hosted variable fonts (latin subset), both SIL OFL 1.1: see assets/fonts/OFL-*.txt. */
+@font-face {
+  font-family: "Sofia Sans";
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url("assets/fonts/sofia-sans-latin.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Sofia Sans";
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url("assets/fonts/sofia-sans-italic-latin.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400 500;
+  font-display: swap;
+  src: url("assets/fonts/jetbrains-mono-latin.woff2") format("woff2");
+}
 :root {
   color-scheme: light dark;
   --bg: #fafaf8;
