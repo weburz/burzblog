@@ -8,6 +8,13 @@ All notable changes are recorded here, following
 
 ### Added
 
+- A read-only content API for websites: `GET /api/content/posts` (paged,
+  `?q=`), `GET /api/content/posts/{slug}` (JSON with the Markdown body, or the
+  export's exact frontmatter document with `?format=markdown`) and
+  `GET /api/content/posts/{slug}/html`. Published posts only; drafts, scheduled
+  and archived posts answer 404 like a missing slug. Responses have an `ETag`,
+  answer `If-None-Match` with 304 and are `Cache-Control: private,
+  max-age=60`. Build (export) tokens, write tokens and sessions can call it.
 - `burzblog diff <file.md|slug> [file.md]` shows a unified, colored diff from
   the server's current post to a local file and says whether the file is based
   on the server's current version or an older one. It exits 0 when identical
@@ -31,6 +38,9 @@ All notable changes are recorded here, following
 
 ### Changed
 
+- Build (export) tokens may now read published content through
+  `GET /api/content/*` as well as the export; they are still refused on every
+  other route.
 - The first-run posts page hides the filters and search box until there is
   something to filter, and the panel's phone layout, row dates, dialog headers,
   and the wording for schedule, delete and the command palette were tidied.

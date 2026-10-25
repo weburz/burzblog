@@ -167,7 +167,7 @@ func (s *Store) DeleteSession(ctx context.Context, tokenHash string) error {
 }
 
 // Token scopes. Write tokens can do everything a signed-in user can; export
-// tokens can only download published posts, for reader builds.
+// tokens can only read published posts, for reader builds.
 const (
 	ScopeWrite  = "write"
 	ScopeExport = "export"

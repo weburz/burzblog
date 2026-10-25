@@ -64,7 +64,7 @@ func (s *Server) resolve(r *http.Request) (*identity, error) {
 }
 
 // withIdentity attaches the caller if there is one, without requiring it.
-// Export tokens may only call the export, so here they stay anonymous.
+// Export tokens may only read published content, so here they stay anonymous.
 func (s *Server) withIdentity(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := s.resolve(r)
@@ -96,7 +96,7 @@ func (s *Server) write(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		if id.token != nil && id.token.Scope != store.ScopeWrite {
-			fail(w, http.StatusForbidden, "scope", "This token can only download published posts.", "")
+			fail(w, http.StatusForbidden, "scope", "This token can only read published posts.", "")
 			return
 		}
 		if id.session != nil && r.Method != http.MethodGet && r.Method != http.MethodHead {
@@ -113,8 +113,9 @@ func (s *Server) write(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// exporter allows any valid token or session; used for reader builds.
-func (s *Server) exporter(next http.HandlerFunc) http.HandlerFunc {
+// reader allows any valid token or session, export tokens included; used for
+// the export and the read-only content API that website builds call.
+func (s *Server) reader(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := s.resolve(r)
 		if errors.Is(err, auth.ErrNoSession) {

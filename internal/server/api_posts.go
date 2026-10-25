@@ -88,6 +88,29 @@ func (s *Server) postError(w http.ResponseWriter, r *http.Request, err error, cu
 // maxPageSize caps ?limit= on the post list.
 const maxPageSize = 500
 
+// pageParams reads ?limit= and ?offset=, answering 422 itself when they are
+// out of range. A zero limit means the result is not paged.
+func pageParams(w http.ResponseWriter, r *http.Request) (limit, offset int, ok bool) {
+	for _, f := range []struct {
+		name string
+		dst  *int
+	}{{"limit", &limit}, {"offset", &offset}} {
+		name, dst := f.name, f.dst
+		raw := r.URL.Query().Get(name)
+		if raw == "" {
+			continue
+		}
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 0 || (name == "limit" && (n < 1 || n > maxPageSize)) {
+			fail(w, http.StatusUnprocessableEntity, "validation",
+				fmt.Sprintf("Limit must be 1 to %d and offset 0 or more.", maxPageSize), name)
+			return 0, 0, false
+		}
+		*dst = n
+	}
+	return limit, offset, true
+}
+
 // listPosts lists post summaries (never bodies). Without ?limit= it returns
 // every match, as the CLI expects; the panel pages with limit and offset.
 func (s *Server) listPosts(w http.ResponseWriter, r *http.Request) {
@@ -105,23 +128,9 @@ func (s *Server) listPosts(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusUnprocessableEntity, "validation", "Sort must be updated, published, title or created.", "sort")
 		return
 	}
-	limit, offset := 0, 0
-	for _, f := range []struct {
-		name string
-		dst  *int
-	}{{"limit", &limit}, {"offset", &offset}} {
-		name, dst := f.name, f.dst
-		raw := r.URL.Query().Get(name)
-		if raw == "" {
-			continue
-		}
-		n, err := strconv.Atoi(raw)
-		if err != nil || n < 0 || (name == "limit" && (n < 1 || n > maxPageSize)) {
-			fail(w, http.StatusUnprocessableEntity, "validation",
-				fmt.Sprintf("Limit must be 1 to %d and offset 0 or more.", maxPageSize), name)
-			return
-		}
-		*dst = n
+	limit, offset, ok := pageParams(w, r)
+	if !ok {
+		return
 	}
 	list, counts, err := s.store.ListPosts(r.Context(), store.Filter{Status: status, Scheduled: scheduled,
 		Query: r.URL.Query().Get("q"), Sort: sort, Limit: limit, Offset: offset})
@@ -509,6 +518,23 @@ func (s *Server) restoreRevision(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// renderError answers a failed render and reports whether there was none.
+func (s *Server) renderError(w http.ResponseWriter, r *http.Request, err error) bool {
+	var limit *render.LimitError
+	switch {
+	case err == nil:
+		return true
+	case errors.As(err, &limit):
+		fail(w, http.StatusUnprocessableEntity, "preview_limit", "This post cannot be previewed as written. Saving still works.", limit.Message)
+	case errors.Is(err, render.ErrBusy):
+		w.Header().Set("Retry-After", "5")
+		fail(w, http.StatusServiceUnavailable, "busy", "The server is busy rendering other previews. The preview will refresh on your next edit.", "")
+	default:
+		s.internal(w, r, err)
+	}
+	return false
+}
+
 func (s *Server) preview(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Markdown string `json:"markdown"`
@@ -517,17 +543,7 @@ func (s *Server) preview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	html, err := render.HTML(r.Context(), body.Markdown)
-	var limit *render.LimitError
-	switch {
-	case errors.As(err, &limit):
-		fail(w, http.StatusUnprocessableEntity, "preview_limit", "This post cannot be previewed as written. Saving still works.", limit.Message)
-		return
-	case errors.Is(err, render.ErrBusy):
-		w.Header().Set("Retry-After", "5")
-		fail(w, http.StatusServiceUnavailable, "busy", "The server is busy rendering other previews. The preview will refresh on your next edit.", "")
-		return
-	case err != nil:
-		s.internal(w, r, err)
+	if !s.renderError(w, r, err) {
 		return
 	}
 	reply(w, http.StatusOK, map[string]string{"html": html})
