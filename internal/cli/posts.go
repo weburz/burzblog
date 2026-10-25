@@ -77,8 +77,8 @@ func (a *App) listCmd() *cobra.Command {
 					ago(p.UpdatedAt)+" by "+clean(p.UpdatedBy))
 			}
 			w.Flush()
-			fmt.Fprintf(a.Out, "\n%s\n", a.paint(dim, fmt.Sprintf("%d drafts (%d scheduled), %d published, %d archived",
-				l.Counts["draft"], l.Counts["scheduled"], l.Counts["published"], l.Counts["archived"])))
+			fmt.Fprintf(a.Out, "\n%s\n", a.paint(dim, fmt.Sprintf("%s (%d scheduled), %d published, %d archived",
+				count(l.Counts["draft"], "draft", "drafts"), l.Counts["scheduled"], l.Counts["published"], l.Counts["archived"])))
 			return nil
 		},
 	}
@@ -792,7 +792,7 @@ Settings) instead of running burzblog login.`,
 					return err
 				}
 			}
-			fmt.Fprintf(a.Out, "%s Exported %d published posts to %s", a.paint(green, "✓"), len(files), out)
+			fmt.Fprintf(a.Out, "%s Exported %s to %s", a.paint(green, "✓"), count(len(files), "published post", "published posts"), out)
 			if removed > 0 {
 				fmt.Fprintf(a.Out, " (removed %d no longer published)", removed)
 			}
@@ -890,7 +890,7 @@ including history; see docs/self-hosting.md. Restore a file with burzblog push.`
 					Posts int    `json:"posts"`
 				}{dir, len(files) - 1})
 			}
-			fmt.Fprintf(a.Out, "%s Backed up %d posts to %s.\n", a.paint(green, "✓"), len(files)-1, dir)
+			fmt.Fprintf(a.Out, "%s Backed up %s to %s.\n", a.paint(green, "✓"), count(len(files)-1, "post", "posts"), dir)
 			return nil
 		},
 	}

@@ -958,7 +958,7 @@ code {
 .history-row {
   display: grid;
   grid-template-columns: 44px minmax(0, 1fr) auto;
-  grid-template-areas: "v title badge" "v change change" "v when when";
+  grid-template-areas: "v change badge" "v when when" "v title title";
   align-items: center;
   gap: 2px 12px;
   width: 100%;
@@ -978,15 +978,15 @@ code {
 }
 .history-title {
   grid-area: title;
-  font-weight: 650;
+  font-size: 13px;
+  color: var(--bb-text-2);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .history-change {
   grid-area: change;
-  font-size: 13px;
-  color: var(--bb-text-2);
+  font-weight: 650;
   font-variant-numeric: tabular-nums;
 }
 .history-row .badge {
@@ -1175,6 +1175,12 @@ code {
     grid-template-areas: "main status" "main edited";
     gap: 2px 12px;
   }
+  .post-title {
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
   .post-main {
     grid-area: main;
   }
@@ -1193,6 +1199,15 @@ code {
   }
 }
 @media (max-width: 640px) {
+  /* Status and date sit under the title, so it keeps the full width. */
+  .post-row {
+    grid-template-areas: "main main" "status edited";
+    align-items: center;
+    row-gap: 8px;
+  }
+  .post-status {
+    justify-self: start;
+  }
   .topbar-inner,
   .content {
     padding-inline: 16px;

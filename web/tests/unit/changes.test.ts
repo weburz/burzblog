@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RevisionState } from "../../app/types";
-import { changeSummary } from "../../app/utils/changes";
+import { changeSummary, showsTitle } from "../../app/utils/changes";
 
 const state = (over: Partial<RevisionState> = {}): RevisionState => ({
   slug: "hello",
@@ -53,5 +53,28 @@ describe("changeSummary", () => {
 
   it("says so when nothing visible changed", () => {
     expect(changeSummary(state(), state())).toBe("No visible change");
+  });
+});
+
+describe("showsTitle", () => {
+  // Newest first, like the history list.
+  const versions = [
+    state({ title: "Renamed" }),
+    state({ title: "Hello" }),
+    state({ title: "Hello" }),
+    state({ title: "Draft title" }),
+  ];
+
+  it("names the post on the oldest version", () => {
+    expect(showsTitle(versions, 3)).toBe(true);
+  });
+
+  it("names the post on a save that renamed it", () => {
+    expect(showsTitle(versions, 0)).toBe(true);
+    expect(showsTitle(versions, 2)).toBe(true);
+  });
+
+  it("stays quiet when the title matches the version before", () => {
+    expect(showsTitle(versions, 1)).toBe(false);
   });
 });
