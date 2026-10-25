@@ -66,6 +66,7 @@ burzblog new "My next post"                  # creates a draft and opens $EDITOR
 burzblog list
 burzblog edit my-next-post
 burzblog publish my-next-post
+burzblog import content/blog                 # bring in existing Markdown posts
 ```
 
 ## Guides

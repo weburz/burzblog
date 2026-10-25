@@ -156,6 +156,27 @@ func TestUpdatePostRenameAndPublish(t *testing.T) {
 	}
 }
 
+func TestSaveWithoutDateKeepsPublishDate(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+	first := time.Date(2026, 10, 24, 9, 0, 0, 0, time.UTC)
+	s.SetClock(func() time.Time { return first })
+	s.CreatePost(ctx, &post.Post{Slug: "a", Title: "A"}, "u")
+	if _, err := s.UpdatePost(ctx, "a", 1, "u", func(p *post.Post) error { p.Status = post.Published; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	s.SetClock(func() time.Time { return first.Add(time.Hour) })
+	// A pushed file without publishedOn clears the date before the save.
+	p, err := s.UpdatePost(ctx, "a", 2, "u", func(p *post.Post) error { p.PublishedOn = nil; return nil })
+	if err != nil || p.Version != 2 || !p.PublishedOn.Equal(first) {
+		t.Fatalf("dateless save moved the post: %v %+v", err, p)
+	}
+	p, err = s.UpdatePost(ctx, "a", 2, "u", func(p *post.Post) error { p.PublishedOn, p.Title = nil, "B"; return nil })
+	if err != nil || p.Version != 3 || !p.PublishedOn.Equal(first) {
+		t.Errorf("edit without date: %v %+v", err, p)
+	}
+}
+
 func TestDeletePostOnlyWhenArchived(t *testing.T) {
 	s := open(t)
 	ctx := context.Background()

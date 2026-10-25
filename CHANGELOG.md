@@ -6,6 +6,13 @@ All notable changes are recorded here, following
 
 ## [Unreleased]
 
+### Added
+
+- `burzblog import <file.md|dir>...` brings existing `<slug>.md` files, such as
+  a Nuxt Content `content/blog/` folder or the output of `burzblog export`,
+  into BurzBlog. It skips posts that already exist unless `--update` is given,
+  and supports `--recursive`, `--draft`, `--dry-run` and `--json`.
+
 ## [2.0.0] - 2026-10-25
 
 ### Changed
