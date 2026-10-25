@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -109,20 +110,42 @@ Write in the browser panel, or from here:
 	return root
 }
 
+// clean makes server-supplied text safe to print on one line: every control
+// character (C0, DEL, C1, which terminals act on) becomes U+FFFD.
+func clean(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return unicode.ReplacementChar
+		}
+		return r
+	}, s)
+}
+
+// cleanLines is clean for text that already spans lines, such as error
+// messages: line breaks are kept.
+func cleanLines(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) && r != '\n' {
+			return unicode.ReplacementChar
+		}
+		return r
+	}, s)
+}
+
 // failure prints an error people can act on.
 func (a *App) failure(err error) {
 	var apiErr *client.Error
 	if errors.As(err, &apiErr) {
-		fmt.Fprintln(a.Err, a.paint(red, "error:"), apiErr.Message)
+		fmt.Fprintln(a.Err, a.paint(red, "error:"), cleanLines(apiErr.Message))
 		if apiErr.Detail != "" {
-			fmt.Fprintln(a.Err, "      ", apiErr.Detail)
+			fmt.Fprintln(a.Err, "      ", cleanLines(apiErr.Detail))
 		}
 		if apiErr.Status == 401 && apiErr.Code == "authentication" {
 			fmt.Fprintln(a.Err, "       Run `burzblog login <server>` to sign in again.")
 		}
 		return
 	}
-	fmt.Fprintln(a.Err, a.paint(red, "error:"), err)
+	fmt.Fprintln(a.Err, a.paint(red, "error:"), cleanLines(err.Error()))
 }
 
 // Config is what `burzblog login` remembers.
@@ -215,9 +238,13 @@ func (a *App) terminal() bool {
 	return ok && term.IsTerminal(int(f.Fd()))
 }
 
-func (a *App) colour() bool {
+func (a *App) outTerminal() bool {
 	f, ok := a.Out.(*os.File)
-	return ok && term.IsTerminal(int(f.Fd())) && a.Getenv("NO_COLOR") == ""
+	return ok && term.IsTerminal(int(f.Fd()))
+}
+
+func (a *App) colour() bool {
+	return a.outTerminal() && a.Getenv("NO_COLOR") == ""
 }
 
 const (

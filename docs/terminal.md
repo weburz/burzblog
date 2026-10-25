@@ -14,7 +14,9 @@ burzblog whoami
 `~/.config/burzblog/config.json` (mode `0600`). It appears in the panel under
 **Settings → Connected computers**, where it can be revoked. `burzblog logout`
 revokes it and forgets the server. Plain `http://` is refused except for
-`localhost`, so your password never travels unencrypted.
+`localhost`, so your password never travels unencrypted. The client does not
+follow redirects either; if the server answers with one, `login` stops and
+tells you the address to use, for example `burzblog login https://blog.example.com`.
 
 ## Everyday commands
 
@@ -86,7 +88,10 @@ can restore any of them.
 
 If a save is refused because something in the file is invalid (for example an
 empty title or broken YAML), `edit` shows the reason and offers to reopen the
-editor; your text is kept either way.
+editor; your text is kept either way. Control characters (tabs, escape
+sequences) are not allowed in `title`, `description` or the cover `alt`; the
+error names the field. Anything the server sends is shown with such characters
+replaced by `�`.
 
 ## Backing up your posts
 

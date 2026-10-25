@@ -18,6 +18,7 @@ import (
 
 	"golang.org/x/crypto/argon2"
 
+	"github.com/weburz/burzblog/internal/post"
 	"github.com/weburz/burzblog/internal/store"
 )
 
@@ -241,8 +242,8 @@ func (a *Service) EndSession(ctx context.Context, token string) error {
 // NewToken issues an API token and returns the secret once.
 func (a *Service) NewToken(ctx context.Context, user *store.User, name, scope string) (string, *store.Token, error) {
 	name = strings.TrimSpace(name)
-	if name == "" || utf8.RuneCountInString(name) > 100 || strings.ContainsAny(name, "\r\n\x00") {
-		return "", nil, errors.New("token name must be one line of 1 to 100 characters")
+	if name == "" || utf8.RuneCountInString(name) > 100 || post.HasControl(name) {
+		return "", nil, errors.New("token name must be one line of 1 to 100 characters without control characters")
 	}
 	if scope != store.ScopeWrite && scope != store.ScopeExport {
 		return "", nil, errors.New("token scope must be write or export")

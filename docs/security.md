@@ -41,7 +41,20 @@ author's own content.
 **Input.** Request bodies are capped at 4 MiB and JSON rejects unknown fields.
 Frontmatter must be a plain mapping: YAML anchors, aliases and custom tags are
 refused. Slugs are limited to lowercase letters, digits and hyphens, so they
-are always safe file names in exports.
+are always safe file names in exports. Titles, descriptions, cover URLs and
+alt text, token names and usernames are single-line text: they may not contain
+control characters (U+0000 to U+001F, U+007F, U+0080 to U+009F), tabs included,
+because terminals act on them. The body keeps tabs and line breaks and only
+refuses NUL, so code samples with escape sequences still save. Existing data
+is never rewritten: a post that already has such a character still loads, and
+saving it again asks you to fix the named field.
+
+**Terminal client.** `burzblog` never follows an HTTP redirect, because it
+could carry your password or token to plain `http://` or to another host; it
+stops and prints the address to run `burzblog login` with instead. Everything
+the server sends that is printed (titles, names, error messages) has control
+characters replaced with U+FFFD, and `pull -o -` does the same when writing to
+a terminal.
 
 **Data at rest.** One SQLite file, created `0600` in a `0700` directory. Revisions
 keep every earlier version of every post; they are only removed when an archived
