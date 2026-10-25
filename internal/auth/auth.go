@@ -162,6 +162,8 @@ type Service struct {
 	// dummy is verified when a username does not exist, so timing does not
 	// reveal which accounts exist.
 	dummy string
+	// now is the clock for codes and challenges; tests replace it.
+	now func() time.Time
 }
 
 // New returns a Service. Only two password checks run at once.
@@ -171,49 +173,75 @@ func New(s *store.Store) (*Service, error) {
 		return nil, err
 	}
 	return &Service{store: s, gate: make(chan struct{}, 2), wait: gateWait,
-		inflight: map[string]int{}, perClient: clientLimit, dummy: dummy}, nil
+		inflight: map[string]int{}, perClient: clientLimit, dummy: dummy, now: time.Now}, nil
 }
 
-// Authenticate checks a username and password, with rate limiting.
+// Authenticate checks a username and password, with rate limiting. It does
+// not look at a second factor; sign-in goes through Login.
 func (a *Service) Authenticate(ctx context.Context, username, password string) (*store.User, error) {
+	user, userKey, err := a.checkPassword(ctx, username, password)
+	if err != nil {
+		return nil, err
+	}
+	if err := a.store.ClearLoginFailures(ctx, userKey); err != nil {
+		return nil, err
+	}
+	return user, nil
+}
+
+// Login checks a username and password for a sign-in. When the account has
+// two-factor sign-in on it reports secondFactor and keeps the failure count,
+// so guessing codes after learning the password stays limited; the second
+// step clears it.
+func (a *Service) Login(ctx context.Context, username, password string) (user *store.User, secondFactor bool, err error) {
+	user, userKey, err := a.checkPassword(ctx, username, password)
+	if err != nil {
+		return nil, false, err
+	}
+	if secondFactor, err = a.NeedsSecondFactor(ctx, user); err != nil || secondFactor {
+		return user, secondFactor, err
+	}
+	return user, false, a.store.ClearLoginFailures(ctx, userKey)
+}
+
+// checkPassword verifies a password under the per-username limit and returns
+// the limiter key. Failures are not cleared.
+func (a *Service) checkPassword(ctx context.Context, username, password string) (*store.User, string, error) {
 	username = store.NormalizeUsername(username)
 	if username == "" || password == "" || len(password) > MaxPassword || len(username) > 64 {
-		return nil, ErrCredentials
+		return nil, "", ErrCredentials
 	}
 	release, err := a.acquire(ctx)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	defer release()
 	userKey := "user:" + strings.ToLower(username)
 	// Reserve the attempt before hashing so parallel guesses cannot all pass.
 	ok, err := a.store.ReserveLoginAttempt(ctx, userKey, userLimit, window)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if !ok {
-		return nil, ErrRateLimited
+		return nil, "", ErrRateLimited
 	}
 	user, err := a.store.UserByName(ctx, username)
 	hash := a.dummy
 	if err == nil {
 		hash = user.PasswordHash
 	} else if !errors.Is(err, store.ErrNotFound) {
-		return nil, err
+		return nil, "", err
 	}
 	verified, stale := verifyPassword(hash, password)
 	if err != nil || !verified {
-		return nil, ErrCredentials
-	}
-	if err := a.store.ClearLoginFailures(ctx, userKey); err != nil {
-		return nil, err
+		return nil, "", ErrCredentials
 	}
 	if stale {
 		if fresh, err := HashPassword(password); err == nil {
 			_ = a.store.RehashPassword(ctx, user.ID, fresh)
 		}
 	}
-	return user, nil
+	return user, userKey, nil
 }
 
 // acquire takes a hashing slot, waiting at most a.wait, and returns the

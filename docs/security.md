@@ -21,6 +21,33 @@ parallel guesses cannot slip past (see [API](api.md)); expired counters are
 pruned as sign-ins arrive. There
 is no self sign-up; accounts are created on the host with `burzblog user add`.
 
+**Two-factor sign-in (TOTP).** An account can require a code from an
+authenticator app after its password (RFC 6238: HMAC-SHA1, 6 digits, 30-second
+steps, one step either side accepted). It is off until someone turns it on in
+Settings, where enrolling needs the current password and then one valid code
+before it takes effect. For an account that uses it, a correct password creates
+no session: the server answers `{"second_factor": true, "challenge": ...}`, and
+only `POST /api/login/totp` with the challenge and a code starts one. The
+challenge is 256 random bits, valid for five minutes, usable once, tied to the
+account that gave the password, and stored as a SHA-256 digest; asking for a
+new one replaces the old. Codes and passwords share the per-username limit (ten
+attempts per 15 minutes), and a right password does not reset the count until
+the code is right too, so knowing the password does not buy fresh guesses. A
+step that was accepted is remembered, so a code cannot be used twice, even
+inside its window, and an older step is refused after a newer one. Enrolment
+creates ten recovery codes (80 random bits each), shown once, accepted in the
+code field and deleted when used. They are stored as plain SHA-256 digests:
+unlike a password they are not guessable, so a slow hash adds nothing. The
+authenticator secret (160 bits) is stored as-is in the database, like every
+other secret there (BurzBlog has no key to encrypt it with), so the `0600`
+file and its backups need the same care as the password hashes; anyone who can
+read the file can generate codes. Turning it off needs the password and a code
+and ends every other session. A locked-out person is recovered on the host with
+`burzblog user 2fa-reset <name>`, which turns it off and ends their sessions.
+Write tokens from `burzblog login` are not touched by turning it on, off or
+resetting it: the token is the credential. A new `burzblog login` needs the
+code, so a stolen password alone cannot mint one.
+
 **Browser sessions.** A random 256-bit session id in an `HttpOnly`,
 `SameSite=Strict` cookie, `Secure` and `__Host-` prefixed over HTTPS. Only its
 SHA-256 digest is stored. Every change also needs the session's CSRF token in a

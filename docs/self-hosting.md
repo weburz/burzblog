@@ -56,6 +56,11 @@ Accounts are managed on the host only: `burzblog user add`, `user passwd` and
 Passwords need at least 12 characters.
 `user passwd` also signs that account out of every browser.
 
+If someone loses their authenticator app and recovery codes,
+`burzblog user 2fa-reset <name> --data /var/lib/burzblog` turns two-factor
+sign-in off for them and signs them out of every browser. Their terminal logins
+keep working; they can set two-factor up again in Settings.
+
 ## 3. HTTPS in front
 
 BurzBlog listens on `127.0.0.1:8080` and does not terminate TLS. Put a reverse

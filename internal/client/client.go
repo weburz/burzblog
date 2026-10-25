@@ -177,10 +177,16 @@ func (c *Client) json(ctx context.Context, method, path string, in, out any) err
 	return nil
 }
 
-// IssueToken trades a username and password for a write token.
-func (c *Client) IssueToken(ctx context.Context, username, password, name string) (*Token, error) {
+// SecondFactorRequired is the error code of a correct password for an account
+// that also needs a two-factor code.
+const SecondFactorRequired = "second_factor_required"
+
+// IssueToken trades a username and password for a write token. Accounts with
+// two-factor sign-in also need code; without it the error has the code
+// SecondFactorRequired.
+func (c *Client) IssueToken(ctx context.Context, username, password, code, name string) (*Token, error) {
 	var t Token
-	err := c.json(ctx, http.MethodPost, "/api/auth/token", map[string]string{"username": username, "password": password, "name": name}, &t)
+	err := c.json(ctx, http.MethodPost, "/api/auth/token", map[string]string{"username": username, "password": password, "code": code, "name": name}, &t)
 	return &t, err
 }
 

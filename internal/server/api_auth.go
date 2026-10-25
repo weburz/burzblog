@@ -51,22 +51,64 @@ func busy(w http.ResponseWriter) {
 	fail(w, http.StatusServiceUnavailable, "busy", "BurzBlog is busy checking sign-ins. Try again in a few seconds.", "")
 }
 
-func (s *Server) authenticate(w http.ResponseWriter, r *http.Request, c credentials) *store.User {
-	user, err := s.auth.Authenticate(clientContext(r), c.Username, c.Password)
+// authenticate checks the password step of a sign-in. It reports
+// secondFactor when the account also needs a code.
+func (s *Server) authenticate(w http.ResponseWriter, r *http.Request, c credentials) (user *store.User, secondFactor bool) {
+	user, secondFactor, err := s.auth.Login(clientContext(r), c.Username, c.Password)
 	switch {
 	case errors.Is(err, auth.ErrBusy):
 		busy(w)
 	case errors.Is(err, auth.ErrRateLimited):
-		w.Header().Set("Retry-After", "900")
-		fail(w, http.StatusTooManyRequests, "rate_limited", "Too many failed sign-in attempts. Wait 15 minutes, then try again.", "")
+		rateLimited(w)
 	case errors.Is(err, auth.ErrCredentials):
 		fail(w, http.StatusUnauthorized, "credentials", "That username and password do not match.", "")
 	case err != nil:
 		s.internal(w, r, err)
 	default:
-		return user
+		return user, secondFactor
 	}
-	return nil
+	return nil, false
+}
+
+func rateLimited(w http.ResponseWriter) {
+	w.Header().Set("Retry-After", "900")
+	fail(w, http.StatusTooManyRequests, "rate_limited", "Too many failed sign-in attempts. Wait 15 minutes, then try again.", "")
+}
+
+// codeFailed answers a failed second-factor check and reports whether err was one.
+func (s *Server) codeFailed(w http.ResponseWriter, r *http.Request, err error) bool {
+	switch {
+	case err == nil:
+		return false
+	case errors.Is(err, auth.ErrRateLimited):
+		rateLimited(w)
+	case errors.Is(err, auth.ErrCode):
+		fail(w, http.StatusUnauthorized, "code", "That code is not right. Check the latest code in your authenticator app, or use a recovery code.", "")
+	case errors.Is(err, auth.ErrChallenge), errors.Is(err, auth.ErrTwoFactorOff):
+		fail(w, http.StatusUnauthorized, "challenge", "Your sign-in timed out. Enter your password again.", "")
+	default:
+		s.internal(w, r, err)
+	}
+	return true
+}
+
+type secondFactorReply struct {
+	SecondFactor bool   `json:"second_factor"`
+	Challenge    string `json:"challenge"`
+}
+
+func (s *Server) startSession(w http.ResponseWriter, r *http.Request, user *store.User) {
+	token, sess, err := s.auth.NewSession(r.Context(), user)
+	if err != nil {
+		s.internal(w, r, err)
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name: s.cookieName(), Value: token, Path: "/", Expires: sess.ExpiresAt,
+		MaxAge: int(auth.SessionTTL.Seconds()), HttpOnly: true, Secure: s.origin.Scheme == "https",
+		SameSite: http.SameSiteStrictMode,
+	})
+	reply(w, http.StatusOK, sessionReply{Authenticated: true, Username: user.Username, CSRF: sess.CSRF})
 }
 
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
@@ -80,21 +122,42 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &c) {
 		return
 	}
-	user := s.authenticate(w, r, c)
+	user, secondFactor := s.authenticate(w, r, c)
 	if user == nil {
 		return
 	}
-	token, sess, err := s.auth.NewSession(r.Context(), user)
-	if err != nil {
-		s.internal(w, r, err)
+	if secondFactor {
+		// No session yet: the password alone does not sign a 2FA account in.
+		challenge, err := s.auth.NewChallenge(r.Context(), user)
+		if err != nil {
+			s.internal(w, r, err)
+			return
+		}
+		reply(w, http.StatusOK, secondFactorReply{SecondFactor: true, Challenge: challenge})
 		return
 	}
-	http.SetCookie(w, &http.Cookie{
-		Name: s.cookieName(), Value: token, Path: "/", Expires: sess.ExpiresAt,
-		MaxAge: int(auth.SessionTTL.Seconds()), HttpOnly: true, Secure: s.origin.Scheme == "https",
-		SameSite: http.SameSiteStrictMode,
-	})
-	reply(w, http.StatusOK, sessionReply{Authenticated: true, Username: user.Username, CSRF: sess.CSRF})
+	s.startSession(w, r, user)
+}
+
+// loginTOTP completes a sign-in with the code from the authenticator app (or
+// a recovery code) and the challenge the password step returned.
+func (s *Server) loginTOTP(w http.ResponseWriter, r *http.Request) {
+	if !s.sameOrigin(r) {
+		fail(w, http.StatusForbidden, "origin", "This request did not come from the BurzBlog page.", "")
+		return
+	}
+	var body struct {
+		Challenge string `json:"challenge"`
+		Code      string `json:"code"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	user, err := s.auth.CompleteChallenge(clientContext(r), body.Challenge, body.Code)
+	if s.codeFailed(w, r, err) {
+		return
+	}
+	s.startSession(w, r, user)
 }
 
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
@@ -141,13 +204,24 @@ func (s *Server) issueCLIToken(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		credentials
 		Name string `json:"name"`
+		// Code is the two-factor code, needed only for accounts that use one.
+		Code string `json:"code"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
-	user := s.authenticate(w, r, body.credentials)
+	user, secondFactor := s.authenticate(w, r, body.credentials)
 	if user == nil {
 		return
+	}
+	if secondFactor {
+		if body.Code == "" {
+			fail(w, http.StatusUnauthorized, "second_factor_required", "This account uses two-factor sign-in. Enter the code from your authenticator app, or a recovery code.", "")
+			return
+		}
+		if s.codeFailed(w, r, s.auth.VerifySecondFactor(clientContext(r), user, body.Code)) {
+			return
+		}
 	}
 	if body.Name == "" {
 		body.Name = "CLI"

@@ -8,6 +8,16 @@ All notable changes are recorded here, following
 
 ### Added
 
+- Two-factor sign-in (TOTP, RFC 6238) for panel accounts, off by default. Turn
+  it on in Settings (password, then a code from an authenticator app; setup shows
+  the key and an `otpauth://` link, no QR code yet) to get ten one-time recovery
+  codes. Sign-in then asks for a code after the password
+  (`POST /api/login/totp`), codes share the per-username failure limit, a used
+  code cannot be replayed, and turning it off needs the password and a code.
+  `burzblog login` asks for the code (`--code`, `BURZBLOG_TOTP`), existing
+  tokens keep working, and `burzblog user 2fa-reset <name>` recovers a locked-out
+  account. A migration adds the `user_totp`, `recovery_codes` and
+  `login_challenges` tables.
 - Posts have blog metadata: `tags` (one list for topics and categories, at most
   20 lowercase hyphenated tags), an `author` (new posts start with the creating
   account), and SEO fields `seoTitle`, `seoDescription` and `canonicalUrl`.

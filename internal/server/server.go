@@ -105,6 +105,7 @@ func (s *Server) routes() {
 
 	m.HandleFunc("GET /api/session", s.withIdentity(s.session))
 	m.HandleFunc("POST /api/login", s.login)
+	m.HandleFunc("POST /api/login/totp", s.loginTOTP)
 	m.HandleFunc("POST /api/logout", s.logout)
 	m.HandleFunc("POST /api/auth/token", s.issueCLIToken)
 
@@ -112,6 +113,10 @@ func (s *Server) routes() {
 	m.HandleFunc("POST /api/tokens", s.write(s.createToken))
 	m.HandleFunc("DELETE /api/tokens/{id}", s.write(s.deleteToken))
 	m.HandleFunc("POST /api/account/password", s.write(s.changePassword))
+	m.HandleFunc("GET /api/account/2fa", s.write(s.twoFactorStatus))
+	m.HandleFunc("POST /api/account/2fa/start", s.write(s.twoFactorStart))
+	m.HandleFunc("POST /api/account/2fa/confirm", s.write(s.twoFactorConfirm))
+	m.HandleFunc("POST /api/account/2fa/disable", s.write(s.twoFactorDisable))
 	m.HandleFunc("GET /api/settings", s.write(s.settings))
 	m.HandleFunc("POST /api/deploy", s.write(s.triggerDeploy))
 
