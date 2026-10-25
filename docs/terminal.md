@@ -24,6 +24,7 @@ tells you the address to use, for example `burzblog login https://blog.example.c
 burzblog list                          # newest first; --status draft|published|archived, --search text,
                                        # --sort updated|published|title|created
 burzblog new "Understanding Go interfaces"   # creates a draft and opens it in your editor
+                                       # (only in a terminal; --no-edit skips it)
 burzblog edit understanding-go-interfaces
 burzblog publish understanding-go-interfaces
 burzblog unpublish | archive | restore <slug>
@@ -67,6 +68,7 @@ burzblog pull my-post                  # writes ./my-post.md
 burzblog pull my-post -o -             # prints it
 burzblog push my-post.md               # saves it back
 burzblog push new-idea.md              # creates "new-idea" if it does not exist
+burzblog push - --slug my-post --base-version 3   # reads the file from standard input
 ```
 
 The file name is the slug, so name new files `<slug>.md` with lowercase letters,
@@ -116,3 +118,142 @@ BURZBLOG_SERVER=https://blog.example.com BURZBLOG_TOKEN=bzb_... burzblog export 
 ```
 
 Build tokens can only download published posts. See [publishing](publishing.md).
+
+## Scripts and AI agents
+
+Every command works without a person: nothing prompts or opens an editor unless
+standard input is a terminal. Results can be printed as JSON, failures have
+their own exit codes, and a save always names the version it started from, so a
+script cannot silently overwrite someone else's work.
+
+### Sign in without a terminal
+
+Write tokens come from `burzblog login`; the panel's **Settings** page only
+creates build (export) tokens. Sign in once on a computer you control, ideally
+with an account used only by the agent, then hand the stored token to the
+script. It appears under **Settings → Connected computers**, where it can be
+revoked on its own:
+
+```sh
+burzblog login https://blog.example.com -u agent      # once, asks for the password
+python3 -c 'import json,os; print(json.load(open(os.path.expanduser("~/.config/burzblog/config.json")))["token"])'
+
+export BURZBLOG_SERVER=https://blog.example.com
+export BURZBLOG_TOKEN=bzb_...        # a write token; build tokens only work for `export`
+burzblog whoami --json
+```
+
+The environment wins over the stored login. `burzblog login` itself can also
+run unattended: `echo "$PASSWORD" | burzblog login https://blog.example.com -u jarmos --password-stdin`.
+
+### JSON output
+
+`--json` is a global flag, so it works the same on every command and always
+means one JSON document on standard output (one line). It is supported by
+`list`, `whoami`, `new`, `pull`, `push`, `publish`, `unpublish`, `archive`,
+`restore` and `backup`. Other commands ignore it and print their usual text,
+but their failures are still JSON. `new` never opens an editor with `--json`.
+
+| Command | Output |
+|---|---|
+| `list` | `{"items":[{"slug","title","description","status","words","publishedOn","updatedAt","updatedBy","version"}],"counts":{"draft","published","archived"}}`; `items` is `[]` when nothing matches |
+| `whoami` | `{"username","server"}` |
+| `new`, `publish`, `unpublish`, `archive`, `restore` | the post: `{"slug","title","description","status","publishedOn","updatedAt","updatedBy","version"}` |
+| `push` | the same, plus `"created"` (`true` if the post did not exist) |
+| `pull` | `{"slug","version","path"}`; with `-o -` it is `{"slug","version","markdown"}` instead of the raw file |
+| `backup` | `{"dir","posts"}` |
+
+The field names are the HTTP API's (see [api.md](api.md#posts)); bodies are
+never included. `publishedOn` is `null` until a post is published.
+
+```sh
+$ burzblog list --status draft --json
+{"items":[{"slug":"release-notes","title":"Release notes","description":"","status":"draft","words":212,"publishedOn":null,"updatedAt":"2026-10-25T09:12:00Z","updatedBy":"agent","version":3}],"counts":{"archived":0,"draft":1,"published":4}}
+
+$ burzblog new "Release notes" --body-file notes.md --json
+{"slug":"release-notes","title":"Release notes","description":"","status":"draft","publishedOn":null,"updatedAt":"2026-10-25T09:12:00Z","updatedBy":"agent","version":2}
+```
+
+With `--json`, errors go to standard error as one line, with a non-zero exit
+code, and standard output stays empty:
+
+```json
+{"error":{"code":"conflict","message":"release-notes changed on the server since you pulled it, so nothing was overwritten.","detail":"Compare with `burzblog pull release-notes -o -`, then push again with --force to replace it"}}
+```
+
+`code` is stable and meant for programs (`usage`, `conflict`, `not_found`,
+`authentication`, `validation`, `error`, or one of the [API's error
+codes](api.md#errors) such as `slug_taken`); `message` and `detail` are for
+people and may change.
+
+### Writing without an editor
+
+```sh
+burzblog new "Release notes" --no-edit                  # creates the draft, prints "Created draft release-notes."
+burzblog new "Release notes" --body-file notes.md       # the body (Markdown, no frontmatter) from a file
+generate-notes | burzblog new "Release notes" --body-file - --json
+burzblog pull my-post -o - | burzblog push - --slug my-post --base-version 3
+```
+
+`new` opens an editor only when standard input is a terminal and neither
+`--no-edit`, `--body-file` nor `--json` is given. `edit` needs a terminal or
+`$VISUAL`/`$EDITOR`; scripts should use `pull` and `push`. `login` and
+`user add` read their password from standard input when it is not a terminal,
+and `edit`'s questions answer themselves with their default.
+
+`push -` needs `--slug` and, for a post that already exists, `--base-version`
+(the version you started from; `list --json` and `pull --json` show it). Without
+it `push -` refuses to touch an existing post, because nothing records where
+the text came from. `push <file>` remembers the version from `pull`.
+
+### A safe edit loop for an agent
+
+```sh
+set -eu
+slug=release-notes
+
+# 1. pull; the version the text started from is remembered for this file
+mkdir -p work
+burzblog pull "$slug" -o "work/$slug.md" --force --json
+
+# 2. modify work/$slug.md with any tool
+
+# 3. push it back. The server compares against the pulled version.
+status=0
+burzblog push "work/$slug.md" --json || status=$?
+case $status in
+  0) ;;
+  3) echo "someone saved first: pull again, redo the change, retry" ;;  # never add --force
+  6) echo "the file is invalid: fix it, retry" ;;
+  *) echo "failed with exit code $status" ;;
+esac
+```
+
+Rules that keep this safe:
+
+- Always push the file you pulled, or pass `--base-version`. A conflict (exit
+  3) means nothing was written. Pull again, redo the change on the new text and
+  push again. Do not use `--force` in automation; it replaces the other version.
+- Prefer `--json` and branch on the exit code, not on message text.
+- Create drafts, not published posts: `status: published` in a file publishes
+  on save. Publishing is `burzblog publish <slug>`, a separate step.
+
+Mistakes are recoverable: every save keeps the previous content as a revision,
+including a `--force` push, and the panel's **History** restores any of them.
+Nothing here deletes a post (`delete` is panel-only and only for archived posts).
+
+### Exit codes
+
+| Code | Meaning | JSON `error.code` |
+|---|---|---|
+| `0` | success | |
+| `1` | any other failure: network, server error, unreadable file, ... | `error`, or the API's code |
+| `2` | wrong flags or arguments, or a file or `--slug` that is not a valid slug | `usage` |
+| `3` | version conflict (the post changed since its base version) or the slug is already taken | `conflict`, `slug_taken` |
+| `4` | the post does not exist | `not_found` |
+| `5` | not signed in, or the token or password is not accepted | `authentication`, `credentials` |
+| `6` | the server rejected the content (empty title, broken YAML, ...) | `validation` |
+
+Scripts that only test for zero versus non-zero keep working. Failures that
+used to exit `1` and now exit `2` to `6` are conflicts, missing posts, sign-in
+problems, invalid content and wrong usage.

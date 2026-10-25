@@ -21,6 +21,12 @@ All notable changes are recorded here, following
 
 ### Added
 
+- Terminal automation: a global `--json` flag (`list`, `whoami`, `new`, `pull`,
+  `push`, `publish`, `unpublish`, `archive`, `restore`, `backup`) with JSON
+  errors on stderr, documented exit codes (2 usage, 3 conflict, 4 not found,
+  5 not signed in, 6 invalid content), `new --body-file`, `push -` with
+  `--slug` and `--base-version`, and a "Scripts and AI agents" guide. `new` no
+  longer opens an editor when standard input is not a terminal.
 - Full backup: `GET /api/backup.tar.gz`, **Settings → Backup** in the panel and
   `burzblog backup [dir]` download every post, drafts and archived included, as
   `<status>/<slug>.md` files with a `README.txt`. Needs a session or write
