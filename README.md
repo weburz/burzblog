@@ -11,6 +11,11 @@ BurzBlog is one Go binary. It runs the server, serves the browser panel, and is
 also the command-line client. It is small enough for a Raspberry Pi under
 systemd.
 
+Website: [burzblog.weburz.com](https://burzblog.weburz.com/). Downloads:
+[latest release](https://github.com/weburz/burzblog/releases/latest).
+
+![The BurzBlog editor: Markdown on the left, a live preview of the published post on the right](docs/images/editor-light.png)
+
 ```text
  browser panel ─┐                         ┌─> your site's build downloads
                 ├─> burzblog serve ── SQLite        published posts as .md files
@@ -39,14 +44,19 @@ Not included yet: image and video uploads (use hosted image URLs), roles and
 permissions (every account can do everything), and serving the public blog
 itself.
 
+![The post list in the dark theme, with drafts, a scheduled post and published posts](docs/images/posts-dark.png)
+
 ## Install
 
-Download the binary for your computer from the
-[latest release](https://github.com/weburz/burzblog/releases/latest). Assets are
-named `burzblog-vX.Y.Z-<os>-<arch>`, and a `SHA256SUMS` file is published
-alongside them for verification. See
-[Writing from the terminal](docs/terminal.md#install) for the full list and
-setup steps.
+```sh
+curl -fsSL https://burzblog.weburz.com/install.sh | sh
+```
+
+The script picks the right binary for your computer from the
+[latest release](https://github.com/weburz/burzblog/releases/latest) and checks
+it against the release's `SHA256SUMS-vX.Y.Z` file before installing. To install
+by hand, download `burzblog-vX.Y.Z-<os>-<arch>` from the release page; see
+[Writing from the terminal](docs/terminal.md#install) for every platform.
 
 ## Quick start
 
@@ -54,7 +64,7 @@ To build from source:
 
 ```sh
 task build                                   # bin/burzblog with the panel inside
-bin/burzblog user add ada                 # create an account (asks for a password)
+bin/burzblog user add ada                    # create an account (asks for a password)
 bin/burzblog serve                           # http://127.0.0.1:8080
 ```
 

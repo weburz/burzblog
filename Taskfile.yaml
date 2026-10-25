@@ -69,6 +69,9 @@ tasks:
       - task: go:check
       - task: web:check
       - task: hooks:check
+  site:serve:
+    desc: Preview the project website (site/) on http://127.0.0.1:8090
+    cmd: python3 -m http.server --bind 127.0.0.1 --directory site 8090
   vuln:
     desc: Scan Go dependencies for known vulnerabilities
     cmd: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...

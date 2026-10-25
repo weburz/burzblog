@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BurzBlog: write blog posts in the browser or your own editor</title>
+    <meta
+      name="description"
+      content="A small, self-hosted place to write blog posts. One Go binary runs the server, the browser panel and the terminal client. Posts are Markdown in one SQLite file."
+    />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#fafaf8" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#12171d" media="(prefers-color-scheme: dark)" />
+    <link rel="canonical" href="https://burzblog.weburz.com/" />
+    <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://burzblog.weburz.com/" />
+    <meta property="og:title" content="BurzBlog" />
+    <meta
+      property="og:description"
+      content="Write blog posts in the browser or in your own editor. One Go binary, Markdown in SQLite, your static site builds from it."
+    />
+    <meta property="og:image" content="https://burzblog.weburz.com/assets/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Sofia+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap"
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="top">
+      <div class="wrap top-inner">
+        <a class="brand" href="./" aria-label="BurzBlog home"><span class="mark" aria-hidden="true"></span>BurzBlog</a>
+        <nav aria-label="Main">
+          <a href="#how-it-works">How it works</a>
+          <a href="https://github.com/weburz/burzblog/tree/main/docs">Docs</a>
+          <a href="https://github.com/weburz/burzblog">GitHub</a>
+          <a class="nav-cta" href="#install">Download</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="hero wrap" aria-labelledby="hero-title">
+        <div class="hero-head">
+          <h1 id="hero-title">Write posts in the browser, or in your own editor<span class="caret" aria-hidden="true"></span></h1>
+          <div>
+            <p class="lede">
+              BurzBlog is a small, self-hosted place to write a blog. One Go binary runs the server, the browser panel
+              and the terminal client. Posts are Markdown in one SQLite file, and your website picks up the published
+              ones when it builds.
+            </p>
+            <div class="actions">
+              <a class="button primary" href="#install">Download BurzBlog 2.0</a>
+              <a class="button" href="https://github.com/weburz/burzblog/tree/main/docs">Read the guides</a>
+            </div>
+            <p class="fine">Open source under Apache-2.0. Builds for Linux, Raspberry Pi, macOS and Windows.</p>
+          </div>
+        </div>
+
+        <figure class="stage">
+          <picture>
+            <source srcset="assets/phone-dark.webp" media="(max-width: 560px) and (prefers-color-scheme: dark)" width="780" height="1320" />
+            <source srcset="assets/phone-light.webp" media="(max-width: 560px)" width="780" height="1320" />
+            <source srcset="assets/editor-dark.webp" media="(prefers-color-scheme: dark)" />
+            <img
+              class="shot"
+              src="assets/editor-light.webp"
+              width="1920"
+              height="1200"
+              alt="The BurzBlog editor: Markdown on the left and a live preview of the published post on the right."
+            />
+          </picture>
+          <div class="term stage-term" role="img" aria-label="A terminal saving the same post with burzblog edit, then opening it in the browser panel.">
+            <div class="term-bar" aria-hidden="true"><i></i><i></i><i></i></div>
+            <pre><span class="p">$</span> EDITOR="code --wait" burzblog edit running-sqlite-on-a-pi
+<span class="ok">✓</span> Saved <b>running-sqlite-on-a-pi</b> (version 6, published).
+<span class="p">$</span> burzblog open running-sqlite-on-a-pi
+<span class="c"># opens the same post in the browser panel</span></pre>
+          </div>
+          <figcaption>The same post, opened in the browser panel and from the terminal.</figcaption>
+        </figure>
+      </section>
+
+      <section class="band wrap" aria-labelledby="two-ways">
+        <h2 id="two-ways">Two ways to write, one post</h2>
+        <p class="section-lede">
+          Some people like a form with a preview. Some never leave their editor. BurzBlog gives both the same post, with
+          the same versions, so a team can mix them.
+        </p>
+        <div class="split">
+          <div>
+            <h3>In the browser</h3>
+            <ul class="facts">
+              <li>A split editor: Markdown on one side, the post as readers will see it on the other.</li>
+              <li>History of every save, with what changed and a one-click restore.</li>
+              <li>Schedule a draft and it publishes itself at that time.</li>
+              <li>Search, filters, keyboard shortcuts and a <kbd>Ctrl</kbd> <kbd>K</kbd> command palette.</li>
+              <li>Light and dark themes, and a layout that works on a phone.</li>
+            </ul>
+            <figure class="phone">
+              <picture>
+                <source srcset="assets/phone-dark.webp" media="(prefers-color-scheme: dark)" />
+                <img
+                  class="shot"
+                  src="assets/phone-light.webp"
+                  width="780"
+                  height="1320"
+                  loading="lazy"
+                  alt="The post list on a phone, with drafts, a scheduled post and published posts."
+                />
+              </picture>
+              <figcaption>The post list on a phone.</figcaption>
+            </figure>
+          </div>
+          <div>
+            <h3>From the terminal</h3>
+            <p>
+              <code>burzblog edit</code> opens a post in <code>$EDITOR</code> as a normal Markdown file with
+              frontmatter and saves it back when you close it. Vim, Emacs, VS Code, anything with a wait flag.
+            </p>
+            <div class="term">
+              <pre><span class="p">$</span> burzblog login https://blog.example.com
+<span class="p">$</span> burzblog new "Terminal notes"
+<span class="p">$</span> burzblog list --status draft
+<span class="p">$</span> burzblog pull terminal-notes
+<span class="c"># edit terminal-notes.md with any tool</span>
+<span class="p">$</span> burzblog push terminal-notes.md
+<span class="p">$</span> burzblog schedule terminal-notes "2026-11-02 09:00"</pre>
+            </div>
+            <p>
+              Signing in creates a token for that computer, listed in the panel's settings where you can revoke it.
+              Plain <code>http://</code> is refused except on localhost.
+            </p>
+            <p><a href="https://github.com/weburz/burzblog/blob/main/docs/terminal.md">Every terminal command</a></p>
+          </div>
+        </div>
+      </section>
+
+      <section class="band wrap narrow" aria-labelledby="no-overwrites">
+        <h2 id="no-overwrites">Nothing is overwritten without asking</h2>
+        <p class="section-lede">
+          Every post has a version, and every save says which version it started from. If someone else saved in the
+          meantime, the save is refused and you choose what to keep.
+        </p>
+        <div class="term">
+          <pre><span class="p">$</span> burzblog push running-sqlite-on-a-pi.md
+<span class="err">error:</span> running-sqlite-on-a-pi changed on the server since you pulled it, so nothing was overwritten.
+       Compare with `burzblog pull running-sqlite-on-a-pi -o -`, then push again with --force to replace it</pre>
+        </div>
+        <p>
+          The browser panel says who saved first, shows the differences line by line and lets you keep yours or theirs. Unsaved browser work is kept in the browser until you save
+          it, and replaced versions stay in the history, so any of them can be restored.
+        </p>
+      </section>
+
+      <section class="band wrap" id="how-it-works" aria-labelledby="flow">
+        <h2 id="flow">How a post reaches your website</h2>
+        <p class="section-lede">
+          BurzBlog does not serve your blog. Your static site keeps doing that, and downloads posts while it builds.
+        </p>
+        <ol class="steps">
+          <li>
+            <h3>Write and publish</h3>
+            <p>In the panel or the terminal. Drafts and archived posts never leave the server.</p>
+          </li>
+          <li>
+            <h3>Your build downloads the posts</h3>
+            <p>
+              With a read-only build token, as one <code>&lt;slug&gt;.md</code> per published post, in the frontmatter
+              shape Nuxt Content and other static site generators read.
+            </p>
+          </li>
+          <li>
+            <h3>The site rebuilds itself</h3>
+            <p>
+              Give BurzBlog a deploy hook, for example from Vercel, and it asks for a rebuild a few seconds after you
+              publish. Several saves in a row cause one rebuild.
+            </p>
+          </li>
+        </ol>
+        <div class="term">
+          <pre><span class="c"># in your site's build</span>
+<span class="p">$</span> curl -fsSL -H "Authorization: Bearer $BURZBLOG_TOKEN" \
+    https://blog.example.com/api/export.tar.gz | tar -xz -C content/blog</pre>
+        </div>
+        <p><a href="https://github.com/weburz/burzblog/blob/main/docs/publishing.md">Connecting your website</a></p>
+      </section>
+
+      <section class="band wrap" aria-labelledby="agents">
+        <div class="split">
+          <div>
+            <h2 id="agents">Scripts and AI agents can drive it too</h2>
+            <p class="section-lede">
+              Add <code>--json</code> to any command for one JSON document on standard output and JSON errors on
+              standard error. Nothing prompts or opens an editor without a terminal.
+            </p>
+            <table class="codes">
+              <caption>Exit codes</caption>
+              <tbody>
+                <tr><th scope="row">0</th><td>Done</td></tr>
+                <tr><th scope="row">2</th><td>Wrong usage</td></tr>
+                <tr><th scope="row">3</th><td>Someone else saved first</td></tr>
+                <tr><th scope="row">4</th><td>No such post</td></tr>
+                <tr><th scope="row">5</th><td>Not signed in</td></tr>
+                <tr><th scope="row">6</th><td>The content is invalid</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div>
+            <div class="term">
+              <pre><span class="p">$</span> export BURZBLOG_SERVER=https://blog.example.com
+<span class="p">$</span> export BURZBLOG_TOKEN=bzb_...
+<span class="p">$</span> generate-notes | burzblog new "Release notes" \
+    --body-file - --json
+{"slug":"release-notes","status":"draft","version":2,...}
+<span class="p">$</span> burzblog publish release-notes --json \
+    || echo "failed with exit code $?"</pre>
+            </div>
+            <p>
+              The same version check applies, so an agent cannot quietly overwrite a person's edits.
+              <a href="https://github.com/weburz/burzblog/blob/main/docs/terminal.md#scripts-and-ai-agents">A safe edit loop for agents</a>
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="band wrap" aria-labelledby="small">
+        <div class="split">
+          <div>
+            <h2 id="small">Small enough for a Raspberry Pi</h2>
+            <p class="section-lede">
+              One binary with the panel inside and one database file. Run it under systemd behind Caddy or nginx, on a
+              Pi or any Linux host. A container image is optional.
+            </p>
+            <ul class="facts">
+              <li><code>burzblog backup</code> downloads every post as Markdown files, drafts included.</li>
+              <li>Passwords are hashed with Argon2id; browser changes need the right origin and a CSRF token.</li>
+              <li>Upgrading is replacing one file and restarting the service.</li>
+            </ul>
+            <p><a href="https://github.com/weburz/burzblog/blob/main/docs/self-hosting.md">Running BurzBlog</a></p>
+          </div>
+          <div class="term">
+            <pre><span class="p">$</span> sudo systemctl enable --now burzblog
+<span class="p">$</span> sudo -u burzblog burzblog user add maya \
+    --data /var/lib/burzblog
+Password:
+<span class="p">$</span> curl -s localhost:8080/healthz
+{"status":"ok","version":"v2.0.0"}</pre>
+          </div>
+        </div>
+      </section>
+
+      <section class="band wrap narrow" aria-labelledby="not-yet">
+        <h2 id="not-yet">Not included yet</h2>
+        <p class="section-lede">BurzBlog is deliberately small. Today it does not have:</p>
+        <ul class="facts">
+          <li><strong>Image and video uploads.</strong> Use hosted image URLs; the editor inserts them for you.</li>
+          <li><strong>Roles and permissions.</strong> Every account can do everything, so give accounts to people you trust.</li>
+          <li><strong>A public blog theme.</strong> Your own site renders the posts.</li>
+        </ul>
+      </section>
+
+      <section class="band wrap" id="install" aria-labelledby="install-title">
+        <h2 id="install-title">Install</h2>
+        <p class="section-lede">
+          One file, nothing else to install. The same binary is the server and the terminal client.
+        </p>
+        <div class="split install">
+          <div>
+            <table class="downloads">
+              <caption>BurzBlog 2.0.0 downloads</caption>
+              <thead>
+                <tr><th scope="col">Computer</th><th scope="col">File</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Linux (Intel/AMD)</td><td><a href="https://github.com/weburz/burzblog/releases/download/v2.0.0/burzblog-v2.0.0-linux-amd64">linux-amd64</a></td></tr>
+                <tr><td>Raspberry Pi 4/5, Linux ARM 64-bit</td><td><a href="https://github.com/weburz/burzblog/releases/download/v2.0.0/burzblog-v2.0.0-linux-arm64">linux-arm64</a></td></tr>
+                <tr><td>Raspberry Pi, 32-bit OS</td><td><a href="https://github.com/weburz/burzblog/releases/download/v2.0.0/burzblog-v2.0.0-linux-arm">linux-arm</a></td></tr>
+                <tr><td>macOS, Apple silicon</td><td><a href="https://github.com/weburz/burzblog/releases/download/v2.0.0/burzblog-v2.0.0-darwin-arm64">darwin-arm64</a></td></tr>
+                <tr><td>macOS, Intel</td><td><a href="https://github.com/weburz/burzblog/releases/download/v2.0.0/burzblog-v2.0.0-darwin-amd64">darwin-amd64</a></td></tr>
+                <tr><td>Windows</td><td><a href="https://github.com/weburz/burzblog/releases/download/v2.0.0/burzblog-v2.0.0-windows-amd64.exe">windows-amd64.exe</a></td></tr>
+              </tbody>
+            </table>
+            <p class="fine">
+              Check a download against
+              <a href="https://github.com/weburz/burzblog/releases/download/v2.0.0/SHA256SUMS-v2.0.0">SHA256SUMS-v2.0.0</a>.
+              Older and newer versions are on the <a href="https://github.com/weburz/burzblog/releases">releases page</a>.
+            </p>
+          </div>
+          <div>
+            <div class="term">
+              <pre><span class="c"># Linux and macOS: download, verify and install</span>
+<span class="p">$</span> curl -fsSL https://burzblog.weburz.com/install.sh | sh
+
+<span class="c"># on the server</span>
+<span class="p">$</span> burzblog user add maya
+<span class="p">$</span> burzblog serve --origin https://blog.example.com
+
+<span class="c"># on your computer</span>
+<span class="p">$</span> burzblog login https://blog.example.com</pre>
+            </div>
+            <p class="fine">
+              The <a href="install.sh">install script</a> checks the download against the release checksums and
+              never calls <code>sudo</code> for you. Prefer doing it by hand? Pick a file from the table, then
+              <code>chmod +x</code> it and move it onto your <code>PATH</code>. With Go 1.27 you can build from source with <code>task build</code>.
+            </p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <div class="wrap foot-inner">
+        <p><span class="mark" aria-hidden="true"></span>BurzBlog is made by <a href="https://weburz.com">Weburz</a> and released under the Apache-2.0 license.</p>
+        <nav aria-label="Footer">
+          <a href="https://github.com/weburz/burzblog">Source</a>
+          <a href="https://github.com/weburz/burzblog/blob/main/CHANGELOG.md">Changelog</a>
+          <a href="https://github.com/weburz/burzblog/blob/main/docs/security.md">Security</a>
+          <a href="https://github.com/weburz/burzblog/issues">Issues</a>
+        </nav>
+      </div>
+    </footer>
+  </body>
+</html>
