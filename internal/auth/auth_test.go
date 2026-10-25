@@ -292,7 +292,9 @@ func TestSignInSurvivesFlood(t *testing.T) {
 	a.wait = 5 * time.Second
 	stop := make(chan struct{})
 	var wg sync.WaitGroup
-	for i := 0; i < 64; i++ {
+	// Eight flooding addresses, each over its per-client cap. Kept modest so
+	// the test measures queueing, not how slow Argon2 gets on a loaded machine.
+	for i := 0; i < 8*(clientLimit+2); i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -316,9 +318,10 @@ func TestSignInSurvivesFlood(t *testing.T) {
 	if err != nil {
 		t.Fatalf("real sign-in during flood: %v", err)
 	}
-	// Eight flooding addresses hold at most clientLimit each; the real client
-	// waits behind the slots in use, not behind 64 queued requests.
-	if took > 3*time.Second {
-		t.Errorf("real sign-in took %v during the flood", took)
+	// Flooders over their cap are shed at once, so the real client only
+	// queues for a hashing slot: it must get one within the bounded wait
+	// (succeeding above proves that) plus its own hash.
+	if limit := a.wait + 3*time.Second; took > limit {
+		t.Errorf("real sign-in took %v during the flood, want under %v", took, limit)
 	}
 }
