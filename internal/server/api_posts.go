@@ -19,30 +19,44 @@ import (
 )
 
 type postReply struct {
-	Slug        string      `json:"slug"`
-	Title       string      `json:"title"`
-	Description string      `json:"description"`
-	Status      post.Status `json:"status"`
-	Body        string      `json:"body"`
-	CoverURL    string      `json:"coverUrl"`
-	CoverAlt    string      `json:"coverAlt"`
-	Extra       string      `json:"extra"`
-	PublishedOn *time.Time  `json:"publishedOn"`
-	UpdatedOn   *time.Time  `json:"updatedOn"`
-	PublishAt   *time.Time  `json:"publishAt"`
-	CreatedAt   time.Time   `json:"createdAt"`
-	UpdatedAt   time.Time   `json:"updatedAt"`
-	UpdatedBy   string      `json:"updatedBy"`
-	Version     int64       `json:"version"`
+	Slug           string      `json:"slug"`
+	Title          string      `json:"title"`
+	Description    string      `json:"description"`
+	Status         post.Status `json:"status"`
+	Body           string      `json:"body"`
+	CoverURL       string      `json:"coverUrl"`
+	CoverAlt       string      `json:"coverAlt"`
+	Extra          string      `json:"extra"`
+	Tags           []string    `json:"tags"`
+	Author         string      `json:"author"`
+	SEOTitle       string      `json:"seoTitle"`
+	SEODescription string      `json:"seoDescription"`
+	CanonicalURL   string      `json:"canonicalUrl"`
+	PublishedOn    *time.Time  `json:"publishedOn"`
+	UpdatedOn      *time.Time  `json:"updatedOn"`
+	PublishAt      *time.Time  `json:"publishAt"`
+	CreatedAt      time.Time   `json:"createdAt"`
+	UpdatedAt      time.Time   `json:"updatedAt"`
+	UpdatedBy      string      `json:"updatedBy"`
+	Version        int64       `json:"version"`
 }
 
 func postJSON(p *post.Post) postReply {
 	return postReply{
 		Slug: p.Slug, Title: p.Title, Description: p.Description, Status: p.Status, Body: p.Body,
-		CoverURL: p.CoverURL, CoverAlt: p.CoverAlt, Extra: p.Extra, PublishedOn: p.PublishedOn,
+		CoverURL: p.CoverURL, CoverAlt: p.CoverAlt, Extra: p.Extra, Tags: tagsJSON(p.Tags), Author: p.Author,
+		SEOTitle: p.SEOTitle, SEODescription: p.SEODescription, CanonicalURL: p.CanonicalURL, PublishedOn: p.PublishedOn,
 		UpdatedOn: p.UpdatedOn, PublishAt: p.PublishAt, CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt, UpdatedBy: p.UpdatedBy,
 		Version: p.Version,
 	}
+}
+
+// tagsJSON makes sure a post without tags is [] and not null in JSON.
+func tagsJSON(tags []string) []string {
+	if tags == nil {
+		return []string{}
+	}
+	return tags
 }
 
 type summaryReply struct {
@@ -51,6 +65,8 @@ type summaryReply struct {
 	Description string      `json:"description"`
 	Status      post.Status `json:"status"`
 	Words       int         `json:"words"`
+	Tags        []string    `json:"tags"`
+	Author      string      `json:"author"`
 	PublishedOn *time.Time  `json:"publishedOn"`
 	PublishAt   *time.Time  `json:"publishAt"`
 	UpdatedAt   time.Time   `json:"updatedAt"`
@@ -124,7 +140,7 @@ func (s *Server) listPosts(w http.ResponseWriter, r *http.Request) {
 		*dst = n
 	}
 	list, counts, err := s.store.ListPosts(r.Context(), store.Filter{Status: status, Scheduled: scheduled,
-		Query: r.URL.Query().Get("q"), Sort: sort, Limit: limit, Offset: offset})
+		Query: r.URL.Query().Get("q"), Tag: r.URL.Query().Get("tag"), Sort: sort, Limit: limit, Offset: offset})
 	if err != nil {
 		s.internal(w, r, err)
 		return
@@ -133,7 +149,7 @@ func (s *Server) listPosts(w http.ResponseWriter, r *http.Request) {
 	for _, p := range list {
 		items = append(items, summaryReply{
 			Slug: p.Slug, Title: p.Title, Description: p.Description, Status: p.Status, Words: p.Words,
-			PublishedOn: p.PublishedOn, PublishAt: p.PublishAt, UpdatedAt: p.UpdatedAt, UpdatedBy: p.UpdatedBy,
+			Tags: tagsJSON(p.Tags), Author: p.Author, PublishedOn: p.PublishedOn, PublishAt: p.PublishAt, UpdatedAt: p.UpdatedAt, UpdatedBy: p.UpdatedBy,
 			Version: p.Version,
 		})
 	}
@@ -145,17 +161,36 @@ func (s *Server) listPosts(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// listTags lists the tags in use and how many posts carry each.
+func (s *Server) listTags(w http.ResponseWriter, r *http.Request) {
+	tags, err := s.store.Tags(r.Context())
+	if err != nil {
+		s.internal(w, r, err)
+		return
+	}
+	items := make([]map[string]any, 0, len(tags))
+	for _, t := range tags {
+		items = append(items, map[string]any{"tag": t.Tag, "count": t.Count})
+	}
+	reply(w, http.StatusOK, map[string]any{"items": items})
+}
+
 type postInput struct {
-	Version     int64      `json:"version"`
-	Slug        string     `json:"slug"`
-	Title       string     `json:"title"`
-	Description string     `json:"description"`
-	Body        string     `json:"body"`
-	CoverURL    string     `json:"coverUrl"`
-	CoverAlt    string     `json:"coverAlt"`
-	Extra       string     `json:"extra"`
-	PublishedOn *time.Time `json:"publishedOn"`
-	UpdatedOn   *time.Time `json:"updatedOn"`
+	Version        int64      `json:"version"`
+	Slug           string     `json:"slug"`
+	Title          string     `json:"title"`
+	Description    string     `json:"description"`
+	Body           string     `json:"body"`
+	CoverURL       string     `json:"coverUrl"`
+	CoverAlt       string     `json:"coverAlt"`
+	Extra          string     `json:"extra"`
+	Tags           []string   `json:"tags"`
+	Author         string     `json:"author"`
+	SEOTitle       string     `json:"seoTitle"`
+	SEODescription string     `json:"seoDescription"`
+	CanonicalURL   string     `json:"canonicalUrl"`
+	PublishedOn    *time.Time `json:"publishedOn"`
+	UpdatedOn      *time.Time `json:"updatedOn"`
 }
 
 func (in *postInput) apply(p *post.Post) {
@@ -164,6 +199,8 @@ func (in *postInput) apply(p *post.Post) {
 	}
 	p.Title, p.Description, p.Body = in.Title, in.Description, in.Body
 	p.CoverURL, p.CoverAlt, p.Extra = in.CoverURL, in.CoverAlt, in.Extra
+	p.Tags, p.Author = in.Tags, in.Author
+	p.SEOTitle, p.SEODescription, p.CanonicalURL = in.SEOTitle, in.SEODescription, in.CanonicalURL
 	p.PublishedOn, p.UpdatedOn = in.PublishedOn, in.UpdatedOn
 }
 
@@ -436,7 +473,8 @@ func stateOf(p *post.Post, words int) revisionState {
 		Slug: p.Slug, Title: p.Title, Status: p.Status, Words: words,
 		DescriptionDigest: digest(p.Description),
 		CoverDigest:       digest(p.CoverURL, p.CoverAlt),
-		SettingsDigest:    digest(p.Extra, stamp(p.PublishedOn), stamp(p.UpdatedOn)),
+		SettingsDigest: digest(p.Extra, stamp(p.PublishedOn), stamp(p.UpdatedOn), strings.Join(p.Tags, ","),
+			p.Author, p.SEOTitle, p.SEODescription, p.CanonicalURL),
 	}
 }
 
@@ -504,6 +542,8 @@ func (s *Server) restoreRevision(w http.ResponseWriter, r *http.Request) {
 		old := rev.Post
 		p.Title, p.Description, p.Body = old.Title, old.Description, old.Body
 		p.CoverURL, p.CoverAlt, p.Extra = old.CoverURL, old.CoverAlt, old.Extra
+		p.Tags, p.Author = old.Tags, old.Author
+		p.SEOTitle, p.SEODescription, p.CanonicalURL = old.SEOTitle, old.SEODescription, old.CanonicalURL
 		p.PublishedOn, p.UpdatedOn = old.PublishedOn, old.UpdatedOn
 		return nil
 	})

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
-import type { Post, PostList, PostStatus, PostSummary } from "../types";
+import type { Post, PostList, PostStatus, PostSummary, TagCount } from "../types";
 import { errorMessage, request } from "../utils/api";
 import { wordLabel } from "../utils/markdown";
 import {
@@ -42,6 +42,10 @@ const asSort = (value: unknown): Sort =>
 const status = ref<Filter>(asFilter(route.query.status));
 const sort = ref<Sort>(asSort(route.query.sort));
 const search = ref(typeof route.query.q === "string" ? route.query.q : "");
+const tag = ref(typeof route.query.tag === "string" ? route.query.tag : "");
+// "*" stands for no tag: a select cannot hold an empty value, and no tag is "*".
+const anyTag = "*";
+const tags = ref<TagCount[]>([]);
 const list = ref<PostList | null>(null);
 const loading = ref(true);
 const loadingMore = ref(false);
@@ -61,6 +65,7 @@ const load = async (more = false) => {
   if (more && list.value) query.set("offset", String(list.value.items.length));
   if (status.value) query.set("status", status.value);
   if (search.value.trim()) query.set("q", search.value.trim());
+  if (tag.value) query.set("tag", tag.value);
   if (sort.value !== "updated") query.set("sort", sort.value);
   try {
     const result = await request<PostList>(`/api/posts?${query}`);
@@ -84,6 +89,22 @@ const appendPage = (current: PostList | null, next: PostList): PostList => {
   };
 };
 
+// Tags only feed the filter, so a failure here leaves the list working.
+const loadTags = async () => {
+  try {
+    tags.value = (await request<{ items: TagCount[] }>("/api/tags")).items;
+  } catch {
+    tags.value = [];
+  }
+};
+const tagItems = computed(() => {
+  const known = tags.value.map((t) => ({ value: t.tag, label: `${t.tag} (${t.count})` }));
+  // A tag from the address that no post has still shows as the active filter.
+  if (tag.value && !tags.value.some((t) => t.tag === tag.value))
+    known.unshift({ value: tag.value, label: tag.value });
+  return [{ value: anyTag, label: "All tags" }, ...known];
+});
+
 // The command palette's "Go to" entries change the filter from outside.
 watch(
   () => route.query.status,
@@ -91,19 +112,23 @@ watch(
 );
 
 let debounce: ReturnType<typeof setTimeout> | undefined;
-watch([status, search, sort], ([s, q, o], [oldS, , oldO]) => {
+watch([status, search, sort, tag], ([s, q, o, t], [oldS, , oldO, oldT]) => {
   void router.replace({
     query: {
       ...(s ? { status: s } : {}),
       ...(q.trim() ? { q: q.trim() } : {}),
       ...(o !== "updated" ? { sort: o } : {}),
+      ...(t ? { tag: t } : {}),
     },
   });
   clearTimeout(debounce);
-  if (s !== oldS || o !== oldO) void load();
+  if (s !== oldS || o !== oldO || t !== oldT) void load();
   else debounce = setTimeout(() => void load(), 200);
 });
-onMounted(() => void load());
+onMounted(() => {
+  void load();
+  void loadTags();
+});
 
 const total = computed(() => {
   const c = list.value?.counts;
@@ -114,7 +139,9 @@ const countFor = (value: Filter) => {
   if (!c) return null;
   return value === "" ? c.draft + c.published : c[value];
 };
-const filtered = computed(() => Boolean(status.value || search.value.trim()));
+const filtered = computed(() =>
+  Boolean(status.value || search.value.trim() || tag.value),
+);
 const emptyText = computed(() => {
   const noun = {
     "": "posts",
@@ -123,9 +150,12 @@ const emptyText = computed(() => {
     published: "published posts",
     archived: "archived posts",
   }[status.value];
+  const tagged = tag.value ? ` tagged “${tag.value}”` : "";
   return search.value.trim()
-    ? `No ${noun} match “${search.value.trim()}”.`
-    : `No ${noun} yet.`;
+    ? `No ${noun}${tagged} match “${search.value.trim()}”.`
+    : tag.value
+      ? `No ${noun}${tagged}.`
+      : `No ${noun} yet.`;
 });
 // A brand-new blog has nothing to filter, so the controls would only be noise.
 const fresh = computed(() => {
@@ -137,6 +167,7 @@ const fresh = computed(() => {
 const clearFilters = () => {
   status.value = "";
   search.value = "";
+  tag.value = "";
 };
 
 // One secondary line per row: published posts show when they went out,
@@ -215,6 +246,17 @@ const origin = typeof window === "undefined" ? "" : window.location.origin;
       </div>
       <div class="list-find">
         <USelect
+          v-if="tagItems.length > 1"
+          :model-value="tag || anyTag"
+          :items="tagItems"
+          value-key="value"
+          label-key="label"
+          icon="i-lucide-tag"
+          aria-label="Filter by tag"
+          class="list-tag-select"
+          @update:model-value="(v: string) => (tag = v === anyTag ? '' : v)"
+        />
+        <USelect
           v-model="sort"
           :items="sorts"
           value-key="value"
@@ -264,6 +306,9 @@ const origin = typeof window === "undefined" ? "" : window.location.origin;
             }}</span>
             <span class="post-sub">
               <span class="mono">{{ post.slug }}</span>
+              <span v-if="post.tags.length" class="post-tags">{{
+                post.tags.map((t) => `#${t}`).join(" ")
+              }}</span>
               <span v-if="post.description" class="post-description">
                 {{ post.description }}</span
               >

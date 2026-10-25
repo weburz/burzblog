@@ -10,6 +10,13 @@ export interface Post {
   coverAlt: string;
   // Frontmatter keys BurzBlog does not model, as YAML, kept on every round trip.
   extra: string;
+  // Topics and categories in one list: lowercase words with hyphens.
+  tags: string[];
+  author: string;
+  seoTitle: string;
+  seoDescription: string;
+  // An absolute https address, or empty.
+  canonicalUrl: string;
   publishedOn: string | null;
   updatedOn: string | null;
   // When a draft publishes itself; null unless it is scheduled.
@@ -30,6 +37,11 @@ export type PostDraft = Pick<
   | "coverUrl"
   | "coverAlt"
   | "extra"
+  | "tags"
+  | "author"
+  | "seoTitle"
+  | "seoDescription"
+  | "canonicalUrl"
   | "publishedOn"
   | "updatedOn"
 >;
@@ -40,11 +52,18 @@ export interface PostSummary {
   description: string;
   status: PostStatus;
   words: number;
+  tags: string[];
+  author: string;
   publishedOn: string | null;
   publishAt: string | null;
   updatedAt: string;
   updatedBy: string;
   version: number;
+}
+
+export interface TagCount {
+  tag: string;
+  count: number;
 }
 
 // Scheduled drafts are counted in draft as well.

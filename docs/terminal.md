@@ -71,7 +71,7 @@ tells you the address to use, for example `burzblog login https://blog.example.c
 
 ```sh
 burzblog list                          # newest first; --status draft|scheduled|published|archived, --search text,
-                                       # --sort updated|published|title|created (`ls` works too)
+                                       # --sort updated|published|title|created, --tag name (`ls` works too)
 burzblog new "Understanding Go interfaces"   # creates a draft and opens it in your editor
                                        # (only in a terminal; --no-edit skips it, --slug sets the URL name)
 burzblog edit understanding-go-interfaces
@@ -102,6 +102,14 @@ The file looks like this:
 title: Understanding Go interfaces
 description: Small interfaces, accepted where they are used.
 status: draft
+tags:
+  - go
+  - api-design
+author: Ada Lovelace
+seo:
+  title: Go interfaces explained
+  description: Why small interfaces make Go code easier to change.
+canonical: https://example.com/blog/go-interfaces
 timestamps:
   publishedOn: 2026-10-24T09:30:00Z
 coverImage:
@@ -118,8 +126,16 @@ The post body in Markdown.
   `published` publishes the post when you save.
 - The slug is the post's name on the server and the file name, so BurzBlog
   does not write it into the frontmatter. A `slug` key you add must match.
-- Any other keys (`sitemap`, `seo`, ...) are kept exactly as written and passed
-  through to your website.
+- `tags` is a list of lowercase words with hyphens (`Machine Learning` is saved
+  as `machine-learning`), at most 20 tags of 40 characters each, in your order;
+  it is also where categories go. `tags: go, web` (one comma-separated line)
+  is accepted too. `author` is a display name; `burzblog new` fills it with
+  your account name. `seo.title` and `seo.description` are for search engines
+  and social cards, and `canonical` is an absolute `https://` address. All of
+  them are optional and left out of the file when empty. A file that leaves
+  out `author` clears the post's author when you push it.
+- Any other keys (`sitemap`, ...) are kept exactly as written and passed
+  through to your website, and so are other keys under `seo` (`robots`, ...).
 
 ## Your own tools: pull and push
 
@@ -221,8 +237,8 @@ burzblog import content/blog --dry-run
 The inverse of `export`: bring posts from a static site repository, for example
 a Nuxt Content `content/blog/` folder of `<slug>.md` files, into BurzBlog. The
 slug is the frontmatter `slug`, or the file name without `.md`. The title,
-description, `timestamps`, `coverImage` and any other frontmatter keys are
-kept. A file with `status: published` is imported as published; a file without
+description, `tags`, `author`, `seo`, `canonical`, `timestamps`, `coverImage`
+and any other frontmatter keys are kept. A file with `status: published` is imported as published; a file without
 a status becomes a draft. `--draft` imports everything as a draft.
 If the frontmatter `slug` differs from the file name, a warning is printed (and
 included as `"warning"` in `--json`), and with `--update` the file is refused so
@@ -305,9 +321,9 @@ failures are still JSON. `new` never opens an editor with `--json`.
 
 | Command | Output |
 |---|---|
-| `list` | `{"items":[{"slug","title","description","status","words","publishedOn","publishAt","updatedAt","updatedBy","version"}],"counts":{"draft","published","archived","scheduled"}}`; `items` is `[]` when nothing matches |
+| `list` | `{"items":[{"slug","title","description","status","words","tags","author","publishedOn","publishAt","updatedAt","updatedBy","version"}],"counts":{"draft","published","archived","scheduled"}}`; `items` is `[]` when nothing matches |
 | `whoami` | `{"username","server"}` |
-| `new`, `publish`, `unpublish`, `archive`, `restore`, `schedule`, `unschedule` | the post: `{"slug","title","description","status","publishedOn","publishAt","updatedAt","updatedBy","version"}` |
+| `new`, `publish`, `unpublish`, `archive`, `restore`, `schedule`, `unschedule` | the post: `{"slug","title","description","status","tags","author","publishedOn","publishAt","updatedAt","updatedBy","version"}` |
 | `push` | the same, plus `"created"` (`true` if the post did not exist) |
 | `pull` | `{"slug","version","path"}`; with `-o -` it is `{"slug","version","markdown"}` instead of the raw file |
 | `diff` | `{"slug","baseVersion","serverVersion","stale","identical","diff"}`; exit `1` when different |
@@ -320,10 +336,10 @@ never included. `publishedOn` is `null` until a post is published, and
 
 ```sh
 $ burzblog list --status draft --json
-{"items":[{"slug":"release-notes","title":"Release notes","description":"","status":"draft","words":212,"publishedOn":null,"publishAt":null,"updatedAt":"2026-10-25T09:12:00Z","updatedBy":"agent","version":3}],"counts":{"archived":0,"draft":1,"published":4,"scheduled":0}}
+{"items":[{"slug":"release-notes","title":"Release notes","description":"","status":"draft","words":212,"tags":["release"],"author":"agent","publishedOn":null,"publishAt":null,"updatedAt":"2026-10-25T09:12:00Z","updatedBy":"agent","version":3}],"counts":{"archived":0,"draft":1,"published":4,"scheduled":0}}
 
 $ burzblog new "Release notes" --body-file notes.md --json
-{"slug":"release-notes","title":"Release notes","description":"","status":"draft","publishedOn":null,"publishAt":null,"updatedAt":"2026-10-25T09:12:00Z","updatedBy":"agent","version":2}
+{"slug":"release-notes","title":"Release notes","description":"","status":"draft","tags":[],"author":"agent","publishedOn":null,"publishAt":null,"updatedAt":"2026-10-25T09:12:00Z","updatedBy":"agent","version":2}
 ```
 
 With `--json`, errors go to standard error as one line, with a non-zero exit

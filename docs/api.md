@@ -60,6 +60,7 @@ A post:
 {
   "slug": "hello-world", "title": "Hello, World!", "description": "", "status": "draft",
   "body": "# Hi\n", "coverUrl": "", "coverAlt": "", "extra": "sitemap:\n  priority: 1\n",
+  "tags": ["intro", "web-dev"], "author": "ada", "seoTitle": "", "seoDescription": "", "canonicalUrl": "",
   "publishedOn": null, "updatedOn": null, "publishAt": null,
   "createdAt": "...", "updatedAt": "...", "updatedBy": "ada", "version": 3
 }
@@ -69,12 +70,24 @@ A post:
 the time a draft publishes itself (UTC, RFC 3339), or `null`; see
 [scheduled publishing](#scheduled-publishing).
 
+Blog metadata, all optional:
+
+| Field | Rules |
+|---|---|
+| `tags` | topics and categories in one list. Each tag is trimmed and lowercased, runs of anything but letters and digits become one hyphen (`Machine Learning` is saved as `machine-learning`), empty and repeated tags are dropped, and the order is kept. At most 20 tags of 40 characters each, otherwise a 422 `validation` |
+| `author` | display name, one line, at most 100 characters. A new post's author is the account that created it unless the request names one |
+| `seoTitle`, `seoDescription` | one line each, at most 120 and 320 characters; empty means the site uses the title and description |
+| `canonicalUrl` | an absolute `https://` address, or empty |
+
+Single-line fields reject control characters, tabs included, like `title`.
+
 | | |
 |---|---|
-| `GET /api/posts?status=&q=&sort=&limit=&offset=` | `{items, total, counts}`; items have no body; `limit` (1 to 500) and `offset` page the result, and without `limit` every match is returned; `total` is the number of matches before paging, `counts` ignores the filter and paging; a bad `limit` or `offset` is a 422; without `status`, archived posts are left out; `status` is `draft`, `published`, `archived` or `scheduled` (drafts with a `publishAt`); `counts` has `draft`, `published`, `archived` and `scheduled`, and scheduled drafts are counted in `draft` too; `sort` is `updated` (default, newest first), `published` (newest first, unpublished last), `title` (A to Z, ignoring case) or `created` (newest first); any other value is a 422; items carry `publishAt` |
+| `GET /api/posts?status=&q=&tag=&sort=&limit=&offset=` | `{items, total, counts}`; items have no body, but carry `tags` and `author`; `tag` keeps only posts with that tag (normalized like a post's tags, so `Machine Learning` finds `machine-learning`) and combines with the other filters, sorting and paging; `limit` (1 to 500) and `offset` page the result, and without `limit` every match is returned; `total` is the number of matches before paging, `counts` ignores the filter and paging; a bad `limit` or `offset` is a 422; without `status`, archived posts are left out; `status` is `draft`, `published`, `archived` or `scheduled` (drafts with a `publishAt`); `counts` has `draft`, `published`, `archived` and `scheduled`, and scheduled drafts are counted in `draft` too; `sort` is `updated` (default, newest first), `published` (newest first, unpublished last), `title` (A to Z, ignoring case) or `created` (newest first); any other value is a 422; items carry `publishAt` |
 | `POST /api/posts` | `{title, slug?, ...}` → new draft; the slug is made from the title when omitted |
 | `GET /api/posts/{slug}` | one post |
-| `PUT /api/posts/{slug}` | `{version, slug, title, description, body, coverUrl, coverAlt, extra, publishedOn, updatedOn}`; `version` must be current, a new `slug` renames |
+| `PUT /api/posts/{slug}` | `{version, slug, title, description, body, coverUrl, coverAlt, extra, tags, author, seoTitle, seoDescription, canonicalUrl, publishedOn, updatedOn}`; `version` must be current, a new `slug` renames. Like the other fields, a missing `tags` or `author` saves as empty |
+| `GET /api/tags` | `{items: [{tag, count}]}`: every tag in use by any post, archived ones included, with its number of posts, by tag |
 | `POST /api/posts/{slug}/publish` | `{version}`; also `unpublish`, `archive`, `restore` |
 | `POST /api/posts/{slug}/schedule` | `{version, at}` → the draft with `publishAt` set; see below |
 | `POST /api/posts/{slug}/unschedule` | `{version}` → the draft without a `publishAt`; a no-op if it had none |
@@ -86,7 +99,8 @@ the time a draft publishes itself (UTC, RFC 3339), or `null`; see
 
 Each revision in the list carries `version`, `savedAt`, `savedBy` and a state:
 `slug`, `title`, `status`, `words` (the body's word count) and the digests
-`descriptionDigest`, `coverDigest` and `settingsDigest` (extra and dates).
+`descriptionDigest`, `coverDigest` and `settingsDigest` (extra, dates, tags,
+author and SEO fields).
 `current` has the same state for the post as it is now. Equal digests mean the
 field is equal, so the panel can say what a save changed by comparing a
 revision with the next one, or with `current` for the newest. Digests are
@@ -137,7 +151,9 @@ version and needs the current `version`.
 ## Markdown documents
 
 What the CLI edits: the post as frontmatter plus body (see
-[publishing](publishing.md#the-file-format) for the format).
+[publishing](publishing.md#the-file-format) for the format). `tags`, `author`,
+`seo` (`title` and `description`) and `canonical` in the frontmatter are the
+post's metadata fields above; other keys under `seo` stay in `extra`.
 
 | | |
 |---|---|

@@ -26,7 +26,7 @@ import (
 )
 
 func (a *App) listCmd() *cobra.Command {
-	var status, search, sort string
+	var status, search, sort, tag string
 	cmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
@@ -36,6 +36,7 @@ func (a *App) listCmd() *cobra.Command {
   burzblog list --status scheduled
   burzblog list --search golang
   burzblog list --sort title
+  burzblog list --tag golang
   burzblog list --status draft --json     # {"items":[{"slug","title","status","version",...}],"counts":{...}}`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -45,7 +46,7 @@ func (a *App) listCmd() *cobra.Command {
 			}
 			c, cancel := ctx()
 			defer cancel()
-			l, err := cl.Posts(c, status, search, sort)
+			l, err := cl.Posts(c, status, search, sort, tag)
 			if err != nil {
 				return err
 			}
@@ -59,7 +60,7 @@ func (a *App) listCmd() *cobra.Command {
 				return a.emit(l)
 			}
 			if len(l.Items) == 0 {
-				if search != "" || status != "" {
+				if search != "" || status != "" || tag != "" {
 					fmt.Fprintln(a.Out, "No posts match.")
 				} else {
 					fmt.Fprintln(a.Out, "No posts yet. Start one with: burzblog new \"My first post\"")
@@ -67,13 +68,14 @@ func (a *App) listCmd() *cobra.Command {
 				return nil
 			}
 			w := tabwriter.NewWriter(a.Out, 0, 0, 2, ' ', 0)
-			fmt.Fprintln(w, a.paint(dim, "STATUS\tSLUG\tTITLE\tWORDS\tCHANGED"))
+			fmt.Fprintln(w, a.paint(dim, "STATUS\tSLUG\tTITLE\tTAGS\tWORDS\tCHANGED"))
 			for _, p := range l.Items {
 				label := a.status(p.Status)
 				if p.PublishAt != nil && p.Status == "draft" {
 					label = a.paint(yellow, "scheduled "+p.PublishAt.Local().Format("2 Jan 15:04"))
 				}
-				fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\n", label, clean(p.Slug), truncate(clean(p.Title), 48), p.Words,
+				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%d\t%s\n", label, clean(p.Slug), truncate(clean(p.Title), 48),
+					truncate(clean(strings.Join(p.Tags, ",")), 30), p.Words,
 					ago(p.UpdatedAt)+" by "+clean(p.UpdatedBy))
 			}
 			w.Flush()
@@ -85,6 +87,7 @@ func (a *App) listCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&status, "status", "s", "", "only draft, published, scheduled or archived posts")
 	cmd.Flags().StringVarP(&search, "search", "q", "", "match title, slug or description")
 	cmd.Flags().StringVar(&sort, "sort", "", "order by updated (default), published, title or created")
+	cmd.Flags().StringVarP(&tag, "tag", "t", "", "only posts with this tag")
 	return cmd
 }
 
@@ -119,10 +122,17 @@ type postResult struct {
 	UpdatedAt   time.Time  `json:"updatedAt"`
 	UpdatedBy   string     `json:"updatedBy"`
 	Version     int64      `json:"version"`
+	Tags        []string   `json:"tags"`
+	Author      string     `json:"author"`
 }
 
 func summary(p *client.Post) postResult {
-	return postResult{p.Slug, p.Title, p.Description, p.Status, p.PublishedOn, p.PublishAt, p.UpdatedAt, p.UpdatedBy, p.Version}
+	tags := p.Tags
+	if tags == nil {
+		tags = []string{}
+	}
+	return postResult{p.Slug, p.Title, p.Description, p.Status, p.PublishedOn, p.PublishAt, p.UpdatedAt, p.UpdatedBy, p.Version,
+		tags, p.Author}
 }
 
 // readInput reads a file, or standard input for "-", up to the largest
@@ -182,7 +192,7 @@ or, with -, from standard input.`,
 				return err
 			}
 			if body != "" {
-				doc := post.Encode(&post.Post{Title: p.Title, Status: post.Draft, Body: body})
+				doc := post.Encode(&post.Post{Title: p.Title, Status: post.Draft, Body: body, Author: p.Author})
 				saved, err := cl.SaveMarkdown(c, p.Slug, doc, p.Version)
 				if err != nil {
 					return reword(err, fmt.Sprintf("%v\n       The draft %s was created, but the body was not saved. Save it with `burzblog push - --slug %s --base-version %d`.",

@@ -70,6 +70,8 @@ type Post struct {
 	UpdatedBy   string     `json:"updatedBy"`
 	Version     int64      `json:"version"`
 	Words       int        `json:"words"`
+	Tags        []string   `json:"tags"`
+	Author      string     `json:"author"`
 }
 
 // List is a page of posts with counts per status.
@@ -203,7 +205,7 @@ func (c *Client) Whoami(ctx context.Context) (string, error) {
 }
 
 // Posts lists posts, optionally by status and search text.
-func (c *Client) Posts(ctx context.Context, status, query, sort string) (*List, error) {
+func (c *Client) Posts(ctx context.Context, status, query, sort, tag string) (*List, error) {
 	q := url.Values{}
 	if status != "" {
 		q.Set("status", status)
@@ -213,6 +215,9 @@ func (c *Client) Posts(ctx context.Context, status, query, sort string) (*List, 
 	}
 	if sort != "" {
 		q.Set("sort", sort)
+	}
+	if tag != "" {
+		q.Set("tag", tag)
 	}
 	var l List
 	err := c.json(ctx, http.MethodGet, "/api/posts?"+q.Encode(), nil, &l)

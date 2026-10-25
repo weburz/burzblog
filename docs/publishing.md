@@ -42,6 +42,14 @@ The archive contains one `<slug>.md` per published post and nothing else.
 title: "Web Authentication Methods Explained: Pros, Cons, and Best Practices"
 description: A guide to authentication in web applications.
 status: published
+tags:
+  - authentication
+  - web-security
+author: Ada Lovelace
+seo:
+  title: Web authentication methods compared
+  description: Passwords, tokens, sessions and passkeys, and when to use each.
+canonical: https://example.com/blogs/a-comprehensive-guide-authentication-in-web-applications
 timestamps:
   publishedOn: 2026-04-25T01:46:48Z
   updatedOn: 2026-05-01T10:00:00Z
@@ -60,6 +68,14 @@ The post body in Markdown.
   changed in **Post settings**. `updatedOn` is only present when the author sets
   it.
 - `coverImage` is present only when a cover URL is set.
+- `tags` (a YAML list), `author`, `seo` and `canonical` are present only when
+  set. Tags are lowercase words joined by hyphens, in the author's order; they
+  hold categories too. `seo` has `title` and `description`, and any other keys
+  the author added under `seo` (`robots`, ...) are written back inside it.
+  `canonical` is an absolute `https://` address. Posts written before BurzBlog
+  modelled these keys, which kept them as extra frontmatter, have them moved
+  into these fields when the database is upgraded, and files you import or push
+  with them are read the same way.
 - Every other frontmatter key the author added (here `sitemap`) is passed
   through unchanged, so site-specific fields keep working. Extra keys may not
   use merge keys (`<<`) or YAML tags other than the core ones (`!!str`,
@@ -98,7 +114,8 @@ Download posts before generating, in `package.json`:
 Set `BURZBLOG_SERVER` and `BURZBLOG_TOKEN` in the Vercel project settings, and
 add `content/blogs/` to `.gitignore`. The schema (`title`, `description`,
 `status`, `timestamps`, `coverImage`, `sitemap`) already matches what BurzBlog
-exports.
+exports; add `tags: z.array(z.string()).default([])`, `author`, `canonical` and
+`seo: z.object({ title, description })` if your site uses them.
 
 ## 3. Rebuild on publish
 

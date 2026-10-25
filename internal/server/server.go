@@ -116,6 +116,7 @@ func (s *Server) routes() {
 	m.HandleFunc("POST /api/deploy", s.write(s.triggerDeploy))
 
 	m.HandleFunc("GET /api/posts", s.write(s.listPosts))
+	m.HandleFunc("GET /api/tags", s.write(s.listTags))
 	m.HandleFunc("POST /api/posts", s.write(s.createPost))
 	m.HandleFunc("GET /api/posts/{slug}", s.write(s.getPost))
 	m.HandleFunc("PUT /api/posts/{slug}", s.write(s.savePost))

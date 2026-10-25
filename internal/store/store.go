@@ -5,6 +5,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -166,12 +167,34 @@ var migrations = []string{
 	// instead of reading every body to count it (backfillWords fills it in).
 	`ALTER TABLE posts ADD COLUMN words INTEGER NOT NULL DEFAULT 0;
 	ALTER TABLE revisions ADD COLUMN words INTEGER NOT NULL DEFAULT 0;`,
+	// Blog metadata. Tags get a table of their own so a list can be filtered
+	// by tag through an index; position keeps the author's order. Revisions
+	// keep tags as a JSON array because they are only ever read back whole.
+	// backfillMetadata moves tags, author, seo and canonical out of extra.
+	`ALTER TABLE posts ADD COLUMN author TEXT NOT NULL DEFAULT '';
+	ALTER TABLE posts ADD COLUMN seo_title TEXT NOT NULL DEFAULT '';
+	ALTER TABLE posts ADD COLUMN seo_description TEXT NOT NULL DEFAULT '';
+	ALTER TABLE posts ADD COLUMN canonical_url TEXT NOT NULL DEFAULT '';
+	CREATE TABLE post_tags (
+		post_id INTEGER NOT NULL REFERENCES posts (id) ON DELETE CASCADE,
+		position INTEGER NOT NULL,
+		tag TEXT NOT NULL,
+		PRIMARY KEY (post_id, position),
+		UNIQUE (post_id, tag)
+	);
+	CREATE INDEX post_tags_tag ON post_tags (tag, post_id);
+	ALTER TABLE revisions ADD COLUMN tags TEXT NOT NULL DEFAULT '[]';
+	ALTER TABLE revisions ADD COLUMN author TEXT NOT NULL DEFAULT '';
+	ALTER TABLE revisions ADD COLUMN seo_title TEXT NOT NULL DEFAULT '';
+	ALTER TABLE revisions ADD COLUMN seo_description TEXT NOT NULL DEFAULT '';
+	ALTER TABLE revisions ADD COLUMN canonical_url TEXT NOT NULL DEFAULT '';`,
 }
 
 // migrationSteps run in the migration's transaction after its SQL, for work
 // SQL cannot do. Keyed by the migration's number (its index + 1).
 var migrationSteps = map[int]func(context.Context, *sql.Tx) error{
 	3: backfillWords,
+	4: backfillMetadata,
 }
 
 // backfillWords counts the words of the posts and revisions that existed
@@ -198,6 +221,67 @@ func backfillWords(ctx context.Context, tx *sql.Tx) error {
 		}
 		for id, n := range counts {
 			if _, err := tx.ExecContext(ctx, "UPDATE "+table+" SET words = ? WHERE id = ?", n, id); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// backfillMetadata moves tags, author, seo and canonical that posts and
+// revisions carried inside extra into the new columns. Extras that cannot be
+// moved as they are (see post.MoveMetadataFromExtra) stay as they were.
+func backfillMetadata(ctx context.Context, tx *sql.Tx) error {
+	for _, table := range []string{"posts", "revisions"} {
+		rows, err := tx.QueryContext(ctx, "SELECT id, extra FROM "+table+" WHERE extra != ''")
+		if err != nil {
+			return err
+		}
+		type move struct {
+			id    int64
+			moved *post.Post
+			rest  string
+		}
+		var moves []move
+		for rows.Next() {
+			var id int64
+			var extra string
+			if err := rows.Scan(&id, &extra); err != nil {
+				rows.Close()
+				return err
+			}
+			if moved, rest, ok := post.MoveMetadataFromExtra(extra); ok {
+				moves = append(moves, move{id, moved, rest})
+			}
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		for _, m := range moves {
+			p := m.moved
+			if table == "revisions" {
+				tags, err := json.Marshal(p.Tags)
+				if err != nil {
+					return err
+				}
+				if p.Tags == nil {
+					tags = []byte("[]")
+				}
+				_, err = tx.ExecContext(ctx, `UPDATE revisions SET extra = ?, tags = ?, author = ?, seo_title = ?,
+					seo_description = ?, canonical_url = ? WHERE id = ?`,
+					m.rest, string(tags), p.Author, p.SEOTitle, p.SEODescription, p.CanonicalURL, m.id)
+				if err != nil {
+					return err
+				}
+				continue
+			}
+			if _, err := tx.ExecContext(ctx, `UPDATE posts SET extra = ?, author = ?, seo_title = ?,
+				seo_description = ?, canonical_url = ? WHERE id = ?`,
+				m.rest, p.Author, p.SEOTitle, p.SEODescription, p.CanonicalURL, m.id); err != nil {
+				return err
+			}
+			if err := insertTags(ctx, tx, m.id, p.Tags); err != nil {
 				return err
 			}
 		}

@@ -3,8 +3,10 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -13,7 +15,8 @@ import (
 )
 
 const postColumns = `id, slug, title, description, status, body, cover_url, cover_alt, extra,
-	published_on, updated_on, created_at, updated_at, updated_by, version, publish_at, publish_by`
+	published_on, updated_on, created_at, updated_at, updated_by, version, publish_at, publish_by,
+	author, seo_title, seo_description, canonical_url`
 
 type scanner interface {
 	Scan(dest ...any) error
@@ -24,7 +27,8 @@ func scanPost(row scanner) (*post.Post, error) {
 	var status, created, updated string
 	var publishedOn, updatedOn, publishAt sql.NullString
 	err := row.Scan(&p.ID, &p.Slug, &p.Title, &p.Description, &status, &p.Body, &p.CoverURL,
-		&p.CoverAlt, &p.Extra, &publishedOn, &updatedOn, &created, &updated, &p.UpdatedBy, &p.Version, &publishAt, &p.PublishBy)
+		&p.CoverAlt, &p.Extra, &publishedOn, &updatedOn, &created, &updated, &p.UpdatedBy, &p.Version, &publishAt, &p.PublishBy,
+		&p.Author, &p.SEOTitle, &p.SEODescription, &p.CanonicalURL)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -40,9 +44,70 @@ func scanPost(row scanner) (*post.Post, error) {
 	return &p, nil
 }
 
-// CreatePost stores a new post. Slug, title and status must be set.
+// queryer is what *sql.DB and *sql.Tx share.
+type queryer interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}
+
+// tagsByPost reads (post_id, tag) rows in tag order and groups them by post.
+func tagsByPost(ctx context.Context, q queryer, query string, args ...any) (map[int64][]string, error) {
+	rows, err := q.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("read tags: %w", err)
+	}
+	defer rows.Close()
+	tags := map[int64][]string{}
+	for rows.Next() {
+		var id int64
+		var tag string
+		if err := rows.Scan(&id, &tag); err != nil {
+			return nil, fmt.Errorf("read tags: %w", err)
+		}
+		tags[id] = append(tags[id], tag)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read tags: %w", err)
+	}
+	return tags, nil
+}
+
+// loadTags fills in the tags of posts that were just read.
+func loadTags(ctx context.Context, q queryer, posts ...*post.Post) error {
+	if len(posts) == 0 {
+		return nil
+	}
+	marks := strings.TrimSuffix(strings.Repeat("?,", len(posts)), ",")
+	ids := make([]any, len(posts))
+	for i, p := range posts {
+		ids[i] = p.ID
+	}
+	tags, err := tagsByPost(ctx, q, "SELECT post_id, tag FROM post_tags WHERE post_id IN ("+marks+") ORDER BY post_id, position", ids...)
+	if err != nil {
+		return err
+	}
+	for _, p := range posts {
+		p.Tags = tags[p.ID]
+	}
+	return nil
+}
+
+// insertTags stores a post's tags in order.
+func insertTags(ctx context.Context, tx *sql.Tx, id int64, tags []string) error {
+	for i, tag := range tags {
+		if _, err := tx.ExecContext(ctx, "INSERT INTO post_tags (post_id, position, tag) VALUES (?, ?, ?)", id, i, tag); err != nil {
+			return fmt.Errorf("keep tag: %w", err)
+		}
+	}
+	return nil
+}
+
+// CreatePost stores a new post. Slug, title and status must be set. A post
+// without an author is credited to the account creating it.
 func (s *Store) CreatePost(ctx context.Context, p *post.Post, by string) (*post.Post, error) {
 	post.Normalize(p)
+	if p.Author == "" {
+		p.Author = by
+	}
 	if p.Status == "" {
 		p.Status = post.Draft
 	}
@@ -53,25 +118,45 @@ func (s *Store) CreatePost(ctx context.Context, p *post.Post, by string) (*post.
 	if err := post.Validate(p); err != nil {
 		return nil, err
 	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin create: %w", err)
+	}
+	defer tx.Rollback()
 	now := s.stamp()
-	row := s.db.QueryRowContext(ctx, `INSERT INTO posts
+	row := tx.QueryRowContext(ctx, `INSERT INTO posts
 		(slug, title, description, status, body, cover_url, cover_alt, extra, published_on, updated_on,
-		 created_at, updated_at, updated_by, version, words)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+		 created_at, updated_at, updated_by, version, words, author, seo_title, seo_description, canonical_url)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
 		ON CONFLICT (slug) DO NOTHING
 		RETURNING `+postColumns,
 		p.Slug, p.Title, p.Description, string(p.Status), p.Body, p.CoverURL, p.CoverAlt, p.Extra,
-		nullTime(p.PublishedOn), nullTime(p.UpdatedOn), now, now, by, post.CountWords(p.Body))
+		nullTime(p.PublishedOn), nullTime(p.UpdatedOn), now, now, by, post.CountWords(p.Body),
+		p.Author, p.SEOTitle, p.SEODescription, p.CanonicalURL)
 	created, err := scanPost(row)
 	if errors.Is(err, ErrNotFound) {
 		return nil, ErrTaken
 	}
-	return created, err
+	if err != nil {
+		return nil, err
+	}
+	if err := insertTags(ctx, tx, created.ID, p.Tags); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit create: %w", err)
+	}
+	created.Tags = p.Tags
+	return created, nil
 }
 
 // GetPost loads one post by slug.
 func (s *Store) GetPost(ctx context.Context, slug string) (*post.Post, error) {
-	return scanPost(s.db.QueryRowContext(ctx, "SELECT "+postColumns+" FROM posts WHERE slug = ?", slug))
+	p, err := scanPost(s.db.QueryRowContext(ctx, "SELECT "+postColumns+" FROM posts WHERE slug = ?", slug))
+	if err != nil {
+		return nil, err
+	}
+	return p, loadTags(ctx, s.db, p)
 }
 
 // Filter narrows ListPosts.
@@ -82,6 +167,9 @@ type Filter struct {
 	Scheduled bool
 	// Query matches title, slug or description, case-insensitively.
 	Query string
+	// Tag limits results to posts with this tag. It is normalized like a
+	// post's tags, so "Machine Learning" finds "machine-learning".
+	Tag string
 	// Sort orders the result; empty means SortUpdated.
 	Sort Sort
 	// Limit caps the number of posts returned and Offset skips that many
@@ -122,6 +210,8 @@ type Summary struct {
 	Description string
 	Status      post.Status
 	Words       int
+	Tags        []string
+	Author      string
 	PublishedOn *time.Time
 	PublishAt   *time.Time
 	UpdatedAt   time.Time
@@ -170,6 +260,31 @@ func (s *Store) StatusCounts(ctx context.Context) (Counts, error) {
 	return counts, nil
 }
 
+// TagCount is a tag and the number of posts that carry it.
+type TagCount struct {
+	Tag   string
+	Count int
+}
+
+// Tags lists every tag in use with its number of posts, archived ones
+// included, by tag.
+func (s *Store) Tags(ctx context.Context) ([]TagCount, error) {
+	rows, err := s.db.QueryContext(ctx, "SELECT tag, count(*) FROM post_tags GROUP BY tag ORDER BY tag")
+	if err != nil {
+		return nil, fmt.Errorf("list tags: %w", err)
+	}
+	defer rows.Close()
+	list := []TagCount{}
+	for rows.Next() {
+		var t TagCount
+		if err := rows.Scan(&t.Tag, &t.Count); err != nil {
+			return nil, fmt.Errorf("list tags: %w", err)
+		}
+		list = append(list, t)
+	}
+	return list, rows.Err()
+}
+
 // ListPosts returns matching posts, most recently changed first unless
 // f.Sort says otherwise, and the count per status regardless of the filter.
 // An unknown sort is an error.
@@ -200,28 +315,37 @@ func (s *Store) ListPosts(ctx context.Context, f Filter) ([]Summary, Counts, err
 		where = append(where, `(lower(title) LIKE ? ESCAPE '\' OR slug LIKE ? ESCAPE '\' OR lower(description) LIKE ? ESCAPE '\')`)
 		args = append(args, like, like, like)
 	}
+	if f.Tag != "" {
+		// A tag that normalizes to nothing matches no post.
+		where = append(where, "id IN (SELECT post_id FROM post_tags WHERE tag = ?)")
+		args = append(args, post.NormalizeTag(f.Tag))
+	}
 	cond := strings.Join(where, " AND ")
-	query := `SELECT slug, title, description, status, words, published_on,
-		publish_at, updated_at, updated_by, version FROM posts WHERE ` + cond + " ORDER BY " + order
+	page := " FROM posts WHERE " + cond + " ORDER BY " + order
 	listArgs := args
 	if f.Limit > 0 {
-		query += " LIMIT ? OFFSET ?"
+		page += " LIMIT ? OFFSET ?"
 		listArgs = append(append([]any{}, args...), f.Limit, max(f.Offset, 0))
 	}
+	query := `SELECT id, slug, title, description, status, words, published_on,
+		publish_at, updated_at, updated_by, version, author` + page
 	rows, err := s.db.QueryContext(ctx, query, listArgs...)
 	if err != nil {
 		return nil, counts, fmt.Errorf("list posts: %w", err)
 	}
 	defer rows.Close()
 	list := []Summary{}
+	ids := []int64{}
 	for rows.Next() {
 		var sm Summary
+		var id int64
 		var status, updated string
 		var publishedOn, publishAt sql.NullString
-		if err := rows.Scan(&sm.Slug, &sm.Title, &sm.Description, &status, &sm.Words, &publishedOn, &publishAt,
-			&updated, &sm.UpdatedBy, &sm.Version); err != nil {
+		if err := rows.Scan(&id, &sm.Slug, &sm.Title, &sm.Description, &status, &sm.Words, &publishedOn, &publishAt,
+			&updated, &sm.UpdatedBy, &sm.Version, &sm.Author); err != nil {
 			return nil, counts, fmt.Errorf("list posts: %w", err)
 		}
+		ids = append(ids, id)
 		sm.Status = post.Status(status)
 		sm.PublishedOn = timePtr(publishedOn)
 		sm.PublishAt = timePtr(publishAt)
@@ -230,6 +354,19 @@ func (s *Store) ListPosts(ctx context.Context, f Filter) ([]Summary, Counts, err
 	}
 	if err := rows.Err(); err != nil {
 		return nil, counts, fmt.Errorf("list posts: %w", err)
+	}
+	rows.Close()
+	if len(list) > 0 {
+		// The same page again, as a subquery, so the number of posts never
+		// becomes a number of query parameters.
+		tags, err := tagsByPost(ctx, s.db, `SELECT post_id, tag FROM post_tags WHERE post_id IN (SELECT id`+page+
+			`) ORDER BY post_id, position`, listArgs...)
+		if err != nil {
+			return nil, counts, err
+		}
+		for i := range list {
+			list[i].Tags = tags[ids[i]]
+		}
 	}
 	counts.Matched = len(list)
 	if f.Limit > 0 && (f.Offset > 0 || len(list) == f.Limit) {
@@ -255,10 +392,14 @@ func (s *Store) UpdatePost(ctx context.Context, slug string, version int64, by s
 	if err != nil {
 		return nil, err
 	}
+	if err := loadTags(ctx, tx, current); err != nil {
+		return nil, err
+	}
 	if current.Version != version {
 		return current, ErrConflict
 	}
 	next := *current
+	next.Tags = slices.Clone(current.Tags)
 	if err := change(&next); err != nil {
 		return nil, err
 	}
@@ -293,26 +434,44 @@ func (s *Store) UpdatePost(ctx context.Context, slug string, version int64, by s
 		}
 	}
 	now := s.stamp()
+	oldTags, err := json.Marshal(current.Tags)
+	if err != nil {
+		return nil, fmt.Errorf("keep revision: %w", err)
+	}
+	if current.Tags == nil {
+		oldTags = []byte("[]")
+	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO revisions
 		(post_id, version, slug, title, description, status, body, cover_url, cover_alt, extra,
-		 published_on, updated_on, saved_at, saved_by, words)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 published_on, updated_on, saved_at, saved_by, words, tags, author, seo_title, seo_description, canonical_url)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		current.ID, current.Version, current.Slug, current.Title, current.Description, string(current.Status),
 		current.Body, current.CoverURL, current.CoverAlt, current.Extra, nullTime(current.PublishedOn),
-		nullTime(current.UpdatedOn), current.UpdatedAt.Format(time.RFC3339Nano), current.UpdatedBy, post.CountWords(current.Body)); err != nil {
+		nullTime(current.UpdatedOn), current.UpdatedAt.Format(time.RFC3339Nano), current.UpdatedBy, post.CountWords(current.Body),
+		string(oldTags), current.Author, current.SEOTitle, current.SEODescription, current.CanonicalURL); err != nil {
 		return nil, fmt.Errorf("keep revision: %w", err)
 	}
 	updated, err := scanPost(tx.QueryRowContext(ctx, `UPDATE posts SET
 		slug = ?, title = ?, description = ?, status = ?, body = ?, cover_url = ?, cover_alt = ?, extra = ?,
 		published_on = ?, updated_on = ?, publish_at = ?, publish_by = ?, updated_at = ?, updated_by = ?,
-		words = ?, version = version + 1
+		words = ?, author = ?, seo_title = ?, seo_description = ?, canonical_url = ?, version = version + 1
 		WHERE id = ? RETURNING `+postColumns,
 		next.Slug, next.Title, next.Description, string(next.Status), next.Body, next.CoverURL, next.CoverAlt,
 		next.Extra, nullTime(next.PublishedOn), nullTime(next.UpdatedOn), nullTime(next.PublishAt), next.PublishBy,
-		now, by, post.CountWords(next.Body), current.ID))
+		now, by, post.CountWords(next.Body), next.Author, next.SEOTitle, next.SEODescription, next.CanonicalURL,
+		current.ID))
 	if err != nil {
 		return nil, err
 	}
+	if !slices.Equal(current.Tags, next.Tags) {
+		if _, err := tx.ExecContext(ctx, "DELETE FROM post_tags WHERE post_id = ?", current.ID); err != nil {
+			return nil, fmt.Errorf("replace tags: %w", err)
+		}
+		if err := insertTags(ctx, tx, current.ID, next.Tags); err != nil {
+			return nil, err
+		}
+	}
+	updated.Tags = next.Tags
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit update: %w", err)
 	}
@@ -402,7 +561,7 @@ func (s *Store) Revisions(ctx context.Context, slug string) ([]Revision, error) 
 		return nil, err
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT version, slug, title, description, status, words, cover_url, cover_alt,
-		extra, published_on, updated_on, saved_at, saved_by
+		extra, published_on, updated_on, saved_at, saved_by, tags, author, seo_title, seo_description, canonical_url
 		FROM revisions WHERE post_id = ? ORDER BY version DESC LIMIT 200`, p.ID)
 	if err != nil {
 		return nil, fmt.Errorf("list revisions: %w", err)
@@ -411,11 +570,15 @@ func (s *Store) Revisions(ctx context.Context, slug string) ([]Revision, error) 
 	list := []Revision{}
 	for rows.Next() {
 		var r Revision
-		var status, saved string
+		var status, saved, tags string
 		var publishedOn, updatedOn sql.NullString
 		if err := rows.Scan(&r.Version, &r.Post.Slug, &r.Post.Title, &r.Post.Description, &status, &r.Words,
-			&r.Post.CoverURL, &r.Post.CoverAlt, &r.Post.Extra, &publishedOn, &updatedOn, &saved, &r.SavedBy); err != nil {
+			&r.Post.CoverURL, &r.Post.CoverAlt, &r.Post.Extra, &publishedOn, &updatedOn, &saved, &r.SavedBy,
+			&tags, &r.Post.Author, &r.Post.SEOTitle, &r.Post.SEODescription, &r.Post.CanonicalURL); err != nil {
 			return nil, fmt.Errorf("list revisions: %w", err)
+		}
+		if r.Post.Tags, err = decodeTags(tags); err != nil {
+			return nil, err
 		}
 		r.Post.Status = post.Status(status)
 		r.Post.PublishedOn = timePtr(publishedOn)
@@ -433,24 +596,38 @@ func (s *Store) Revision(ctx context.Context, slug string, version int64) (*Revi
 		return nil, err
 	}
 	var r Revision
-	var status, saved string
+	var status, saved, tags string
 	var publishedOn, updatedOn sql.NullString
 	err = s.db.QueryRowContext(ctx, `SELECT version, slug, title, description, status, body, cover_url,
-		cover_alt, extra, published_on, updated_on, saved_at, saved_by
+		cover_alt, extra, published_on, updated_on, saved_at, saved_by, tags, author, seo_title,
+		seo_description, canonical_url
 		FROM revisions WHERE post_id = ? AND version = ?`, p.ID, version).Scan(
 		&r.Version, &r.Post.Slug, &r.Post.Title, &r.Post.Description, &status, &r.Post.Body, &r.Post.CoverURL,
-		&r.Post.CoverAlt, &r.Post.Extra, &publishedOn, &updatedOn, &saved, &r.SavedBy)
+		&r.Post.CoverAlt, &r.Post.Extra, &publishedOn, &updatedOn, &saved, &r.SavedBy,
+		&tags, &r.Post.Author, &r.Post.SEOTitle, &r.Post.SEODescription, &r.Post.CanonicalURL)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("read revision: %w", err)
 	}
+	if r.Post.Tags, err = decodeTags(tags); err != nil {
+		return nil, err
+	}
 	r.Post.Status = post.Status(status)
 	r.Post.PublishedOn = timePtr(publishedOn)
 	r.Post.UpdatedOn = timePtr(updatedOn)
 	r.SavedAt = parseStamp(saved)
 	return &r, nil
+}
+
+// decodeTags reads the JSON array a revision keeps its tags in.
+func decodeTags(raw string) ([]string, error) {
+	var tags []string
+	if err := json.Unmarshal([]byte(raw), &tags); err != nil {
+		return nil, fmt.Errorf("read revision tags: %w", err)
+	}
+	return tags, nil
 }
 
 // ForEachPost calls fn with every post in full, whatever its status, by
@@ -491,6 +668,9 @@ func (s *Store) forEach(ctx context.Context, where string, fn func(*post.Post) e
 		rows.Close()
 		if err := rows.Err(); err != nil {
 			return fmt.Errorf("list posts: %w", err)
+		}
+		if err := loadTags(ctx, s.db, batch...); err != nil {
+			return err
 		}
 		for _, p := range batch {
 			if err := fn(p); err != nil {

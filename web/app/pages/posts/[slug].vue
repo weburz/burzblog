@@ -4,6 +4,7 @@ import type { Post, PostDraft } from "../../types";
 import { ApiError, errorMessage, request } from "../../utils/api";
 import { returnFocusTo } from "../../utils/focus";
 import { countWords, lengthLabel } from "../../utils/markdown";
+import { sameDraft } from "../../utils/metadata";
 import { diffTooLong, lineDiff } from "../../utils/diff";
 import type { PaletteCommand } from "../../utils/palette";
 import {
@@ -76,11 +77,15 @@ const editable = (p: Post): PostDraft => ({
   coverUrl: p.coverUrl,
   coverAlt: p.coverAlt,
   extra: p.extra,
+  tags: [...p.tags],
+  author: p.author,
+  seoTitle: p.seoTitle,
+  seoDescription: p.seoDescription,
+  canonicalUrl: p.canonicalUrl,
   publishedOn: p.publishedOn,
   updatedOn: p.updatedOn,
 });
-const same = (a: PostDraft, b: PostDraft) =>
-  (Object.keys(a) as (keyof PostDraft)[]).every((k) => (a[k] ?? "") === (b[k] ?? ""));
+const same = sameDraft;
 
 const dirty = computed(() =>
   Boolean(post.value && draft.value && !same(draft.value, editable(post.value))),
@@ -162,7 +167,8 @@ onUnmounted(() => (editorFailed.value = false));
 
 const restoreBackup = () => {
   if (!recovered.value || !post.value) return;
-  draft.value = { ...recovered.value.draft };
+  // A backup from before tags and SEO existed lacks those fields.
+  draft.value = { ...editable(post.value), ...recovered.value.draft };
   // Saving checks this version, so newer work on the server shows as a conflict.
   if (recovered.value.version !== post.value.version)
     post.value = { ...post.value, version: recovered.value.version };

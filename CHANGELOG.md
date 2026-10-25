@@ -8,6 +8,17 @@ All notable changes are recorded here, following
 
 ### Added
 
+- Posts have blog metadata: `tags` (one list for topics and categories, at most
+  20 lowercase hyphenated tags), an `author` (new posts start with the creating
+  account), and SEO fields `seoTitle`, `seoDescription` and `canonicalUrl`.
+  They are in the API (`GET /api/posts?tag=`, `GET /api/tags`), the panel's
+  post settings (a tag input, an author field and a collapsible SEO section with
+  character counters), the posts list (tags on each row and a tag filter, kept
+  in the address), history, and the Markdown files as `tags:`, `author:`,
+  `seo: {title, description}` and `canonical:`. `burzblog list --tag` filters
+  by tag. Migration 4 moves `tags`, `author`, `canonical` and `seo.title` and
+  `seo.description` out of a post's extra frontmatter into the new fields, and
+  leaves other `seo` keys there.
 - `burzblog diff <file.md|slug> [file.md]` shows a unified, colored diff from
   the server's current post to a local file and says whether the file is based
   on the server's current version or an older one. It exits 0 when identical

@@ -51,7 +51,7 @@ func TestRedirectsAreRefused(t *testing.T) {
 		calls := map[string]func() error{
 			"login":    func() error { _, err := c.IssueToken(ctx, "alice", "correct horse battery", "CLI"); return err },
 			"whoami":   func() error { _, err := c.Whoami(ctx); return err },
-			"list":     func() error { _, err := c.Posts(ctx, "", "", ""); return err },
+			"list":     func() error { _, err := c.Posts(ctx, "", "", "", ""); return err },
 			"get":      func() error { _, err := c.Post(ctx, "hello"); return err },
 			"markdown": func() error { _, _, err := c.Markdown(ctx, "hello"); return err },
 			"save":     func() error { _, err := c.SaveMarkdown(ctx, "hello", "# secret draft", 1); return err },
