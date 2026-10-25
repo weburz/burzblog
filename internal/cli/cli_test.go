@@ -199,7 +199,7 @@ func TestTerminalWorkflow(t *testing.T) {
 	exportDir := t.TempDir()
 	os.WriteFile(filepath.Join(exportDir, "stale.md"), []byte("old"), 0o644)
 	out = e.must("", "export", "--out", exportDir, "--clean")
-	if !strings.Contains(out, "Exported 1") || !strings.Contains(out, "removed 1") {
+	if !strings.Contains(out, "Exported 1 published post to") || !strings.Contains(out, "removed 1") {
 		t.Errorf("export = %q", out)
 	}
 	if b, err := os.ReadFile(filepath.Join(exportDir, "fresh-idea.md")); err != nil || !strings.Contains(string(b), "status: published") {
@@ -212,6 +212,28 @@ func TestTerminalWorkflow(t *testing.T) {
 	tokens, _ := e.store.Tokens(context.Background())
 	if len(tokens) != 0 {
 		t.Errorf("logout left tokens behind: %+v", tokens)
+	}
+}
+
+func TestCount(t *testing.T) {
+	for n, want := range map[int]string{0: "0 drafts", 1: "1 draft", 2: "2 drafts"} {
+		if got := count(n, "draft", "drafts"); got != want {
+			t.Errorf("count(%d) = %q, want %q", n, got, want)
+		}
+	}
+}
+
+func TestListFooterPluralizes(t *testing.T) {
+	e := newEnv(t)
+	e.must("correct horse battery\n", "user", "add", "ada")
+	e.must("correct horse battery\n", "login", e.url, "-u", "ada")
+	e.must("", "new", "First draft", "--no-edit")
+	if out := e.must("", "list"); !strings.Contains(out, "1 draft (0 scheduled)") || strings.Contains(out, "1 drafts") {
+		t.Errorf("one draft: list = %q", out)
+	}
+	e.must("", "new", "Second draft", "--no-edit")
+	if out := e.must("", "list"); !strings.Contains(out, "2 drafts (0 scheduled)") {
+		t.Errorf("two drafts: list = %q", out)
 	}
 }
 

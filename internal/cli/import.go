@@ -263,5 +263,5 @@ func (a *App) reportImport(results []importFile, dryRun bool) error {
 	if len(exits) > 1 {
 		code, exit = "import_failed", ExitError
 	}
-	return &exitError{code, exit, fmt.Sprintf("%d of %d files could not be imported", counts[importFailed], len(results))}
+	return &exitError{code, exit, fmt.Sprintf("%d of %s could not be imported", counts[importFailed], count(len(results), "file", "files"))}
 }
