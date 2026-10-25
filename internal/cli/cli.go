@@ -35,6 +35,8 @@ type App struct {
 	Version   string
 
 	reader *bufio.Reader
+	// asJSON is set by the global --json flag.
+	asJSON bool
 }
 
 // NewApp returns an App wired to the real terminal and user directories.
@@ -56,19 +58,42 @@ func NewApp(version string, panel fs.FS) *App {
 
 // Execute runs the command line and returns the process exit code.
 func (a *App) Execute(args []string) int {
-	root := a.root()
+	a.asJSON = false
+	started := false
+	root := a.root(&started)
 	root.SetArgs(args)
 	root.SetIn(a.In)
 	root.SetOut(a.Out)
 	root.SetErr(a.Err)
 	if err := root.Execute(); err != nil {
+		// Cobra validates flags and arguments before any hook runs, so an
+		// error before that point is a usage error.
+		var ee *exitError
+		if !started && !errors.As(err, &ee) {
+			err = usagef("%s. Run with --help for usage", err)
+		}
+		// A flag that failed to parse may not have been recorded yet.
+		a.asJSON = a.asJSON || hasJSONArg(args)
 		a.failure(err)
-		return 1
+		_, exit := classify(err)
+		return exit
 	}
-	return 0
+	return ExitOK
 }
 
-func (a *App) root() *cobra.Command {
+func hasJSONArg(args []string) bool {
+	for _, arg := range args {
+		if arg == "--" {
+			return false
+		}
+		if arg == "--json" || arg == "--json=true" {
+			return true
+		}
+	}
+	return false
+}
+
+func (a *App) root(started *bool) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "burzblog",
 		Short: "Write blog posts in the browser or from your terminal",
@@ -79,11 +104,28 @@ Write in the browser panel, or from here:
   burzblog login https://blog.example.com
   burzblog new "My next post"
   burzblog edit my-next-post
-  burzblog publish my-next-post`,
+  burzblog publish my-next-post
+
+Scripts and AI agents: set BURZBLOG_SERVER and BURZBLOG_TOKEN, add --json for
+machine-readable results and errors, and read the exit code. Nothing prompts or
+opens an editor without a terminal. See docs/terminal.md.`,
+		Example: `  export BURZBLOG_SERVER=https://blog.example.com BURZBLOG_TOKEN=bzb_...
+  burzblog list --json --status draft
+  burzblog new "Release notes" --body-file notes.md --json
+  burzblog pull my-post -o - | tr a-z A-Z | burzblog push - --slug my-post --base-version 3
+  burzblog publish my-post --json || echo "failed with exit code $?"
+
+Exit codes: 0 ok, 1 error, 2 usage, 3 conflict, 4 not found, 5 not signed in,
+6 invalid content.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Version:       a.Version,
+		PersistentPreRun: func(*cobra.Command, []string) {
+			*started = true
+		},
 	}
+	root.PersistentFlags().BoolVar(&a.asJSON, "json", false,
+		"print results (list, whoami, new, pull, push, publish, unpublish, archive, restore, backup) and errors as JSON")
 	root.AddGroup(
 		&cobra.Group{ID: "write", Title: "Writing:"},
 		&cobra.Group{ID: "account", Title: "Connecting:"},
@@ -134,6 +176,10 @@ func cleanLines(s string) string {
 
 // failure prints an error people can act on.
 func (a *App) failure(err error) {
+	if a.asJSON {
+		a.printJSONFailure(err)
+		return
+	}
 	var apiErr *client.Error
 	if errors.As(err, &apiErr) {
 		fmt.Fprintln(a.Err, a.paint(red, "error:"), cleanLines(apiErr.Message))
@@ -196,7 +242,7 @@ func (a *App) client() (*client.Client, *Config, error) {
 		return nil, nil, err
 	}
 	if c.Server == "" || c.Token == "" {
-		return nil, nil, errors.New("not signed in. Run `burzblog login https://your-blog.example.com` first")
+		return nil, nil, errNotSignedIn
 	}
 	return client.New(c.Server, c.Token, "burzblog-cli/"+a.Version), c, nil
 }

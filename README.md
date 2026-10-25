@@ -59,7 +59,8 @@ burzblog publish my-next-post
 - [Running BurzBlog](docs/self-hosting.md): systemd on a Raspberry Pi or any
   Linux host, HTTPS with Caddy or nginx, backups and upgrades.
 - [Writing from the terminal](docs/terminal.md): every CLI command and what
-  happens on conflicts.
+  happens on conflicts, plus JSON output, exit codes and a safe edit loop for
+  [scripts and AI agents](docs/terminal.md#scripts-and-ai-agents).
 - [Connecting your website](docs/publishing.md): the export format, a Nuxt
   Content example and deploy hooks.
 - [Containers](docs/containers.md): the optional Docker image.

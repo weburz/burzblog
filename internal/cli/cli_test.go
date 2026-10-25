@@ -112,9 +112,17 @@ func TestTerminalWorkflow(t *testing.T) {
 	}
 
 	e.editor("s/^$/Hello from vim./")
-	out = e.must("", "new", "Go", "interfaces", "explained")
-	if !strings.Contains(out, "Created draft go-interfaces-explained") || !strings.Contains(out, "version 2") {
-		t.Fatalf("new = %q", out)
+	// Without a terminal, new never opens the editor, even if $EDITOR is set.
+	out, errOut, code := e.run("", "new", "Go", "interfaces", "explained")
+	if code != 0 || !strings.Contains(out, "Created draft go-interfaces-explained") || !strings.Contains(errOut, "burzblog edit go-interfaces-explained") {
+		t.Fatalf("new = %d %q %q", code, out, errOut)
+	}
+	if p, _ := e.store.GetPost(context.Background(), "go-interfaces-explained"); strings.Contains(p.Body, "Hello from vim.") {
+		t.Fatalf("new opened the editor without a terminal: %+v", p)
+	}
+	out = e.must("", "edit", "go-interfaces-explained")
+	if !strings.Contains(out, "version 2") {
+		t.Fatalf("edit = %q", out)
 	}
 	p, _ := e.store.GetPost(context.Background(), "go-interfaces-explained")
 	if !strings.Contains(p.Body, "Hello from vim.") || p.UpdatedBy != "jarmos" {
@@ -128,8 +136,8 @@ func TestTerminalWorkflow(t *testing.T) {
 
 	// An invalid edit without a terminal is reported and the text kept.
 	e.editor("s/^title: .*/title: \"\"/")
-	_, errOut, code := e.run("", "edit", "go-interfaces-explained")
-	if code == 0 || !strings.Contains(errOut, "title must not be empty") || !strings.Contains(errOut, "kept at") {
+	_, errOut, code = e.run("", "edit", "go-interfaces-explained")
+	if code != ExitValidation || !strings.Contains(errOut, "title must not be empty") || !strings.Contains(errOut, "kept at") {
 		t.Errorf("invalid edit: %d %q", code, errOut)
 	}
 	e.editor("s/^title: .*/title: Fixed title/")

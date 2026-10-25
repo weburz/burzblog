@@ -122,7 +122,10 @@ func (a *App) whoamiCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "whoami",
 		Short: "Show which server and account this computer uses",
-		Args:  cobra.NoArgs,
+		Example: `  burzblog whoami
+  burzblog whoami --json            # {"username":"jarmos","server":"https://blog.example.com"}
+  BURZBLOG_SERVER=https://blog.example.com BURZBLOG_TOKEN=bzb_... burzblog whoami --json`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cl, cfg, err := a.client()
 			if err != nil {
@@ -133,6 +136,12 @@ func (a *App) whoamiCmd() *cobra.Command {
 			name, err := cl.Whoami(c)
 			if err != nil {
 				return err
+			}
+			if a.asJSON {
+				return a.emit(struct {
+					Username string `json:"username"`
+					Server   string `json:"server"`
+				}{name, cfg.Server})
 			}
 			fmt.Fprintf(a.Out, "%s on %s\n", a.paint(bold, clean(name)), cfg.Server)
 			return nil

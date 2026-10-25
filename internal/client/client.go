@@ -63,7 +63,7 @@ type Post struct {
 	Title       string     `json:"title"`
 	Description string     `json:"description"`
 	Status      string     `json:"status"`
-	Body        string     `json:"body"`
+	Body        string     `json:"body,omitempty"`
 	PublishedOn *time.Time `json:"publishedOn"`
 	UpdatedAt   time.Time  `json:"updatedAt"`
 	UpdatedBy   string     `json:"updatedBy"`

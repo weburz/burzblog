@@ -32,7 +32,8 @@ func (a *App) listCmd() *cobra.Command {
 		Example: `  burzblog list
   burzblog list --status published
   burzblog list --search golang
-  burzblog list --sort title`,
+  burzblog list --sort title
+  burzblog list --status draft --json     # {"items":[{"slug","title","status","version",...}],"counts":{...}}`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cl, _, err := a.client()
@@ -44,6 +45,15 @@ func (a *App) listCmd() *cobra.Command {
 			l, err := cl.Posts(c, status, search, sort)
 			if err != nil {
 				return err
+			}
+			if a.asJSON {
+				if l.Items == nil {
+					l.Items = []client.Post{}
+				}
+				if l.Counts == nil {
+					l.Counts = map[string]int{}
+				}
+				return a.emit(l)
 			}
 			if len(l.Items) == 0 {
 				if search != "" || status != "" {
@@ -89,16 +99,69 @@ func truncate(s string, n int) string {
 	return string(r[:n-1]) + "…"
 }
 
+// postResult is what --json prints after a command changed a post: the
+// post's fields without its body. The API does not count words for a single
+// post, so there is no words field; list has one.
+type postResult struct {
+	Slug        string     `json:"slug"`
+	Title       string     `json:"title"`
+	Description string     `json:"description"`
+	Status      string     `json:"status"`
+	PublishedOn *time.Time `json:"publishedOn"`
+	UpdatedAt   time.Time  `json:"updatedAt"`
+	UpdatedBy   string     `json:"updatedBy"`
+	Version     int64      `json:"version"`
+}
+
+func summary(p *client.Post) postResult {
+	return postResult{p.Slug, p.Title, p.Description, p.Status, p.PublishedOn, p.UpdatedAt, p.UpdatedBy, p.Version}
+}
+
+// readInput reads a file, or standard input for "-", up to the largest
+// document the server accepts.
+func (a *App) readInput(path string) ([]byte, error) {
+	if path != "-" {
+		return os.ReadFile(path)
+	}
+	raw, err := io.ReadAll(io.LimitReader(a.In, post.MaxBody+post.MaxExtra+1))
+	if err != nil {
+		return nil, fmt.Errorf("read standard input: %w", err)
+	}
+	if len(raw) > post.MaxBody+post.MaxExtra {
+		return nil, &exitError{"validation", ExitValidation, "the input on standard input is larger than a post may be"}
+	}
+	return raw, nil
+}
+
 func (a *App) newCmd() *cobra.Command {
-	var slug string
+	var slug, bodyFile string
 	var noEdit bool
 	cmd := &cobra.Command{
 		Use:   "new <title>",
 		Short: "Start a new draft and open it in your editor",
+		Long: `Creates a draft and opens it in your editor.
+
+The editor opens only when standard input is a terminal and neither --no-edit,
+--body-file nor --json is given; otherwise the draft is created and its slug is
+printed. --body-file takes the post's Markdown body (no frontmatter) from a file
+or, with -, from standard input.`,
 		Example: `  burzblog new "Understanding Go interfaces"
-  burzblog new "Release notes" --slug release-notes-2026 --no-edit`,
+  burzblog new "Release notes" --slug release-notes-2026 --no-edit
+  burzblog new "Release notes" --body-file notes.md
+  cat notes.md | burzblog new "Release notes" --body-file - --json`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			var body string
+			if bodyFile != "" {
+				raw, err := a.readInput(bodyFile)
+				if err != nil {
+					return err
+				}
+				if len(raw) > post.MaxBody {
+					return &exitError{"validation", ExitValidation, fmt.Sprintf("the body is larger than the %d MiB a post may have", post.MaxBody>>20)}
+				}
+				body = string(raw)
+			}
 			cl, cfg, err := a.client()
 			if err != nil {
 				return err
@@ -110,8 +173,24 @@ func (a *App) newCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if body != "" {
+				doc := post.Encode(&post.Post{Title: p.Title, Status: post.Draft, Body: body})
+				saved, err := cl.SaveMarkdown(c, p.Slug, doc, p.Version)
+				if err != nil {
+					return reword(err, fmt.Sprintf("%v\n       The draft %s was created, but the body was not saved. Save it with `burzblog push - --slug %s --base-version %d`.",
+						err, p.Slug, p.Slug, p.Version))
+				}
+				p = saved
+			}
+			if a.asJSON {
+				return a.emit(summary(p))
+			}
 			fmt.Fprintf(a.Out, "%s Created draft %s.\n", a.paint(green, "✓"), a.paint(bold, clean(p.Slug)))
-			if noEdit {
+			if noEdit || bodyFile != "" {
+				return nil
+			}
+			if !a.terminal() {
+				fmt.Fprintf(a.Err, "Not opening an editor because standard input is not a terminal. Edit it with: burzblog edit %s\n", clean(p.Slug))
 				return nil
 			}
 			return a.edit(cl, cfg, p.Slug)
@@ -119,6 +198,7 @@ func (a *App) newCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&slug, "slug", "", "URL name for the post (default: made from the title)")
 	cmd.Flags().BoolVar(&noEdit, "no-edit", false, "create the draft without opening an editor")
+	cmd.Flags().StringVar(&bodyFile, "body-file", "", "Markdown body for the draft from a file, or - for standard input (implies --no-edit)")
 	return cmd
 }
 
@@ -134,6 +214,10 @@ overwritten: your text stays on disk and you are told how to continue.`,
 		Example: "  burzblog edit understanding-go-interfaces\n  EDITOR=\"code --wait\" burzblog edit my-post",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Never fall back to vi when nobody can drive it.
+			if !a.terminal() && a.Getenv("VISUAL") == "" && a.Getenv("EDITOR") == "" {
+				return usagef("edit needs a terminal or $EDITOR. In scripts, use `burzblog pull <slug>` and `burzblog push` instead")
+			}
 			cl, cfg, err := a.client()
 			if err != nil {
 				return err
@@ -245,7 +329,7 @@ func (a *App) edit(cl *client.Client, cfg *Config, slug string) error {
 			if apiErr.Current != nil {
 				who = clean(apiErr.Current.UpdatedBy)
 			}
-			return fmt.Errorf("%s saved %s while you were editing, so nothing was overwritten.\n"+
+			return conflictf("%s saved %s while you were editing, so nothing was overwritten.\n"+
 				"       Your text is kept at %s\n"+
 				"       Compare it with `burzblog pull %s -o -`, then either:\n"+
 				"         burzblog push %s --force   (replace their version with yours)\n"+
@@ -253,7 +337,7 @@ func (a *App) edit(cl *client.Client, cfg *Config, slug string) error {
 				who, slug, docPath, slug, docPath, slug)
 		}
 		// %v, not %w: the hint below must survive the API error formatting.
-		return fmt.Errorf("%v\n       Your text is kept at %s; run `burzblog edit %s` to try again", err, docPath, slug)
+		return reword(err, fmt.Sprintf("%v\n       Your text is kept at %s; run `burzblog edit %s` to try again", err, docPath, slug))
 	}
 }
 
@@ -322,7 +406,9 @@ func (a *App) pullCmd() *cobra.Command {
 		Short: "Download a post as <slug>.md to work on it with your own tools",
 		Example: `  burzblog pull my-post            # writes ./my-post.md
   burzblog pull my-post -o -       # prints it
-  burzblog pull my-post -o drafts/my-post.md`,
+  burzblog pull my-post -o drafts/my-post.md
+  burzblog pull my-post --json        # writes ./my-post.md, prints {"slug","version","path"}
+  burzblog pull my-post -o - --json   # prints {"slug","version","markdown"}`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			slug := args[0]
@@ -335,6 +421,13 @@ func (a *App) pullCmd() *cobra.Command {
 			doc, version, err := cl.Markdown(c, slug)
 			if err != nil {
 				return err
+			}
+			if out == "-" && a.asJSON {
+				return a.emit(struct {
+					Slug     string `json:"slug"`
+					Version  int64  `json:"version"`
+					Markdown string `json:"markdown"`
+				}{slug, version, doc})
 			}
 			if out == "-" {
 				// Piped output stays byte for byte; a terminal must not
@@ -349,7 +442,7 @@ func (a *App) pullCmd() *cobra.Command {
 				out = slug + ".md"
 			}
 			if filepath.Base(out) != slug+".md" {
-				return fmt.Errorf("name the file %s.md so `burzblog push` knows which post it is", slug)
+				return usagef("name the file %s.md so `burzblog push` knows which post it is", slug)
 			}
 			if _, err := os.Lstat(out); err == nil && !force {
 				return fmt.Errorf("%s already exists; pass --force to replace it", out)
@@ -358,6 +451,13 @@ func (a *App) pullCmd() *cobra.Command {
 				return err
 			}
 			a.rememberBase(cfg.Server, out, version)
+			if a.asJSON {
+				return a.emit(struct {
+					Slug    string `json:"slug"`
+					Version int64  `json:"version"`
+					Path    string `json:"path"`
+				}{slug, version, out})
+			}
 			fmt.Fprintf(a.Out, "%s Wrote %s (version %d). Send it back with: burzblog push %s\n", a.paint(green, "✓"), out, version, out)
 			return nil
 		},
@@ -369,23 +469,41 @@ func (a *App) pullCmd() *cobra.Command {
 
 func (a *App) pushCmd() *cobra.Command {
 	var force bool
+	var slugFlag string
+	var baseVersion int64
 	cmd := &cobra.Command{
-		Use:   "push <file.md>",
+		Use:   "push <file.md|->",
 		Short: "Save a local <slug>.md back to the server (creates the post if it is new)",
 		Long: `Sends a Markdown file with frontmatter back to the server. The file name
 is the post's slug.
 
 If the post changed on the server since you pulled it, push refuses; use
---force to replace the server's version with yours.`,
-		Example: "  burzblog push my-post.md\n  burzblog push drafts/new-idea.md",
-		Args:    cobra.ExactArgs(1),
+--force to replace the server's version with yours.
+
+With - the document is read from standard input and --slug names the post.
+There is no pulled file to remember the version from, so pass the version you
+started from with --base-version (burzblog list --json and burzblog pull --json
+show it); without it, push refuses to touch a post that already exists.`,
+		Example: `  burzblog push my-post.md
+  burzblog push drafts/new-idea.md
+  burzblog push my-post.md --json     # {"slug","status","version","created",...}
+  burzblog pull my-post -o - | sed s/foo/bar/ | burzblog push - --slug my-post --base-version 3`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			path := args[0]
 			slug := strings.TrimSuffix(filepath.Base(path), ".md")
-			if !strings.HasSuffix(path, ".md") || post.ValidateSlug(slug) != nil {
-				return fmt.Errorf("%s: name the file <slug>.md using lowercase letters, digits and hyphens", path)
+			switch {
+			case path == "-":
+				slug = slugFlag
+				if post.ValidateSlug(slug) != nil {
+					return usagef("pushing from standard input needs --slug <slug>, using lowercase letters, digits and hyphens")
+				}
+			case slugFlag != "":
+				return usagef("--slug only applies when reading standard input (-); the file name is the slug")
+			case !strings.HasSuffix(path, ".md") || post.ValidateSlug(slug) != nil:
+				return usagef("%s: name the file <slug>.md using lowercase letters, digits and hyphens", path)
 			}
-			raw, err := os.ReadFile(path)
+			raw, err := a.readInput(path)
 			if err != nil {
 				return err
 			}
@@ -395,7 +513,14 @@ If the post changed on the server since you pulled it, push refuses; use
 			}
 			c, cancel := ctx()
 			defer cancel()
-			version, known := a.bases()[baseKey(cfg.Server, path)]
+			var version int64
+			var known bool
+			switch {
+			case baseVersion > 0:
+				version, known = baseVersion, true
+			case path != "-":
+				version, known = a.bases()[baseKey(cfg.Server, path)]
+			}
 			if !known || force {
 				current, err := cl.Post(c, slug)
 				switch {
@@ -406,19 +531,27 @@ If the post changed on the server since you pulled it, push refuses; use
 				case force:
 					version = current.Version
 				default:
-					return fmt.Errorf("%s already exists on the server and this file was not pulled from it.\n"+
+					return conflictf("%s already exists on the server and this file was not pulled from it.\n"+
 						"       Pull it first (`burzblog pull %s -o other.md`) to compare, or pass --force to replace it", slug, slug)
 				}
 			}
 			saved, err := cl.SaveMarkdown(c, slug, string(raw), version)
 			if client.IsCode(err, "conflict") {
-				return fmt.Errorf("%s changed on the server since you pulled it, so nothing was overwritten.\n"+
+				return conflictf("%s changed on the server since you pulled it, so nothing was overwritten.\n"+
 					"       Compare with `burzblog pull %s -o -`, then push again with --force to replace it", slug, slug)
 			}
 			if err != nil {
 				return err
 			}
-			a.rememberBase(cfg.Server, path, saved.Version)
+			if path != "-" {
+				a.rememberBase(cfg.Server, path, saved.Version)
+			}
+			if a.asJSON {
+				return a.emit(struct {
+					postResult
+					Created bool `json:"created"`
+				}{summary(saved), version == 0})
+			}
 			verb := "Saved"
 			if version == 0 {
 				verb = "Created"
@@ -428,6 +561,8 @@ If the post changed on the server since you pulled it, push refuses; use
 		},
 	}
 	cmd.Flags().BoolVarP(&force, "force", "f", false, "replace the server's version even if it changed")
+	cmd.Flags().StringVar(&slugFlag, "slug", "", "post to save when reading standard input (-)")
+	cmd.Flags().Int64Var(&baseVersion, "base-version", 0, "the version you started from; the save is refused if the post has moved on")
 	return cmd
 }
 
@@ -435,7 +570,9 @@ func (a *App) statusCmd(action, short string) *cobra.Command {
 	return &cobra.Command{
 		Use:   action + " <slug>",
 		Short: short,
-		Args:  cobra.ExactArgs(1),
+		Example: "  burzblog " + action + " my-post\n" +
+			"  burzblog " + action + " my-post --json     # prints the post: {\"slug\",\"status\",\"version\",...}",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cl, _, err := a.client()
 			if err != nil {
@@ -450,6 +587,9 @@ func (a *App) statusCmd(action, short string) *cobra.Command {
 			p, err := cl.Action(c, args[0], action, current.Version)
 			if err != nil {
 				return err
+			}
+			if a.asJSON {
+				return a.emit(summary(p))
 			}
 			fmt.Fprintf(a.Out, "%s %s is now %s.\n", a.paint(green, "✓"), a.paint(bold, clean(p.Slug)), clean(p.Status))
 			if action == "publish" || action == "unpublish" {
@@ -471,7 +611,7 @@ func (a *App) openCmd() *cobra.Command {
 				return err
 			}
 			if cfg.Server == "" {
-				return errors.New("not signed in. Run `burzblog login https://your-blog.example.com` first")
+				return errNotSignedIn
 			}
 			target := cfg.Server + "/"
 			if len(args) == 1 {
@@ -510,7 +650,7 @@ Settings) instead of running burzblog login.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if out == "" {
-				return errors.New("choose where to write the posts with --out <dir>")
+				return usagef("choose where to write the posts with --out <dir>")
 			}
 			cl, _, err := a.client()
 			if err != nil {
@@ -607,7 +747,8 @@ burzblog-backup-<date> in the current folder.
 The backup holds current posts only. The database file is the complete backup,
 including history; see docs/self-hosting.md. Restore a file with burzblog push.`,
 		Example: `  burzblog backup
-  burzblog backup ~/backups/blog`,
+  burzblog backup ~/backups/blog
+  burzblog backup ~/backups/blog --json     # {"dir":"~/backups/blog","posts":12}`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := "burzblog-backup-" + time.Now().UTC().Format("2006-01-02")
@@ -637,6 +778,12 @@ including history; see docs/self-hosting.md. Restore a file with burzblog push.`
 				if err := writeFileAtomic(path, data, 0o644); err != nil {
 					return err
 				}
+			}
+			if a.asJSON {
+				return a.emit(struct {
+					Dir   string `json:"dir"`
+					Posts int    `json:"posts"`
+				}{dir, len(files) - 1})
 			}
 			fmt.Fprintf(a.Out, "%s Backed up %d posts to %s.\n", a.paint(green, "✓"), len(files)-1, dir)
 			return nil
