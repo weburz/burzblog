@@ -1,5 +1,7 @@
 # ADR-011: Single-process production topology and container packaging
 
+> **Superseded by [ADR-013](013-database-storage.md)** (2026-10-24). Kept as the record of the file-first design.
+
 Accepted. Supersedes the CLI-only container of the foundation milestone (#5).
 
 ## Context

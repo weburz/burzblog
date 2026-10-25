@@ -28,7 +28,24 @@ export const editedLabel = (iso: string, now = Date.now()): string => {
   ).format(date);
 };
 
-export const exactTime = (iso: string): string => {
-  const then = Date.parse(iso);
+export const exactTime = (iso: string | null | undefined): string => {
+  const then = iso ? Date.parse(iso) : Number.NaN;
   return Number.isNaN(then) ? "" : exact.format(then);
+};
+
+const pad = (n: number) => String(n).padStart(2, "0");
+
+// ISO timestamp to the value a datetime-local input shows, in local time.
+export const toLocalInput = (iso: string | null): string => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
+// A datetime-local value back to an ISO timestamp; empty stays empty.
+export const fromLocalInput = (value: string): string | null => {
+  if (!value) return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString().replace(/\.\d{3}Z$/, "Z");
 };

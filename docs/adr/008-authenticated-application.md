@@ -1,5 +1,7 @@
 # ADR-008: Single-project authenticated application
 
+> **Superseded by [ADR-013](013-database-storage.md)** (2026-10-24). Kept as the record of the file-first design.
+
 Status: accepted for the application milestone; browser UI is separate.
 
 ## Decision

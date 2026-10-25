@@ -1,93 +1,91 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import type { Article } from "../types";
-import { ApiError, request, errorMessage } from "../utils/api";
-import { withRetainedFocus } from "../utils/focus";
-import { slugify } from "../utils/posts";
+import type { Post } from "../types";
+import { ApiError, errorMessage, request } from "../utils/api";
+import { slugify } from "../utils/slug";
 
 const open = defineModel<boolean>("open", { default: false });
-const emit = defineEmits<{ created: [article: Article] }>();
+const emit = defineEmits<{ created: [post: Post] }>();
 const title = ref("");
 const slug = ref("");
+// Until the writer edits the slug, it follows the title.
 const slugTouched = ref(false);
-const error = ref("");
 const busy = ref(false);
-const newPath = computed(() => `posts/${slug.value.trim() || "…"}.md`);
-// Every opening starts from an empty form.
+const error = ref("");
+const slugError = ref("");
+
+watch(title, (value) => {
+  if (!slugTouched.value) slug.value = slugify(value);
+});
 watch(open, (value) => {
   if (!value) return;
   title.value = "";
   slug.value = "";
   slugTouched.value = false;
   error.value = "";
+  slugError.value = "";
 });
-watch(title, (value) => {
-  if (!slugTouched.value) slug.value = slugify(value);
-});
-const create = () =>
-  withRetainedFocus(async () => {
-    error.value = "";
-    if (!title.value.trim()) {
-      error.value = "Give the post a title.";
-      return;
-    }
-    busy.value = true;
-    try {
-      const article = await request<Article>("/api/posts", "POST", {
-        title: title.value,
-        slug: slug.value,
-      });
-      open.value = false;
-      emit("created", article);
-    } catch (cause) {
-      error.value =
-        cause instanceof ApiError && cause.code === "exists"
-          ? `${newPath.value} already exists. Choose a different filename.`
-          : errorMessage(cause);
-    } finally {
-      busy.value = false;
-    }
-  });
+const canCreate = computed(() => title.value.trim() !== "" && slug.value !== "");
+
+const create = async () => {
+  if (!canCreate.value) return;
+  busy.value = true;
+  error.value = "";
+  slugError.value = "";
+  try {
+    const post = await request<Post>("/api/posts", "POST", {
+      title: title.value,
+      slug: slug.value,
+    });
+    open.value = false;
+    emit("created", post);
+  } catch (cause) {
+    if (cause instanceof ApiError && cause.code === "slug_taken")
+      slugError.value = "Another post already uses this slug. Change it to continue.";
+    else error.value = errorMessage(cause);
+  } finally {
+    busy.value = false;
+  }
+};
 </script>
 
 <template>
-  <UModal
-    v-model:open="open"
-    title="New post"
-    description="Creates an ordinary Markdown draft in posts/."
-  >
+  <UModal v-model:open="open" title="New post" :ui="{ content: 'max-w-lg' }">
     <template #body>
-      <form id="new-post-form" @submit.prevent="create">
+      <form id="new-post" class="flex flex-col gap-5" @submit.prevent="create">
         <div class="field">
-          <label for="new-title">Title</label
-          ><UInput
+          <label for="new-title">Title</label>
+          <UInput
             id="new-title"
             v-model="title"
-            required
+            size="xl"
             autofocus
-            maxlength="500"
+            required
+            maxlength="300"
+            placeholder="What is this post about?"
             class="w-full"
-            size="lg"
           />
         </div>
-        <div class="field !mb-0">
-          <label for="new-slug">Filename / slug</label
-          ><UInput
+        <div class="field">
+          <label for="new-slug">Slug</label>
+          <UInput
             id="new-slug"
             v-model="slug"
-            required
-            maxlength="125"
-            pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
-            title="Lowercase letters, numbers and single hyphens"
-            class="w-full font-mono"
-            placeholder="my-first-post"
-            aria-describedby="slug-hint"
-            @update:model-value="slugTouched = true"
-          >
-            <template #trailing><span class="meta mono">.md</span></template>
-          </UInput>
-          <p id="slug-hint" class="meta">Lowercase letters, numbers and hyphens.</p>
-          <p class="meta mono">Creates {{ newPath }}</p>
+            class="w-full mono"
+            spellcheck="false"
+            autocapitalize="none"
+            maxlength="120"
+            :color="slugError ? 'error' : undefined"
+            :aria-describedby="slugError ? 'new-slug-error' : 'new-slug-hint'"
+            @input="
+              slugTouched = true;
+              slug = slugify(slug, true);
+            "
+          />
+          <p v-if="slugError" id="new-slug-error" class="field-error">{{ slugError }}</p>
+          <p v-else id="new-slug-hint" class="field-hint">
+            Part of the post's address and its file name on your site.
+          </p>
         </div>
         <p v-if="error" class="alert" role="alert">{{ error }}</p>
       </form>
@@ -95,7 +93,7 @@ const create = () =>
     <template #footer>
       <div class="flex w-full justify-end gap-2">
         <UButton color="neutral" variant="ghost" @click="open = false">Cancel</UButton>
-        <UButton type="submit" form="new-post-form" color="primary" :loading="busy"
+        <UButton type="submit" form="new-post" :loading="busy" :disabled="!canCreate"
           >Create draft</UButton
         >
       </div>

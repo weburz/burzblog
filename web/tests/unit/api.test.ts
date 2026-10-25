@@ -1,29 +1,77 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError, errorMessage, request } from "../../app/utils/api";
+import { ApiError, errorMessage, rememberSession, request } from "../../app/utils/api";
 
 afterEach(() => vi.unstubAllGlobals());
 describe("authenticated requests", () => {
-  it("gets a fresh CSRF token without browser persistence", async () => {
+  it("fetches the CSRF token once, then sends it on every change", async () => {
+    rememberSession({ authenticated: false });
     const fetch = vi
       .fn<typeof globalThis.fetch>()
       .mockResolvedValueOnce(
         Response.json({ authenticated: true, csrf: "session-bound" }),
       )
-      .mockResolvedValueOnce(Response.json({ saved: true }));
+      .mockImplementation(() => Promise.resolve(Response.json({ saved: true })));
     vi.stubGlobal("fetch", fetch);
-    await request("/api/post", "PUT", { markdown: "body" });
+    await request("/api/posts/a", "PUT", { body: "x" });
+    await request("/api/posts/a", "PUT", { body: "y" });
+    expect(fetch).toHaveBeenCalledTimes(3);
     expect(fetch.mock.calls[1]?.[1]).toMatchObject({
       headers: { "X-CSRF-Token": "session-bound" },
       credentials: "same-origin",
     });
+    expect(fetch.mock.calls[2]?.[1]).toMatchObject({
+      headers: { "X-CSRF-Token": "session-bound" },
+    });
   });
-  it("does not submit an expired-session mutation", async () => {
+  it("retries once with a fresh token when the server rejects a stale one", async () => {
+    rememberSession({ authenticated: true, csrf: "stale" });
     const fetch = vi
       .fn<typeof globalThis.fetch>()
-      .mockResolvedValue(Response.json({ authenticated: false }));
+      .mockResolvedValueOnce(
+        Response.json({ error: { code: "csrf", message: "x" } }, { status: 403 }),
+      )
+      .mockResolvedValueOnce(Response.json({ authenticated: true, csrf: "fresh" }))
+      .mockResolvedValueOnce(Response.json({ ok: true }));
     vi.stubGlobal("fetch", fetch);
-    await expect(request("/api/post", "PUT", {})).rejects.toThrow("Your session expired");
-    expect(fetch).toHaveBeenCalledTimes(1);
+    await expect(request("/api/posts", "POST", {})).resolves.toEqual({ ok: true });
+    expect(fetch.mock.calls[2]?.[1]).toMatchObject({
+      headers: { "X-CSRF-Token": "fresh" },
+    });
+  });
+  it("reports an ended session so the page can ask to sign in again", async () => {
+    const expired = vi.fn<() => void>();
+    window.addEventListener("burzblog:session-expired", expired);
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn<typeof globalThis.fetch>()
+        .mockResolvedValue(
+          Response.json(
+            { error: { code: "authentication", message: "Sign in to continue." } },
+            { status: 401 },
+          ),
+        ),
+    );
+    await expect(request("/api/posts")).rejects.toThrow("Sign in to continue.");
+    expect(expired).toHaveBeenCalledOnce();
+    window.removeEventListener("burzblog:session-expired", expired);
+  });
+  it("carries the server's version of a post on a save conflict", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof globalThis.fetch>().mockResolvedValue(
+        Response.json(
+          {
+            error: { code: "conflict", message: "Changed." },
+            current: { slug: "a", version: 4 },
+          },
+          { status: 409 },
+        ),
+      ),
+    );
+    const failure = (await request("/api/posts/a").catch((e: unknown) => e)) as ApiError;
+    expect(failure.code).toBe("conflict");
+    expect(failure.current?.version).toBe(4);
   });
   it("treats a wrong password as a wrong password, not an expired session", async () => {
     const expired = vi.fn<() => void>();
@@ -39,9 +87,9 @@ describe("authenticated requests", () => {
           ),
         ),
     );
-    await expect(request("/api/login", "POST", { password: "x" })).rejects.toThrow(
-      "That password is not correct.",
-    );
+    await expect(
+      request("/api/login", "POST", { username: "a", password: "x" }),
+    ).rejects.toThrow("That password is not correct.");
     expect(expired).not.toHaveBeenCalled();
     window.removeEventListener("burzblog:session-expired", expired);
   });
@@ -74,6 +122,6 @@ describe("authenticated requests", () => {
       "fetch",
       vi.fn<typeof globalThis.fetch>().mockRejectedValue(new Error("offline")),
     );
-    await expect(request("/api/posts")).rejects.toThrow("not saved");
+    await expect(request("/api/posts")).rejects.toThrow("Nothing was saved");
   });
 });

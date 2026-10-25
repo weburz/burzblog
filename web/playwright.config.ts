@@ -27,9 +27,10 @@ export default defineConfig({
   ],
   // The production topology: one process serves the generated shell and the API.
   webServer: {
-    command: "uv run --frozen python ../scripts/e2e-server.py",
+    command: "../scripts/e2e-server.sh",
     env: { BURZBLOG_E2E_ROOT: fixtureRoot },
-    url: "http://127.0.0.1:3000/api/session",
+    url: "http://127.0.0.1:3000/healthz",
+    timeout: 180000,
     reuseExistingServer: false,
   },
 });

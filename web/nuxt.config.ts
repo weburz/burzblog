@@ -13,7 +13,16 @@ export default defineNuxtConfig({
     fallbackToApi: false,
     clientBundle: {
       scan: true,
-      icons: ["lucide:loader-circle", "lucide:chevron-down", "lucide:x", "lucide:check"],
+      icons: [
+        "lucide:loader-circle",
+        "lucide:chevron-down",
+        "lucide:x",
+        "lucide:check",
+        "lucide:circle-alert",
+        "lucide:circle-check",
+        "lucide:info",
+        "lucide:triangle-alert",
+      ],
     },
   },
   app: {
@@ -32,6 +41,6 @@ export default defineNuxtConfig({
         "X-Frame-Options": "DENY",
       },
     },
-    "/api/**": { proxy: "http://127.0.0.1:8000/api/**" },
+    "/api/**": { proxy: "http://127.0.0.1:8080/api/**" },
   },
 });

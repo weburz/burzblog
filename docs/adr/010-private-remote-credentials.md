@@ -1,5 +1,7 @@
 # ADR-010: Provider-independent private HTTPS remote credentials
 
+> **Superseded by [ADR-013](013-database-storage.md)** (2026-10-24). Kept as the record of the file-first design.
+
 Accepted. Resolves issue #13 within the ADR-006/007 Git boundary.
 
 ## Scope: HTTPS tokens now, SSH deferred

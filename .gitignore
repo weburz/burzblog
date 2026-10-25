@@ -8,7 +8,7 @@ __pycache__/
 .coverage
 .coverage.*
 htmlcov/
-dist/
+/dist/
 *.egg-info/
 .uv-cache/
 demo-content/
@@ -20,3 +20,10 @@ web/.output/
 web/test-results/
 web/playwright-report/
 web/dist
+
+# Go build output and local data
+/burzblog
+/bin/
+burzblog-data/
+internal/panel/dist/*
+!internal/panel/dist/.gitkeep
