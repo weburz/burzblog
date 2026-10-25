@@ -28,7 +28,8 @@ specific cause when there is one.
 ```
 
 Codes include `authentication` (401), `credentials` (401), `rate_limited`
-(429), `busy` (503), `origin`/`csrf`/`scope` (403), `not_found` (404), `validation` (422),
+(429), `origin`/`csrf`/`scope` (403), `not_found` (404), `validation` and
+`preview_limit` (422), `busy` (503),
 `slug_taken`, `conflict` and `state` (409), `version_required` (428).
 
 A `conflict` also carries the post as it is now, so clients can show both
@@ -75,7 +76,7 @@ A post:
 | `GET /api/posts/{slug}/revisions` | `{items, current}`: earlier versions, newest first, without bodies; see below |
 | `GET /api/posts/{slug}/revisions/{v}` | one earlier version in full |
 | `POST /api/posts/{slug}/revisions/{v}/restore` | `{version}` → saves that content as a new version |
-| `POST /api/preview` | `{markdown}` → `{html}`, sanitized |
+| `POST /api/preview` | `{markdown}` → `{html}`, sanitized; see [preview limits](#preview-limits) |
 
 Each revision in the list carries `version`, `savedAt`, `savedBy` and a state:
 `slug`, `title`, `status`, `words` (the body's word count) and the digests
@@ -84,6 +85,27 @@ Each revision in the list carries `version`, `savedAt`, `savedBy` and a state:
 field is equal, so the panel can say what a save changed by comparing a
 revision with the next one, or with `current` for the newest. Digests are
 opaque and may change between releases.
+
+### Preview limits
+
+A preview accepts a body of any size a post may have (2 MiB), but refuses text
+built to make rendering explode. Saving is never affected. The refusal is a
+422 `preview_limit` whose `detail` names the line to fix, which the panel shows
+as "Preview is out of date: ...":
+
+- more than 64 table columns, or more than 50,000 table cells in the post;
+- a line that opens more than 32 block quotes or list items, or deeply nested
+  lines adding up past 50,000 levels in total;
+- more than 50,000 non-blank lines outside code blocks, or more than 1,000
+  headings;
+- a paragraph with more than 4,096 emphasis, code or link markers (`*`, `_`,
+  `~`, `` ` ``, `[`), or long paragraphs whose squared marker counts add up past
+  2^25.
+
+A preview is also refused when the HTML would pass 8 MiB (422 `preview_limit`).
+At most two previews render at once; one that waits more than 5 seconds for a
+slot gets a 503 `busy` with `Retry-After: 5`, and the panel retries on the next
+edit.
 
 A save that changes nothing returns the post unchanged, without a new version.
 Every change keeps the previous content as a revision.
