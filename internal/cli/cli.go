@@ -134,6 +134,8 @@ Exit codes: 0 ok, 1 error, 2 usage, 3 conflict, 4 not found, 5 not signed in,
 	for _, c := range []*cobra.Command{a.listCmd(), a.newCmd(), a.editCmd(), a.pullCmd(), a.pushCmd(),
 		a.statusCmd("publish", "Publish a post so reader sites include it"),
 		a.statusCmd("unpublish", "Turn a published post back into a draft"),
+		a.scheduleCmd(),
+		a.statusCmd("unschedule", "Cancel a draft's scheduled publish time"),
 		a.statusCmd("archive", "Hide a post from the list without deleting it"),
 		a.statusCmd("restore", "Bring an archived post back as a draft"),
 		a.openCmd(), a.exportCmd(), a.backupCmd()} {

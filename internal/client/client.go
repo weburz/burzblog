@@ -65,6 +65,7 @@ type Post struct {
 	Status      string     `json:"status"`
 	Body        string     `json:"body,omitempty"`
 	PublishedOn *time.Time `json:"publishedOn"`
+	PublishAt   *time.Time `json:"publishAt"`
 	UpdatedAt   time.Time  `json:"updatedAt"`
 	UpdatedBy   string     `json:"updatedBy"`
 	Version     int64      `json:"version"`
@@ -231,10 +232,18 @@ func (c *Client) CreatePost(ctx context.Context, title, slug string) (*Post, err
 	return &p, err
 }
 
-// Action runs publish, unpublish, archive or restore.
+// Action runs publish, unpublish, unschedule, archive or restore.
 func (c *Client) Action(ctx context.Context, slug, action string, version int64) (*Post, error) {
 	var p Post
 	err := c.json(ctx, http.MethodPost, "/api/posts/"+url.PathEscape(slug)+"/"+action, map[string]int64{"version": version}, &p)
+	return &p, err
+}
+
+// Schedule sets the time a draft publishes itself.
+func (c *Client) Schedule(ctx context.Context, slug string, at time.Time, version int64) (*Post, error) {
+	var p Post
+	err := c.json(ctx, http.MethodPost, "/api/posts/"+url.PathEscape(slug)+"/schedule",
+		map[string]any{"version": version, "at": at.UTC().Format(time.RFC3339)}, &p)
 	return &p, err
 }
 

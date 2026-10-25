@@ -75,6 +75,8 @@ URL. Settings can also come from the environment:
 				log.Warn("no accounts yet; create one with: burzblog user add <name> --data " + dir)
 			}
 
+			srv.StartScheduler(ctx)
+
 			ln, err := net.Listen("tcp", addr)
 			if err != nil {
 				return fmt.Errorf("listen on %s: %w", addr, err)
@@ -99,6 +101,7 @@ URL. Settings can also come from the environment:
 			case <-ctx.Done():
 				log.Info("shutting down")
 			}
+			stop() // ends the scheduler even when Serve failed first
 			shutdown, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancel()
 			if err := hs.Shutdown(shutdown); err != nil {

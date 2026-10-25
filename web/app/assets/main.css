@@ -362,6 +362,21 @@ code {
   background: var(--bb-border-strong);
 }
 
+/* Scheduled publishing: a draft that publishes itself */
+.badge-scheduled {
+  color: var(--bb-blue);
+}
+.badge-scheduled .badge-dot {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--bb-blue);
+}
+.schedule-note {
+  flex: none;
+  font-size: 13px;
+  color: var(--bb-text-2);
+  white-space: nowrap;
+}
+
 /* Segmented control */
 .segment {
   display: inline-flex;

@@ -114,6 +114,17 @@ website** shows the last request and has **Rebuild now**.
 The hook URL is treated as a secret: it is never shown in the panel or the API,
 and failures are reported without it.
 
+### Scheduled posts
+
+A draft can be scheduled to publish itself later (**Publish → Schedule…** in
+the panel, or `burzblog schedule`). A scheduled post is still a draft: it is
+not in the export, and **your website does not show it until its next build**.
+When the time comes BurzBlog publishes the post and calls the deploy hook like
+a manual publish, so with a hook configured the site rebuilds a few seconds
+later. Without a hook, the post appears at your next build. Scheduling itself
+does not trigger a rebuild. If BurzBlog was stopped at the scheduled time, the
+post publishes when it starts again.
+
 ## Previews and images
 
 The panel's preview renders Markdown without raw HTML, like most static site

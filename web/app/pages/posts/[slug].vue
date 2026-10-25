@@ -6,7 +6,13 @@ import { returnFocusTo } from "../../utils/focus";
 import { countWords, lengthLabel } from "../../utils/markdown";
 import { diffTooLong, lineDiff } from "../../utils/diff";
 import type { PaletteCommand } from "../../utils/palette";
-import { editedLabel, exactTime } from "../../utils/time";
+import {
+  editedLabel,
+  exactTime,
+  isScheduled,
+  scheduledLabel,
+  zoneLabel,
+} from "../../utils/time";
 
 const route = useRoute();
 const toast = useToast();
@@ -29,6 +35,7 @@ const comparing = ref(false);
 const recovered = ref<{ draft: PostDraft; version: number; at: number } | null>(null);
 const detailsOpen = ref(false);
 const historyOpen = ref(false);
+const scheduleOpen = ref(false);
 const confirm = reactive({
   open: false,
   title: "",
@@ -79,6 +86,7 @@ const dirty = computed(() =>
 );
 watch(dirty, (value) => (dirtyFlag.value = value), { immediate: true });
 const archived = computed(() => post.value?.status === "archived");
+const scheduled = computed(() => Boolean(post.value && isScheduled(post.value)));
 useHead({
   title: () =>
     missing.value
@@ -214,8 +222,9 @@ const useTheirs = () => {
 };
 
 const action = async (
-  name: "publish" | "unpublish" | "archive" | "restore",
+  name: "publish" | "unpublish" | "archive" | "restore" | "schedule" | "unschedule",
   silent = false,
+  extra: { at?: string } = {},
 ): Promise<boolean> => {
   if (!post.value) return false;
   if (dirty.value && !(await save())) return false;
@@ -227,6 +236,7 @@ const action = async (
       "POST",
       {
         version: post.value.version,
+        ...extra,
       },
     );
     show(p);
@@ -236,6 +246,11 @@ const action = async (
       unpublish: ["Unpublished", "It will leave your site on the next build."],
       archive: ["Archived", "Find it under Archived on the posts list."],
       restore: ["Restored", "It is a draft again."],
+      schedule: [
+        "Scheduled",
+        `${scheduledLabel(p.publishAt ?? "")}. Sites with a deploy hook rebuild then.`,
+      ],
+      unschedule: ["Unscheduled", "It is a plain draft again."],
     } as const;
     // Unpublish and Archive take effect at once, so they come with an Undo.
     // Undoing an Archive of a live post restores it, then puts it back on the site.
@@ -287,6 +302,10 @@ const publish = () =>
     color: "primary",
     run: () => action("publish"),
   });
+
+const schedule = async (at: string) => {
+  if (await action("schedule", false, { at })) scheduleOpen.value = false;
+};
 
 const remove = () =>
   ask({
@@ -390,6 +409,12 @@ const menu = computed(() => {
   const p = post.value;
   if (!p) return [];
   const status = [];
+  if (isScheduled(p))
+    status.push({
+      label: "Change schedule…",
+      icon: "i-lucide-calendar-clock",
+      onSelect: fromMenu(() => (scheduleOpen.value = true)),
+    });
   if (p.status === "published")
     status.push({
       label: "Unpublish",
@@ -521,14 +546,27 @@ const paletteCommands = (): PaletteCommand[] => {
   const p = post.value;
   if (!p) return [];
   const status: PaletteCommand[] = [];
-  if (p.status === "draft")
+  if (p.status === "draft") {
     status.push({
       id: "publish",
-      label: "Publish",
+      label: scheduled.value ? "Publish now" : "Publish",
       icon: "i-lucide-send",
       run: publish,
     });
-  else if (p.status === "published")
+    status.push({
+      id: "schedule",
+      label: scheduled.value ? "Change schedule…" : "Schedule…",
+      icon: "i-lucide-calendar-clock",
+      run: () => (scheduleOpen.value = true),
+    });
+    if (scheduled.value)
+      status.push({
+        id: "unschedule",
+        label: "Unschedule",
+        icon: "i-lucide-calendar-x",
+        run: () => void action("unschedule"),
+      });
+  } else if (p.status === "published")
     status.push({
       id: "unpublish",
       label: "Unpublish",
@@ -702,6 +740,19 @@ const runConfirm = () => {
   confirm.open = false;
 };
 
+// The Publish button's extra choices, next to it as a split button.
+const publishMore = ref<{ $el: HTMLElement } | null>(null);
+const publishMenu = computed(() => [
+  {
+    label: "Schedule…",
+    icon: "i-lucide-calendar-clock",
+    onSelect: () => {
+      menuOpener.value = publishMore.value?.$el ?? null;
+      scheduleOpen.value = true;
+    },
+  },
+]);
+
 const primary = computed(() => {
   if (!post.value || archived.value) return null;
   if (dirty.value || saving.value) return "save";
@@ -749,7 +800,14 @@ const primary = computed(() => {
       </NuxtLink>
       <div class="editor-crumb">
         <span class="editor-crumb-title">{{ draft.title || "Untitled" }}</span>
-        <StatusBadge :status="post.status" />
+        <StatusBadge :status="post.status" :publish-at="post.publishAt" />
+        <time
+          v-if="scheduled && post.publishAt"
+          class="schedule-note"
+          :datetime="post.publishAt"
+          :title="`${exactTime(post.publishAt)} (${zoneLabel()})`"
+          >{{ scheduledLabel(post.publishAt) }}</time
+        >
       </div>
       <span
         class="save-state"
@@ -801,14 +859,40 @@ const primary = computed(() => {
             >Save</UButton
           >
         </UTooltip>
-        <UButton
-          v-if="post.status === 'draft'"
-          :color="primary === 'publish' ? 'primary' : 'secondary'"
-          :variant="primary === 'publish' ? 'solid' : 'outline'"
-          :loading="acting"
-          @click="publish"
-          >Publish</UButton
-        >
+        <template v-if="scheduled">
+          <UButton
+            color="neutral"
+            variant="outline"
+            :loading="acting"
+            @click="action('unschedule')"
+            >Unschedule</UButton
+          >
+          <UButton
+            :color="primary === 'publish' ? 'primary' : 'secondary'"
+            :variant="primary === 'publish' ? 'solid' : 'outline'"
+            :loading="acting"
+            @click="publish"
+            >Publish now</UButton
+          >
+        </template>
+        <UFieldGroup v-else-if="post.status === 'draft'">
+          <UButton
+            :color="primary === 'publish' ? 'primary' : 'secondary'"
+            :variant="primary === 'publish' ? 'solid' : 'outline'"
+            :loading="acting"
+            @click="publish"
+            >Publish</UButton
+          >
+          <UDropdownMenu :items="publishMenu" :content="{ align: 'end' }">
+            <UButton
+              ref="publishMore"
+              :color="primary === 'publish' ? 'primary' : 'secondary'"
+              :variant="primary === 'publish' ? 'solid' : 'outline'"
+              icon="i-lucide-chevron-down"
+              aria-label="More ways to publish"
+            />
+          </UDropdownMenu>
+        </UFieldGroup>
         <UButton
           v-else-if="archived"
           color="primary"
@@ -998,6 +1082,9 @@ const primary = computed(() => {
       <template v-if="post.status === 'published' && post.publishedOn">
         Published {{ exactTime(post.publishedOn) }}.</template
       >
+      <template v-if="scheduled && post.publishAt">
+        Publishes {{ exactTime(post.publishAt) }} ({{ zoneLabel() }}).</template
+      >
     </footer>
 
     <PostDetails
@@ -1016,6 +1103,13 @@ const primary = computed(() => {
       :dirty="dirty"
       :close-focus="closeFocus"
       @restore="restoreRevision"
+    />
+    <ScheduleDialog
+      v-model:open="scheduleOpen"
+      :current="post.publishAt"
+      :busy="acting"
+      :close-focus="closeFocus"
+      @confirm="schedule"
     />
     <ConfirmDialog
       v-model:open="confirm.open"

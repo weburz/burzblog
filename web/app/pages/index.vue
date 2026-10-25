@@ -3,7 +3,13 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import type { Post, PostList, PostStatus, PostSummary } from "../types";
 import { errorMessage, request } from "../utils/api";
 import { wordLabel } from "../utils/markdown";
-import { editedLabel, exactTime, publishedLabel } from "../utils/time";
+import {
+  editedLabel,
+  exactTime,
+  isScheduled,
+  publishedLabel,
+  publishesLabel,
+} from "../utils/time";
 
 useHead({ title: "Posts" });
 const route = useRoute();
@@ -11,10 +17,11 @@ const router = useRouter();
 const { state } = useCurrentSession();
 const { enabled: shortcutsEnabled } = useEnabledShortcuts();
 
-type Filter = "" | PostStatus;
+type Filter = "" | PostStatus | "scheduled";
 const filters: { value: Filter; label: string }[] = [
   { value: "", label: "All" },
   { value: "draft", label: "Drafts" },
+  { value: "scheduled", label: "Scheduled" },
   { value: "published", label: "Published" },
   { value: "archived", label: "Archived" },
 ];
@@ -95,6 +102,7 @@ const emptyText = computed(() => {
   const noun = {
     "": "posts",
     draft: "drafts",
+    scheduled: "scheduled posts",
     published: "published posts",
     archived: "archived posts",
   }[status.value];
@@ -108,13 +116,15 @@ const clearFilters = () => {
 };
 
 // One secondary line per row: published posts show when they went out,
-// everything else when it was last edited.
+// scheduled ones when they will, everything else when it was last edited.
 const isPublished = (post: PostSummary) =>
   post.status === "published" && Boolean(post.publishedOn);
 const rowDate = (post: PostSummary) =>
   isPublished(post)
     ? publishedLabel(post.publishedOn as string)
-    : editedLabel(post.updatedAt);
+    : isScheduled(post)
+      ? publishesLabel(post.publishAt as string)
+      : editedLabel(post.updatedAt);
 
 const created = (post: Post) => navigateTo(`/posts/${post.slug}`);
 
@@ -151,7 +161,10 @@ const origin = typeof window === "undefined" ? "" : window.location.origin;
           <template v-if="total === 0">Nothing written yet.</template>
           <template v-else
             >{{ list.counts.published }} published, {{ list.counts.draft }}
-            {{ list.counts.draft === 1 ? "draft" : "drafts" }}</template
+            {{ list.counts.draft === 1 ? "draft" : "drafts"
+            }}<template v-if="list.counts.scheduled">
+              ({{ list.counts.scheduled }} scheduled)</template
+            ></template
           >
         </p>
       </div>
@@ -229,16 +242,23 @@ const origin = typeof window === "undefined" ? "" : window.location.origin;
               >
             </span>
           </span>
-          <StatusBadge :status="post.status" class="post-status" />
+          <StatusBadge
+            :status="post.status"
+            :publish-at="post.publishAt"
+            class="post-status"
+          />
           <span class="post-words">{{ wordLabel(post.words) }}</span>
           <time
             class="post-edited"
-            :datetime="post.publishedOn ?? post.updatedAt"
+            :datetime="post.publishAt ?? post.publishedOn ?? post.updatedAt"
             :title="`Edited ${exactTime(post.updatedAt)}`"
             >{{ rowDate(post) }}
             <span
               v-if="
-                !isPublished(post) && post.updatedBy && post.updatedBy !== state.username
+                !isPublished(post) &&
+                !isScheduled(post) &&
+                post.updatedBy &&
+                post.updatedBy !== state.username
               "
               class="muted"
               >by {{ post.updatedBy }}</span

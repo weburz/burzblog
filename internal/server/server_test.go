@@ -28,6 +28,7 @@ type harness struct {
 	t      *testing.T
 	ts     *httptest.Server
 	store  *store.Store
+	srv    *Server
 	client *http.Client
 	csrf   string
 	token  string
@@ -69,6 +70,7 @@ func newHarness(t *testing.T, mutate func(*Config)) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
+	h.srv = srv
 	h.ts.Config.Handler = srv.Handler()
 	t.Cleanup(func() { srv.Close(context.Background()); h.ts.Close() })
 	jar, _ := cookiejar.New(nil)

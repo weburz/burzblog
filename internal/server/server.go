@@ -35,14 +35,15 @@ type Config struct {
 
 // Server handles HTTP requests.
 type Server struct {
-	cfg    Config
-	origin *url.URL
-	store  *store.Store
-	auth   *auth.Service
-	panel  *panel
-	deploy *deployer
-	log    *slog.Logger
-	mux    *http.ServeMux
+	cfg       Config
+	origin    *url.URL
+	store     *store.Store
+	auth      *auth.Service
+	panel     *panel
+	deploy    *deployer
+	scheduler *scheduler
+	log       *slog.Logger
+	mux       *http.ServeMux
 }
 
 // New builds a Server.
@@ -65,6 +66,7 @@ func New(cfg Config, s *store.Store, a *auth.Service) (*Server, error) {
 		}
 	}
 	srv.deploy = newDeployer(cfg.DeployHook, cfg.Logger)
+	srv.scheduler = newScheduler()
 	srv.routes()
 	return srv, nil
 }
@@ -80,8 +82,15 @@ func ParseOrigin(raw string) (*url.URL, error) {
 	return u, nil
 }
 
-// Close stops background work, flushing a pending deploy.
+// Close waits for the scheduler to stop (its context must be cancelled), then
+// flushes a pending deploy.
 func (s *Server) Close(ctx context.Context) {
+	done := make(chan struct{})
+	go func() { s.scheduler.wg.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-ctx.Done():
+	}
 	s.deploy.close(ctx)
 }
 

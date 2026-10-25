@@ -31,6 +31,7 @@ func (a *App) listCmd() *cobra.Command {
 		Short:   "List posts, most recently changed first unless --sort says otherwise",
 		Example: `  burzblog list
   burzblog list --status published
+  burzblog list --status scheduled
   burzblog list --search golang
   burzblog list --sort title
   burzblog list --status draft --json     # {"items":[{"slug","title","status","version",...}],"counts":{...}}`,
@@ -66,16 +67,20 @@ func (a *App) listCmd() *cobra.Command {
 			w := tabwriter.NewWriter(a.Out, 0, 0, 2, ' ', 0)
 			fmt.Fprintln(w, a.paint(dim, "STATUS\tSLUG\tTITLE\tWORDS\tCHANGED"))
 			for _, p := range l.Items {
-				fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\n", a.status(p.Status), clean(p.Slug), truncate(clean(p.Title), 48), p.Words,
+				label := a.status(p.Status)
+				if p.PublishAt != nil && p.Status == "draft" {
+					label = a.paint(yellow, "scheduled "+p.PublishAt.Local().Format("2 Jan 15:04"))
+				}
+				fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\n", label, clean(p.Slug), truncate(clean(p.Title), 48), p.Words,
 					ago(p.UpdatedAt)+" by "+clean(p.UpdatedBy))
 			}
 			w.Flush()
-			fmt.Fprintf(a.Out, "\n%s\n", a.paint(dim, fmt.Sprintf("%d drafts, %d published, %d archived",
-				l.Counts["draft"], l.Counts["published"], l.Counts["archived"])))
+			fmt.Fprintf(a.Out, "\n%s\n", a.paint(dim, fmt.Sprintf("%d drafts (%d scheduled), %d published, %d archived",
+				l.Counts["draft"], l.Counts["scheduled"], l.Counts["published"], l.Counts["archived"])))
 			return nil
 		},
 	}
-	cmd.Flags().StringVarP(&status, "status", "s", "", "only draft, published or archived posts")
+	cmd.Flags().StringVarP(&status, "status", "s", "", "only draft, published, scheduled or archived posts")
 	cmd.Flags().StringVarP(&search, "search", "q", "", "match title, slug or description")
 	cmd.Flags().StringVar(&sort, "sort", "", "order by updated (default), published, title or created")
 	return cmd
@@ -108,13 +113,14 @@ type postResult struct {
 	Description string     `json:"description"`
 	Status      string     `json:"status"`
 	PublishedOn *time.Time `json:"publishedOn"`
+	PublishAt   *time.Time `json:"publishAt"`
 	UpdatedAt   time.Time  `json:"updatedAt"`
 	UpdatedBy   string     `json:"updatedBy"`
 	Version     int64      `json:"version"`
 }
 
 func summary(p *client.Post) postResult {
-	return postResult{p.Slug, p.Title, p.Description, p.Status, p.PublishedOn, p.UpdatedAt, p.UpdatedBy, p.Version}
+	return postResult{p.Slug, p.Title, p.Description, p.Status, p.PublishedOn, p.PublishAt, p.UpdatedAt, p.UpdatedBy, p.Version}
 }
 
 // readInput reads a file, or standard input for "-", up to the largest
@@ -591,10 +597,72 @@ func (a *App) statusCmd(action, short string) *cobra.Command {
 			if a.asJSON {
 				return a.emit(summary(p))
 			}
+			if action == "unschedule" {
+				fmt.Fprintf(a.Out, "%s %s is no longer scheduled; it stays a draft.\n", a.paint(green, "✓"), a.paint(bold, clean(p.Slug)))
+				return nil
+			}
 			fmt.Fprintf(a.Out, "%s %s is now %s.\n", a.paint(green, "✓"), a.paint(bold, clean(p.Slug)), clean(p.Status))
 			if action == "publish" || action == "unpublish" {
 				fmt.Fprintln(a.Out, "  Reader sites with a deploy hook rebuild in a few seconds.")
 			}
+			return nil
+		},
+	}
+}
+
+// whenLayouts are the local-time forms `burzblog schedule` accepts besides
+// RFC 3339.
+var whenLayouts = []string{"2006-01-02 15:04", "2006-01-02T15:04"}
+
+// parseWhen reads an RFC 3339 time, or a date and time in loc.
+func parseWhen(s string, loc *time.Location) (time.Time, error) {
+	s = strings.TrimSpace(s)
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t, nil
+	}
+	for _, layout := range whenLayouts {
+		if t, err := time.ParseInLocation(layout, s, loc); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("cannot read %q as a time; use 2026-11-03T09:00:00Z or \"2026-11-03 09:00\" (local time)", s)
+}
+
+func (a *App) scheduleCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "schedule <slug> <when>",
+		Short: "Publish a draft automatically at a future time",
+		Long: `Sets the time a draft publishes itself. <when> is RFC 3339 (2026-11-03T09:00:00Z)
+or a local date and time in quotes ("2026-11-03 09:00"). It must be in the
+future, at most two years away. Reader sites with a deploy hook rebuild when
+it publishes; use "burzblog unschedule" to cancel.`,
+		Example: `  burzblog schedule my-post "2026-11-03 09:00"
+  burzblog schedule my-post 2026-11-03T09:00:00+05:30`,
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			at, err := parseWhen(args[1], time.Local)
+			if err != nil {
+				return err
+			}
+			cl, _, err := a.client()
+			if err != nil {
+				return err
+			}
+			c, cancel := ctx()
+			defer cancel()
+			current, err := cl.Post(c, args[0])
+			if err != nil {
+				return err
+			}
+			p, err := cl.Schedule(c, args[0], at, current.Version)
+			if err != nil {
+				return err
+			}
+			if a.asJSON {
+				return a.emit(summary(p))
+			}
+			fmt.Fprintf(a.Out, "%s %s is scheduled for %s.\n", a.paint(green, "✓"), a.paint(bold, clean(p.Slug)),
+				p.PublishAt.Local().Format("Mon 2 Jan 2006 15:04 MST"))
 			return nil
 		},
 	}
