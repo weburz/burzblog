@@ -293,8 +293,9 @@ func parseTime(field string, n *yaml.Node) (*time.Time, error) {
 	return nil, &FieldError{field, fmt.Sprintf("(line %d) must be a date like 2026-10-24 or 2026-10-24T09:30:00+00:00.", n.Line)}
 }
 
-// parseMapping reads YAML that must be one mapping without anchors, aliases
-// or custom tags, which keeps hostile input from expanding.
+// parseMapping reads YAML that must be one mapping without anchors, aliases,
+// merge keys or tags outside the core schema, which keeps hostile input from
+// expanding and keeps exports readable by strict YAML readers.
 func parseMapping(src, field string) (*yaml.Node, error) {
 	var doc yaml.Node
 	if err := yaml.Unmarshal([]byte(src), &doc); err != nil {
@@ -324,12 +325,31 @@ func parseMapping(src, field string) (*yaml.Node, error) {
 	return root, nil
 }
 
+// coreTags are the YAML core-schema tags every reader resolves the same way.
+// yaml.v3 reports implicit scalars with their resolved tag, so plain values
+// pass without being written out.
+var coreTags = map[string]bool{
+	"!!str": true, "!!int": true, "!!float": true, "!!bool": true,
+	"!!null": true, "!!timestamp": true, "!!map": true, "!!seq": true,
+	"!!binary": true,
+}
+
 func plain(n *yaml.Node, field string) error {
 	if n.Kind == yaml.AliasNode || n.Anchor != "" {
 		return &FieldError{field, fmt.Sprintf("(line %d) uses YAML anchors or aliases, which BurzBlog does not accept.", n.Line)}
 	}
-	if n.Tag != "" && !strings.HasPrefix(n.Tag, "!!") {
-		return &FieldError{field, fmt.Sprintf("(line %d) uses a custom YAML tag, which BurzBlog does not accept.", n.Line)}
+	if n.Tag == "!!merge" {
+		return &FieldError{field, fmt.Sprintf("(line %d) uses a YAML merge key (<<), which BurzBlog does not accept; write the keys out.", n.Line)}
+	}
+	if n.Tag != "" && !coreTags[n.Tag] {
+		return &FieldError{field, fmt.Sprintf("(line %d) uses the YAML tag %s, which BurzBlog does not accept; remove it or use a core tag such as !!str.", n.Line, n.Tag)}
+	}
+	if n.Kind == yaml.MappingNode {
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			if k := n.Content[i]; k.Kind == yaml.ScalarNode && k.Value == "<<" {
+				return &FieldError{field, fmt.Sprintf("(line %d) uses a YAML merge key (<<), which BurzBlog does not accept; write the keys out.", k.Line)}
+			}
+		}
 	}
 	for _, c := range n.Content {
 		if err := plain(c, field); err != nil {
