@@ -59,6 +59,13 @@ burzblog login https://blog.example.com      # asks for username and password
 burzblog whoami
 ```
 
+If the account uses two-factor sign-in, `login` asks for the code after the
+password (a recovery code works too). Without a terminal, pass it with
+`--code 123456` or the `BURZBLOG_TOTP` environment variable, or put it on the
+line after the password when reading from standard input. Tokens that already
+exist keep working when two-factor sign-in is turned on: the token is the
+second factor. Only a new `login` needs the code.
+
 `login` creates an API token named after your computer and stores it in
 `~/.config/burzblog/config.json` (mode `0600`). It appears in the panel under
 **Settings → Connected computers**, where it can be revoked. `burzblog logout`
@@ -321,7 +328,10 @@ burzblog whoami --json
 ```
 
 The environment wins over the stored login. `burzblog login` itself can also
-run unattended: `echo "$PASSWORD" | burzblog login https://blog.example.com -u ada --password-stdin`.
+run unattended: `echo "$PASSWORD" | burzblog login https://blog.example.com -u ada --password-stdin`
+(add `--code "$CODE"` or `BURZBLOG_TOTP` for an account with two-factor sign-in; a
+code is valid once, so unattended logins for such accounts need a recovery code
+or a human).
 
 ### JSON output
 

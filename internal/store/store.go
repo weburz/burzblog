@@ -204,6 +204,28 @@ var migrations = []string{
 		created_at TEXT NOT NULL
 	);
 	CREATE INDEX slug_redirects_post ON slug_redirects (post_id);`,
+	// Two-factor sign-in (TOTP). A user_totp row exists from the start of
+	// enrolment; enabled turns it on once a code was confirmed. last_step is
+	// the newest 30-second step accepted, so a code cannot be replayed.
+	// Recovery codes and sign-in challenges are stored as SHA-256 digests.
+	`CREATE TABLE user_totp (
+		user_id INTEGER PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
+		secret TEXT NOT NULL,
+		enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0, 1)),
+		last_step INTEGER NOT NULL DEFAULT 0,
+		created_at TEXT NOT NULL
+	);
+	CREATE TABLE recovery_codes (
+		code_hash TEXT PRIMARY KEY,
+		user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE
+	);
+	CREATE INDEX recovery_codes_user ON recovery_codes (user_id);
+	CREATE TABLE login_challenges (
+		token_hash TEXT PRIMARY KEY,
+		user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+		expires_at INTEGER NOT NULL
+	);
+	CREATE INDEX login_challenges_user ON login_challenges (user_id);`,
 }
 
 // migrationSteps run in the migration's transaction after its SQL, for work

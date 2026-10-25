@@ -12,7 +12,9 @@ under `/api`. There are no unauthenticated content routes.
 | Website build | `Authorization: Bearer bzb_...` export token created in Settings (a build token in the panel) | can only read published content: `GET /api/export.tar.gz` and `GET /api/content/*`; every other route, `GET /api/backup.tar.gz` included, answers 403 `scope` |
 
 Sessions last 12 hours. Each username gets ten sign-in attempts per 15 minutes;
-a successful sign-in resets the count. When many sign-ins arrive at once and no
+a successful sign-in resets the count. A wrong two-factor code counts as a
+failed attempt for the same username, and an account with two-factor sign-in
+resets the count only when the code is right, not when the password is. When many sign-ins arrive at once and no
 password-checking slot frees within two seconds, or one client address already
 has four sign-ins in progress, the request is answered `503` `busy` with
 `Retry-After: 5`; it is not counted against the username. There is no instance-wide limit, so one
@@ -28,7 +30,9 @@ specific cause when there is one.
 ```
 
 Codes include `bad_request` (400: invalid JSON, an unknown `status`, a missing
-`?version=`), `authentication` (401), `credentials` (401), `rate_limited`
+`?version=`), `authentication` (401), `credentials` (401), `code`,
+`challenge` and `second_factor_required` (401: a wrong two-factor code, a missing
+or expired sign-in challenge, a token request without its code), `rate_limited`
 (429), `origin`/`csrf`/`scope`/`setup_token` (403), `not_found` (404), `validation` and
 `preview_limit` (422), `busy` (503), `slug_taken`, `conflict`, `state`, `setup_done` and
 `deploy_unconfigured` (409), `version_required` (428), `too_large` (413) and
@@ -44,13 +48,18 @@ versions: `{ "error": {...}, "current": { ...post } }`.
 | `GET /api/session` | `{authenticated, username, csrf}`; works without signing in. An export token is anonymous here (`authenticated: false`) |
 | `GET /api/setup` | `{needed}`: true while the server has no accounts. Needs no sign-in and reveals nothing else |
 | `POST /api/setup` | `{token, username, password}` creates the first account and signs the browser in (201, same body as `GET /api/session`, plus the session cookie). Needs the `Origin` header. `token` is the one-time value after `#token=` in the link `burzblog serve` prints. 403 `setup_token` for a wrong, expired or used token (one message for all), 409 `setup_done` once any account exists, 400 `validation` for a name or password `burzblog user add` would refuse, 429 `rate_limited` and 503 `busy` like sign-in |
-| `POST /api/login` | `{username, password}` → session cookie and the same body as `GET /api/session` |
+| `POST /api/login` | `{username, password}` → session cookie and the same body as `GET /api/session`. When the account uses two-factor sign-in the answer is `200 {"second_factor": true, "challenge": "..."}` and **no** cookie is set |
+| `POST /api/login/totp` | `{challenge, code}` → session cookie and the `GET /api/session` body. `code` is the 6-digit code or a recovery code. The challenge lasts five minutes and works once; a wrong code answers 401 `code` (the challenge stays usable), an unknown, used or expired challenge 401 `challenge`. Needs the same `Origin` as `POST /api/login` |
 | `POST /api/logout` | ends the session |
-| `POST /api/auth/token` | `{username, password, name}` → write token `{id, name, scope, secret}`; the secret is returned once |
+| `POST /api/auth/token` | `{username, password, name, code?}` → write token `{id, name, scope, secret}`; the secret is returned once. For an account with two-factor sign-in, `code` (a code or a recovery code) is required: without it the answer is 401 `second_factor_required` |
 | `GET /api/tokens` | every token (without secrets) |
 | `POST /api/tokens` | `{name, scope: "write" or "export"}` → new token with its secret |
 | `DELETE /api/tokens/{id}` | revoke |
 | `POST /api/account/password` | `{current, next}`; signs out every other browser and revokes every write token (`burzblog login`); export tokens keep working |
+| `GET /api/account/2fa` | `{enabled, pending, recoveryCodes}`; `recoveryCodes` counts the unused ones |
+| `POST /api/account/2fa/start` | `{password}` → `{secret, uri}`, a pending 160-bit secret (base32) and its `otpauth://` address; replaces an earlier pending secret; 409 `two_factor_on` if it is already on |
+| `POST /api/account/2fa/confirm` | `{code}` → `{enabled: true, recoveryCodes: [10 codes]}`; the codes are shown only in this answer; 400 `code` if the code is wrong |
+| `POST /api/account/2fa/disable` | `{password, code}`; ends every other browser session; 409 `two_factor_off` if it is not on |
 | `GET /api/settings` | `{username, origin, version, deploy, site}`; `site` is `{configured, feeds}` plus, when a site URL is set, `{url, title, description, language, postPath, tagPath}` (`feeds` lists the feed and sitemap routes, empty when not configured) |
 | `POST /api/deploy` | request a website rebuild now; 409 `deploy_unconfigured` when no deploy hook is set |
 

@@ -125,3 +125,36 @@ describe("authenticated requests", () => {
     await expect(request("/api/posts")).rejects.toThrow("Nothing was saved");
   });
 });
+
+describe("two-factor answers", () => {
+  it("does not treat a wrong code as an ended session", async () => {
+    const expired = vi.fn<() => void>();
+    window.addEventListener("burzblog:session-expired", expired);
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn<typeof globalThis.fetch>()
+        .mockResolvedValue(
+          Response.json(
+            { error: { code: "code", message: "That code is not right." } },
+            { status: 401 },
+          ),
+        ),
+    );
+    rememberSession({ authenticated: false });
+    await expect(
+      request("/api/login/totp", "POST", { challenge: "c", code: "1" }),
+    ).rejects.toMatchObject({ code: "code" });
+    expect(expired).not.toHaveBeenCalled();
+    window.removeEventListener("burzblog:session-expired", expired);
+  });
+  it("does not look up a CSRF token before the second sign-in step", async () => {
+    rememberSession({ authenticated: false });
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValue(Response.json({ authenticated: true, csrf: "x" }));
+    vi.stubGlobal("fetch", fetch);
+    await request("/api/login/totp", "POST", { challenge: "c", code: "123456" });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+});

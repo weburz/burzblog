@@ -538,6 +538,8 @@ const scopeUse = (t: Token) =>
       </form>
     </section>
 
+    <TwoFactorSection />
+
     <p v-if="settings" class="list-foot muted">BurzBlog {{ settings.version }}</p>
 
     <ConfirmDialog

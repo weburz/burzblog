@@ -21,6 +21,9 @@ export const rememberSession = (session: Session) => {
   csrf = session.authenticated ? (session.csrf ?? "") : "";
 };
 
+// 401 answers that mean "try again", not "you were signed out".
+const notExpiry = new Set(["credentials", "code", "challenge"]);
+
 const sessionExpired = () => {
   csrf = "";
   if (typeof window !== "undefined")
@@ -61,7 +64,7 @@ export const request = async <T>(
   method = "GET",
   body?: unknown,
 ): Promise<T> => {
-  if (method !== "GET" && !csrf && path !== "/api/login" && path !== "/api/setup")
+  if (method !== "GET" && !csrf && !path.startsWith("/api/login") && path !== "/api/setup")
     await refreshCsrf();
   let response = await send(path, method, body);
   if (response.status === 403 && method !== "GET") {
@@ -81,8 +84,8 @@ export const request = async <T>(
       current?: Post;
     } | null;
     const code = value?.error?.code ?? "request";
-    // A wrong password is a 401 too, but not an expired session.
-    if (response.status === 401 && code !== "credentials") sessionExpired();
+    // A wrong password or code is a 401 too, but not an expired session.
+    if (response.status === 401 && !notExpiry.has(code)) sessionExpired();
     throw new ApiError(
       response.status,
       code,

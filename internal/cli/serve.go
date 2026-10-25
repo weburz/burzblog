@@ -276,6 +276,36 @@ terminal the password is read from standard input.`,
 			return nil
 		},
 	}
+	reset2FA := &cobra.Command{
+		Use:   "2fa-reset <username>",
+		Short: "Turn off two-factor sign-in for a locked-out account; ends browser sessions",
+		Long: `Turns off two-factor sign-in and deletes the recovery codes, for someone who lost
+their authenticator app and recovery codes. Their browser sessions end and they
+can sign in with the password alone, then set two-factor up again in Settings.
+Terminal logins (tokens) keep working.`,
+		Example: "  burzblog user 2fa-reset ada --data /var/lib/burzblog",
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			st, err := open()
+			if err != nil {
+				return err
+			}
+			defer st.Close()
+			u, err := st.UserByName(context.Background(), args[0])
+			if errors.Is(err, store.ErrNotFound) {
+				return fmt.Errorf("there is no account called %s", args[0])
+			} else if err != nil {
+				return err
+			}
+			if err := st.DisableTOTP(context.Background(), u.ID, ""); errors.Is(err, store.ErrNotFound) {
+				return fmt.Errorf("%s does not use two-factor sign-in", clean(u.Username))
+			} else if err != nil {
+				return err
+			}
+			fmt.Fprintf(a.Out, "%s Turned off two-factor sign-in for %s and ended their browser sessions.\n", a.paint(green, "✓"), clean(u.Username))
+			return nil
+		},
+	}
 	list := &cobra.Command{
 		Use:   "list",
 		Short: "List accounts",
@@ -299,6 +329,6 @@ terminal the password is read from standard input.`,
 			return nil
 		},
 	}
-	cmd.AddCommand(add, passwd, list)
+	cmd.AddCommand(add, passwd, reset2FA, list)
 	return cmd
 }

@@ -13,14 +13,15 @@ import (
 )
 
 func (a *App) loginCmd() *cobra.Command {
-	var username string
+	var username, code string
 	var passwordStdin bool
 	cmd := &cobra.Command{
 		Use:   "login <server>",
 		Short: "Sign in to a BurzBlog server from this computer",
 		Example: `  burzblog login https://blog.example.com
   burzblog login https://blog.example.com --username ada
-  echo "$PASSWORD" | burzblog login https://blog.example.com -u ada --password-stdin`,
+  echo "$PASSWORD" | burzblog login https://blog.example.com -u ada --password-stdin
+  BURZBLOG_TOTP=123456 burzblog login https://blog.example.com -u ada   # two-factor account, no terminal`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			server, err := normalizeServer(args[0])
@@ -46,7 +47,19 @@ func (a *App) loginCmd() *cobra.Command {
 			}
 			c, cancel := ctx()
 			defer cancel()
-			tok, err := client.New(server, "", "burzblog-cli/"+a.Version).IssueToken(c, username, password, name)
+			if code == "" {
+				code = a.Getenv("BURZBLOG_TOTP")
+			}
+			cl := client.New(server, "", "burzblog-cli/"+a.Version)
+			tok, err := cl.IssueToken(c, username, password, code, name)
+			var apiErr *client.Error
+			if errors.As(err, &apiErr) && apiErr.Code == client.SecondFactorRequired && code == "" {
+				// Ask only now that the password is known to be right.
+				if code, err = a.prompt("Two-factor code (or a recovery code): "); err != nil || strings.TrimSpace(code) == "" {
+					return errors.New("this account uses two-factor sign-in: pass --code or set BURZBLOG_TOTP to the code from your authenticator app, or a recovery code")
+				}
+				tok, err = cl.IssueToken(c, username, password, strings.TrimSpace(code), name)
+			}
 			if err != nil {
 				return err
 			}
@@ -66,6 +79,7 @@ func (a *App) loginCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVarP(&username, "username", "u", "", "your BurzBlog username")
 	cmd.Flags().BoolVar(&passwordStdin, "password-stdin", false, "read the password from standard input")
+	cmd.Flags().StringVar(&code, "code", "", "two-factor code or recovery code (default $BURZBLOG_TOTP, else asked)")
 	return cmd
 }
 
