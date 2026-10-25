@@ -279,3 +279,31 @@ func TestNeverPromptsWithoutTerminal(t *testing.T) {
 		t.Error("a draft was created although the body could not be read")
 	}
 }
+
+func TestHelpTexts(t *testing.T) {
+	e := newEnv(t)
+	// The global --json help names every command that emits JSON.
+	out, _, code := e.run("", "list", "--help")
+	if code != ExitOK {
+		t.Fatalf("list --help: %d", code)
+	}
+	for _, name := range []string{"schedule", "unschedule", "import", "backup"} {
+		if !strings.Contains(out, name+",") && !strings.Contains(out, name+")") {
+			t.Errorf("--json help does not name %s: %q", name, out)
+		}
+	}
+	// Commands people type every day carry an example.
+	for _, args := range [][]string{
+		{"login"}, {"whoami"}, {"list"}, {"new"}, {"edit"}, {"pull"}, {"push"}, {"publish"}, {"schedule"},
+		{"open"}, {"import"}, {"export"}, {"backup"}, {"serve"}, {"user", "add"}, {"user", "passwd"},
+	} {
+		help, _, code := e.run("", append(args, "--help")...)
+		if code != ExitOK || !strings.Contains(help, "Examples:") {
+			t.Errorf("burzblog %s --help has no examples: %d %q", strings.Join(args, " "), code, help)
+		}
+	}
+	// pull -o must end in <slug>.md, and the help says so.
+	if help, _, _ := e.run("", "pull", "--help"); !strings.Contains(help, "named <slug>.md") {
+		t.Errorf("pull --help does not explain -o: %q", help)
+	}
+}

@@ -2,7 +2,7 @@
 
 The plain binary under systemd is the simplest way to run BurzBlog (see
 [self-hosting](self-hosting.md)). If you prefer containers, the image holds the
-same single binary on a distroless base, about 20 MB.
+same single binary on a distroless base, under 20 MB.
 
 ## Build and run with Compose
 

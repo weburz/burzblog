@@ -125,7 +125,7 @@ Exit codes: 0 ok, 1 error, 2 usage, 3 conflict, 4 not found, 5 not signed in,
 		},
 	}
 	root.PersistentFlags().BoolVar(&a.asJSON, "json", false,
-		"print results (list, whoami, new, pull, push, publish, unpublish, archive, restore, backup, import) and errors as JSON")
+		"print results (list, whoami, new, pull, push, publish, unpublish, archive, restore, schedule, unschedule, backup, import) and errors as JSON")
 	root.AddGroup(
 		&cobra.Group{ID: "write", Title: "Writing:"},
 		&cobra.Group{ID: "account", Title: "Connecting:"},

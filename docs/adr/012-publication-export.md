@@ -42,4 +42,4 @@ atomic promotion, rollback, and cache invalidation on withdrawal. Tests verify
 the local boundary; production hosting still needs separate acceptance evidence.
 
 See [publishing.md](../publishing.md) for the consumer contract and acceptance
-checks, and [launch.md](../launch.md) for release gates.
+checks, and `launch.md` (removed with the rewrite) for release gates.

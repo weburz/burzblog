@@ -12,8 +12,8 @@ task build                 # bin/burzblog for this machine
 task release               # dist/ for linux/arm64, linux/arm (Pi 2/3 32-bit), amd64, macOS, Windows
 ```
 
-Copy the right file to the host as `/usr/local/bin/burzblog`. A 64-bit Raspberry
-Pi OS uses `linux-arm64`.
+Copy the right file to the host and name it `burzblog`. A 64-bit Raspberry Pi OS
+uses `linux-arm64`.
 
 ## 2. Install the service
 
@@ -53,6 +53,7 @@ journalctl -u burzblog -f
 
 Accounts are managed on the host only: `burzblog user add`, `user passwd` and
 `user list`, always with `--data /var/lib/burzblog` and as the `burzblog` user.
+Passwords need at least 12 characters.
 `user passwd` also signs that account out of every browser.
 
 ## 3. HTTPS in front

@@ -68,9 +68,9 @@ tells you the address to use, for example `burzblog login https://blog.example.c
 
 ```sh
 burzblog list                          # newest first; --status draft|scheduled|published|archived, --search text,
-                                       # --sort updated|published|title|created
+                                       # --sort updated|published|title|created (`ls` works too)
 burzblog new "Understanding Go interfaces"   # creates a draft and opens it in your editor
-                                       # (only in a terminal; --no-edit skips it)
+                                       # (only in a terminal; --no-edit skips it, --slug sets the URL name)
 burzblog edit understanding-go-interfaces
 burzblog publish understanding-go-interfaces
 burzblog unpublish | archive | restore <slug>
@@ -126,7 +126,8 @@ burzblog push - --slug my-post --base-version 3   # reads the file from standard
 ```
 
 The file name is the slug, so name new files `<slug>.md` with lowercase letters,
-digits and hyphens.
+digits and hyphens. `pull -o` also needs a file name ending in `<slug>.md` (it
+may be in another folder), or `-`.
 
 ## When someone else saved first
 
@@ -176,7 +177,8 @@ a status becomes a draft. `--draft` imports everything as a draft.
   when every failure was invalid content, `1` otherwise.
 - With `--json`, standard output holds one document:
   `{"dryRun","created","updated","unchanged","skipped","failed","files":[{"file","slug","action","status","version","error"}]}`.
-  `action` is `created`, `updated`, `unchanged`, `skipped` or `failed`.
+  `action` is `created`, `updated`, `unchanged`, `skipped` or `failed`; `error`
+  is `{"code","message"}` and only present on failures.
 
 ## Backing up your posts
 
@@ -193,7 +195,7 @@ the same download under **Settings → Backup**.
 
 ## Build machines
 
-For reader-site builds, use a build token from **Settings → Build tokens**
+For reader-site builds, use a build token from **Settings → Your website**
 instead of logging in:
 
 ```sh
@@ -234,8 +236,8 @@ run unattended: `echo "$PASSWORD" | burzblog login https://blog.example.com -u a
 `--json` is a global flag, so it works the same on every command and always
 means one JSON document on standard output (one line). It is supported by
 `list`, `whoami`, `new`, `pull`, `push`, `publish`, `unpublish`, `archive`,
-`restore`, `schedule`, `unschedule` and `backup`. Other commands ignore it and print their usual text,
-but their failures are still JSON. `new` never opens an editor with `--json`.
+`restore`, `schedule`, `unschedule`, `backup` and `import`. Other commands ignore it and print
+their usual text, but their failures are still JSON. `new` never opens an editor with `--json`.
 
 | Command | Output |
 |---|---|
