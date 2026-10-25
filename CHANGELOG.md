@@ -8,6 +8,11 @@ All notable changes are recorded here, following
 
 ### Added
 
+- Password fields in the panel (sign-in and Settings) have a Show/Hide toggle and
+  warn when Caps Lock is on. Sign-in has a "Forgot your password?" note pointing
+  to `burzblog user passwd <name>`, and the new-password field in Settings shows
+  a live character count and a simple strength hint; the server still enforces
+  the 12-character minimum.
 - `burzblog diff <file.md|slug> [file.md]` shows a unified, colored diff from
   the server's current post to a local file and says whether the file is based
   on the server's current version or an older one. It exits 0 when identical

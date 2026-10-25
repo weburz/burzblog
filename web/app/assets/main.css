@@ -292,6 +292,25 @@ code {
   font-size: 13px;
   color: var(--bb-text-2);
 }
+.password-input > .field-hint:not(:empty) {
+  margin-top: 6px;
+}
+.strength-weak,
+.strength-short {
+  color: var(--bb-danger);
+}
+.login-forgot {
+  font-size: 14px;
+}
+.login-forgot > summary {
+  cursor: pointer;
+  width: fit-content;
+  color: var(--bb-blue);
+}
+.login-forgot > p {
+  margin: 8px 0;
+  line-height: 1.6;
+}
 .field-error {
   font-size: 13px;
   color: var(--bb-danger);
