@@ -19,7 +19,8 @@ revokes it and forgets the server. Plain `http://` is refused except for
 ## Everyday commands
 
 ```sh
-burzblog list                          # newest first; --status draft|published|archived, --search text
+burzblog list                          # newest first; --status draft|published|archived, --search text,
+                                       # --sort updated|published|title|created
 burzblog new "Understanding Go interfaces"   # creates a draft and opens it in your editor
 burzblog edit understanding-go-interfaces
 burzblog publish understanding-go-interfaces

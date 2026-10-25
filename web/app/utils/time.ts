@@ -28,6 +28,16 @@ export const editedLabel = (iso: string, now = Date.now()): string => {
   ).format(date);
 };
 
+// "Published 3 Oct", with the year only when it differs from now's.
+export const publishedLabel = (iso: string, now = Date.now()): string => {
+  const then = Date.parse(iso);
+  if (Number.isNaN(then)) return "";
+  const date = new Date(then);
+  const format =
+    date.getFullYear() === new Date(now).getFullYear() ? sameYear : otherYear;
+  return `Published ${format.format(date)}`;
+};
+
 export const exactTime = (iso: string | null | undefined): string => {
   const then = iso ? Date.parse(iso) : Number.NaN;
   return Number.isNaN(then) ? "" : exact.format(then);

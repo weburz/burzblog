@@ -24,14 +24,15 @@ import (
 )
 
 func (a *App) listCmd() *cobra.Command {
-	var status, search string
+	var status, search, sort string
 	cmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
-		Short:   "List posts, most recently changed first",
+		Short:   "List posts, most recently changed first unless --sort says otherwise",
 		Example: `  burzblog list
   burzblog list --status published
-  burzblog list --search golang`,
+  burzblog list --search golang
+  burzblog list --sort title`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cl, _, err := a.client()
@@ -40,7 +41,7 @@ func (a *App) listCmd() *cobra.Command {
 			}
 			c, cancel := ctx()
 			defer cancel()
-			l, err := cl.Posts(c, status, search)
+			l, err := cl.Posts(c, status, search, sort)
 			if err != nil {
 				return err
 			}
@@ -66,6 +67,7 @@ func (a *App) listCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVarP(&status, "status", "s", "", "only draft, published or archived posts")
 	cmd.Flags().StringVarP(&search, "search", "q", "", "match title, slug or description")
+	cmd.Flags().StringVar(&sort, "sort", "", "order by updated (default), published, title or created")
 	return cmd
 }
 

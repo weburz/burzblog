@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -197,6 +198,51 @@ func TestListPosts(t *testing.T) {
 	list, _, _ = s.ListPosts(ctx, Filter{Status: post.Archived})
 	if len(list) != 1 || list[0].Slug != "old" {
 		t.Errorf("archived = %+v", list)
+	}
+}
+
+func TestListPostsSort(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+	at := func(d int) *time.Time { v := time.Date(2026, 1, d, 9, 0, 0, 0, time.UTC); return &v }
+	// Created in this order: b-post, A-post, c-post, d-post.
+	s.CreatePost(ctx, &post.Post{Slug: "b-post", Title: "banana", Status: post.Published, PublishedOn: at(5)}, "u")
+	s.CreatePost(ctx, &post.Post{Slug: "a-post", Title: "Apple"}, "u")
+	s.CreatePost(ctx, &post.Post{Slug: "c-post", Title: "cherry", Status: post.Published, PublishedOn: at(9)}, "u")
+	s.CreatePost(ctx, &post.Post{Slug: "d-post", Title: "Date"}, "u")
+	// Touch b-post so updated order differs from created order.
+	if _, err := s.UpdatePost(ctx, "b-post", 1, "u", func(p *post.Post) error { p.Body = "changed"; return nil }); err != nil {
+		t.Fatal(err)
+	}
+
+	slugs := func(sort Sort) string {
+		t.Helper()
+		list, _, err := s.ListPosts(ctx, Filter{Sort: sort})
+		if err != nil {
+			t.Fatalf("sort %q: %v", sort, err)
+		}
+		var out []string
+		for _, p := range list {
+			out = append(out, p.Slug)
+		}
+		return strings.Join(out, ",")
+	}
+	for sort, want := range map[Sort]string{
+		"":            "b-post,d-post,c-post,a-post",
+		SortUpdated:   "b-post,d-post,c-post,a-post",
+		SortCreated:   "d-post,c-post,a-post,b-post",
+		SortTitle:     "a-post,b-post,c-post,d-post",
+		SortPublished: "c-post,b-post,d-post,a-post",
+	} {
+		if got := slugs(sort); got != want {
+			t.Errorf("sort %q = %s, want %s", sort, got, want)
+		}
+	}
+	if _, _, err := s.ListPosts(ctx, Filter{Sort: "title; DROP TABLE posts"}); err == nil {
+		t.Error("unknown sort was accepted")
+	}
+	if ValidSort("") || !ValidSort(SortTitle) || ValidSort("size") {
+		t.Error("ValidSort mismatch")
 	}
 }
 

@@ -78,6 +78,34 @@ type Filter struct {
 	Status post.Status
 	// Query matches title, slug or description, case-insensitively.
 	Query string
+	// Sort orders the result; empty means SortUpdated.
+	Sort Sort
+}
+
+// Sort names an ordering of ListPosts.
+type Sort string
+
+// The orderings ListPosts understands.
+const (
+	SortUpdated   Sort = "updated"
+	SortPublished Sort = "published"
+	SortTitle     Sort = "title"
+	SortCreated   Sort = "created"
+)
+
+// ValidSort reports whether s is a known ordering.
+func ValidSort(s Sort) bool {
+	_, ok := orderBy[s]
+	return ok
+}
+
+// orderBy holds fixed ORDER BY clauses; user input only selects one. Every
+// clause ends in id so equal keys keep a stable order.
+var orderBy = map[Sort]string{
+	SortUpdated:   "updated_at DESC, id DESC",
+	SortPublished: "published_on IS NULL, published_on DESC, updated_at DESC, id DESC",
+	SortTitle:     "title COLLATE NOCASE ASC, id ASC",
+	SortCreated:   "created_at DESC, id DESC",
 }
 
 // Summary is a post without its body, for lists.
@@ -98,10 +126,18 @@ type Counts struct {
 	Draft, Published, Archived int
 }
 
-// ListPosts returns matching posts, most recently changed first, and the
-// count per status regardless of the filter.
+// ListPosts returns matching posts, most recently changed first unless
+// f.Sort says otherwise, and the count per status regardless of the filter.
+// An unknown sort is an error.
 func (s *Store) ListPosts(ctx context.Context, f Filter) ([]Summary, Counts, error) {
 	var counts Counts
+	if f.Sort == "" {
+		f.Sort = SortUpdated
+	}
+	order, ok := orderBy[f.Sort]
+	if !ok {
+		return nil, counts, fmt.Errorf("list posts: unknown sort %q", f.Sort)
+	}
 	rows, err := s.db.QueryContext(ctx, "SELECT status, count(*) FROM posts GROUP BY status")
 	if err != nil {
 		return nil, counts, fmt.Errorf("count posts: %w", err)
@@ -141,7 +177,7 @@ func (s *Store) ListPosts(ctx context.Context, f Filter) ([]Summary, Counts, err
 	}
 	rows, err = s.db.QueryContext(ctx, `SELECT slug, title, description, status, body, published_on,
 		updated_at, updated_by, version FROM posts WHERE `+strings.Join(where, " AND ")+
-		" ORDER BY updated_at DESC, id DESC", args...)
+		" ORDER BY "+order, args...)
 	if err != nil {
 		return nil, counts, fmt.Errorf("list posts: %w", err)
 	}

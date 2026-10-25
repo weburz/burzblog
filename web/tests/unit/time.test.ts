@@ -3,6 +3,7 @@ import {
   editedLabel,
   exactTime,
   fromLocalInput,
+  publishedLabel,
   toLocalInput,
 } from "../../app/utils/time";
 
@@ -24,6 +25,18 @@ describe("editedLabel", () => {
     expect(editedLabel(new Date(now + 60_000).toISOString(), now)).toBe("Just now");
     expect(editedLabel("not a date", now)).toBe("");
     expect(exactTime("not a date")).toBe("");
+  });
+});
+
+describe("publishedLabel", () => {
+  const now = Date.parse("2026-10-09T12:00:00Z");
+  it("prefixes the date and adds the year only when it differs", () => {
+    expect(publishedLabel("2026-07-03T12:00:00Z", now)).toMatch(/^Published .*3/);
+    expect(publishedLabel("2026-07-03T12:00:00Z", now)).not.toMatch(/2026/);
+    expect(publishedLabel("2024-07-03T12:00:00Z", now)).toMatch(/2024/);
+  });
+  it("ignores invalid input", () => {
+    expect(publishedLabel("not a date", now)).toBe("");
   });
 });
 

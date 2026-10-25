@@ -63,7 +63,7 @@ A post:
 
 | | |
 |---|---|
-| `GET /api/posts?status=&q=` | `{items, counts}`; items have no body; without `status`, archived posts are left out |
+| `GET /api/posts?status=&q=&sort=` | `{items, counts}`; items have no body; without `status`, archived posts are left out; `sort` is `updated` (default, newest first), `published` (newest first, unpublished last), `title` (A to Z, ignoring case) or `created` (newest first); any other value is a 422 |
 | `POST /api/posts` | `{title, slug?, ...}` → new draft; the slug is made from the title when omitted |
 | `GET /api/posts/{slug}` | one post |
 | `PUT /api/posts/{slug}` | `{version, slug, title, description, body, coverUrl, coverAlt, extra, publishedOn, updatedOn}`; `version` must be current, a new `slug` renames |
