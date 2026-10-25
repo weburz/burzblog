@@ -61,7 +61,11 @@ The post body in Markdown.
   it.
 - `coverImage` is present only when a cover URL is set.
 - Every other frontmatter key the author added (here `sitemap`) is passed
-  through unchanged, so site-specific fields keep working.
+  through unchanged, so site-specific fields keep working. Extra keys may not
+  use merge keys (`<<`) or YAML tags other than the core ones (`!!str`,
+  `!!int`, `!!float`, `!!bool`, `!!null`, `!!timestamp`, `!!map`, `!!seq`,
+  `!!binary`); BurzBlog refuses them on save because strict readers such as
+  js-yaml would fail or resolve them into other fields.
 - Values that YAML readers could misread (`yes`, `on`, a bare date) are quoted.
 
 ## Example: Nuxt Content on Vercel (jarmos.dev)
