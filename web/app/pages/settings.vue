@@ -175,6 +175,21 @@ const scopeUse = (t: Token) =>
           post, opens it in <span class="mono">$EDITOR</span> and saves it back here when
           you close the file.
         </p>
+        <p class="field-hint">
+          <a
+            href="https://github.com/weburz/burzblog/releases/latest"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Download burzblog</a
+          >
+          for Linux, macOS, Windows or Raspberry Pi, then run these commands.
+          <a
+            href="https://github.com/weburz/burzblog/blob/main/docs/terminal.md"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Terminal guide</a
+          >
+        </p>
       </div>
       <div class="settings-main">
         <CopyField
@@ -209,61 +224,24 @@ const scopeUse = (t: Token) =>
       <div class="settings-aside">
         <h2 id="site-heading" class="section-title">Your website</h2>
         <p class="muted">
-          Your site downloads published posts while it builds, as Markdown files. BurzBlog
-          can ask it to rebuild whenever you publish.
+          Connect the site your readers visit. It downloads your published posts each time
+          it builds, and BurzBlog can start that build whenever you publish.
+        </p>
+        <p class="field-hint">
+          <a
+            href="https://github.com/weburz/burzblog/blob/main/docs/publishing.md"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Step-by-step guide</a
+          >
         </p>
       </div>
       <div class="settings-main">
-        <div
-          v-if="settings"
-          class="deploy-card"
-          :data-state="settings.deploy.lastStatus || 'none'"
-        >
-          <template v-if="settings.deploy.configured">
-            <div>
-              <p class="deploy-title">
-                <UIcon
-                  :name="
-                    settings.deploy.lastStatus === 'failed'
-                      ? 'i-lucide-circle-alert'
-                      : 'i-lucide-rocket'
-                  "
-                  class="size-4"
-                />
-                <template v-if="settings.deploy.pending">Rebuild requested…</template>
-                <template v-else-if="settings.deploy.lastStatus === 'ok'"
-                  >Last rebuild requested
-                  {{ editedLabel(settings.deploy.lastAt!).toLowerCase() }}</template
-                >
-                <template v-else-if="settings.deploy.lastStatus === 'failed'"
-                  >The last rebuild request failed</template
-                >
-                <template v-else>Rebuilds run automatically after you publish</template>
-              </p>
-              <p v-if="settings.deploy.lastError" class="field-error">
-                {{ settings.deploy.lastError }}
-              </p>
-            </div>
-            <UButton
-              color="neutral"
-              variant="outline"
-              icon="i-lucide-refresh-cw"
-              :loading="deploying"
-              @click="rebuild"
-              >Rebuild now</UButton
-            >
-          </template>
-          <p v-else class="muted">
-            Automatic rebuilds are off. Start BurzBlog with
-            <span class="mono">BURZBLOG_DEPLOY_HOOK</span> set to your host's deploy hook
-            URL, such as a Vercel deploy hook.
-          </p>
-        </div>
-
-        <h3 class="sub-title">Build tokens</h3>
+        <h3 class="sub-title">1. Let your site download posts</h3>
         <p class="muted">
-          A build token can only download published posts. Store it as a secret in your
-          host.
+          Your site's build uses a build token to fetch published posts. It can only read
+          published posts: it cannot edit anything or see drafts. Create one and save it
+          as a secret environment variable in your host, such as Vercel.
         </p>
 
         <div v-if="newSecret" class="secret-reveal" role="alert">
@@ -317,6 +295,60 @@ const scopeUse = (t: Token) =>
             >
           </li>
         </ul>
+
+        <h3 class="sub-title">2. Rebuild your site when you publish</h3>
+        <div
+          v-if="settings"
+          class="deploy-card"
+          :data-state="settings.deploy.lastStatus || 'none'"
+        >
+          <template v-if="settings.deploy.configured">
+            <div>
+              <p class="deploy-title">
+                <UIcon
+                  :name="
+                    settings.deploy.lastStatus === 'failed'
+                      ? 'i-lucide-circle-alert'
+                      : 'i-lucide-rocket'
+                  "
+                  class="size-4"
+                />
+                <template v-if="settings.deploy.pending">Rebuild requested…</template>
+                <template v-else-if="settings.deploy.lastStatus === 'ok'"
+                  >Last rebuild requested
+                  {{ editedLabel(settings.deploy.lastAt!).toLowerCase() }}</template
+                >
+                <template v-else-if="settings.deploy.lastStatus === 'failed'"
+                  >The last rebuild request failed</template
+                >
+                <template v-else>Rebuilds run automatically after you publish</template>
+              </p>
+              <p v-if="settings.deploy.lastError" class="field-error">
+                {{ settings.deploy.lastError }}
+              </p>
+            </div>
+            <UButton
+              color="neutral"
+              variant="outline"
+              icon="i-lucide-refresh-cw"
+              :loading="deploying"
+              @click="rebuild"
+              >Rebuild now</UButton
+            >
+          </template>
+          <div v-else>
+            <p class="deploy-title">
+              <UIcon name="i-lucide-circle-pause" class="size-4" />Not set up yet
+            </p>
+            <p class="muted">
+              New posts appear on your site only after it rebuilds, so for now redeploy it
+              by hand after publishing. To make it automatic, copy your host's deploy hook
+              URL (on Vercel: Project, Settings, Git, Deploy Hooks) and have whoever runs
+              this BurzBlog server set it as
+              <span class="mono">BURZBLOG_DEPLOY_HOOK</span>, then restart BurzBlog.
+            </p>
+          </div>
+        </div>
       </div>
     </section>
 

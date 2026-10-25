@@ -3,6 +3,37 @@
 The `burzblog` binary is also the client. Posts always live on the server; files
 on your computer are working copies.
 
+## Install
+
+`burzblog` is one file with nothing else to install. Download the build for
+your computer from the [latest release](https://github.com/weburz/burzblog/releases/latest):
+
+| Computer | File |
+|---|---|
+| Linux (Intel/AMD) | `burzblog-<version>-linux-amd64` |
+| Linux (ARM 64-bit), Raspberry Pi 4/5 | `burzblog-<version>-linux-arm64` |
+| Raspberry Pi (32-bit OS) | `burzblog-<version>-linux-arm` |
+| macOS (Apple silicon) | `burzblog-<version>-darwin-arm64` |
+| macOS (Intel) | `burzblog-<version>-darwin-amd64` |
+| Windows | `burzblog-<version>-windows-amd64.exe` |
+
+On Linux and macOS, make it executable and put it on your `PATH`:
+
+```sh
+chmod +x burzblog-*-linux-amd64
+sudo mv burzblog-*-linux-amd64 /usr/local/bin/burzblog
+burzblog --version
+```
+
+macOS may refuse to open a downloaded binary the first time; run
+`xattr -d com.apple.quarantine /usr/local/bin/burzblog` once. Check the file
+against `SHA256SUMS-<version>` from the same release with `sha256sum -c`
+(`shasum -a 256 -c` on macOS).
+
+With Go installed you can build it instead: clone the repository and run
+`task build` (the binary lands in `bin/burzblog`). The same binary also runs the
+server (`burzblog serve`), so a server host already has it.
+
 ## Connect once
 
 ```sh
