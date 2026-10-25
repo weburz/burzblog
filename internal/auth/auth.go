@@ -137,8 +137,9 @@ const (
 	// hashing at once, so one flooding machine cannot fill the queue. It
 	// only separates clients when requests arrive from their own
 	// addresses: behind a reverse proxy (X-Forwarded-For is ignored on
-	// purpose) everyone shares the proxy's address.
-	clientLimit = 2
+	// purpose) everyone shares the proxy's address, so the limit leaves room
+	// for a short queue behind the two hashing slots.
+	clientLimit = 4
 )
 
 type clientKey struct{}
