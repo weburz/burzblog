@@ -17,7 +17,10 @@ otherwise `~/.local/bin` (it never runs `sudo` for you). Set
 `BURZBLOG_VERSION=v2.0.0` to pin a version or `BURZBLOG_INSTALL_DIR` to choose
 the directory. Prefer to check what you run? Read the script first:
 `curl -fsSL https://burzblog.weburz.com/install.sh | less`. The script only
-works once the repository and its releases are public.
+works once the repository and its releases are public. It downloads over HTTPS
+only. The checksum guards against a corrupted download, not against a
+compromised release: releases are not signed yet, so `SHA256SUMS` comes from
+the same place as the binary.
 
 To install by hand instead, `burzblog` is one file with nothing else to
 install. Download the build for your computer from the
@@ -83,7 +86,10 @@ burzblog open [slug]                   # open the browser panel
 time in quotes (`"2026-11-03 09:00"`, in this computer's time zone). The time
 must be in the future and at most two years away. `list` marks scheduled drafts
 with their time, and `list --status scheduled` shows only those. Publishing,
-archiving or unscheduling a post ends its schedule.
+archiving or unscheduling a post ends its schedule. A scheduled draft is
+published as it is at the due time, including any edits made after it was
+scheduled, and it still publishes if the session or token that scheduled it has
+since been revoked. Unschedule it to stop that.
 
 `edit` downloads the post, opens it in `$VISUAL` or `$EDITOR` (then `vi`), and
 saves it back when the editor exits. Editors that return immediately need their
@@ -217,6 +223,10 @@ slug is the frontmatter `slug`, or the file name without `.md`. The title,
 description, `timestamps`, `coverImage` and any other frontmatter keys are
 kept. A file with `status: published` is imported as published; a file without
 a status becomes a draft. `--draft` imports everything as a draft.
+If the frontmatter `slug` differs from the file name, a warning is printed (and
+included as `"warning"` in `--json`), and with `--update` the file is refused so
+it cannot overwrite a post its name does not hint at; rename the file or fix the
+slug.
 
 - Only `.md` files are read. Folders are not entered unless you add `--recursive`.
 - A post that already exists is never overwritten: it prints

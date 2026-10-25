@@ -41,21 +41,26 @@ have() {
   command -v "$1" >/dev/null 2>&1
 }
 
+# proto is the curl protocol list and https_only the wget flag; main loosens
+# them to http only for a 127.0.0.1 or localhost base URL.
+proto='=https'
+https_only=--https-only
+
 # fetch URL DEST downloads a file with curl or wget.
 fetch() {
   if have curl; then
-    curl -fsSL -o "$2" "$1"
+    curl -fsSL --proto "$proto" --proto-redir "$proto" --tlsv1.2 -o "$2" "$1"
   else
-    wget -q -O "$2" "$1"
+    wget -q $https_only -O "$2" "$1"
   fi
 }
 
 # latest_tag prints the tag the releases/latest redirect points at.
 latest_tag() {
   if have curl; then
-    headers=$(curl -fsSI "$1/latest") || return 1
+    headers=$(curl -fsSI --proto "$proto" --proto-redir "$proto" --tlsv1.2 "$1/latest") || return 1
   else
-    headers=$(wget -S --max-redirect=0 -O /dev/null "$1/latest" 2>&1) || true
+    headers=$(wget -S $https_only --max-redirect=0 -O /dev/null "$1/latest" 2>&1) || true
   fi
   printf '%s\n' "$headers" | tr -d '\r' |
     sed -n 's|^[[:space:]]*[Ll]ocation:.*/tag/\([^/[:space:]]*\)$|\1|p' | tail -n 1
@@ -86,6 +91,16 @@ main() {
 
   base=${BURZBLOG_BASE_URL:-https://github.com/weburz/burzblog/releases}
   base=${base%/}
+  # Downloads are https only; a local http server is allowed for testing.
+  case "$base" in
+    *@*) fail "BURZBLOG_BASE_URL must not contain credentials (@)" ;;
+    https://*) ;;
+    http://127.0.0.1 | http://127.0.0.1[:/]* | http://localhost | http://localhost[:/]*)
+      proto='=http,https'
+      https_only=
+      ;;
+    *) fail "BURZBLOG_BASE_URL must start with https:// (http:// is only allowed for 127.0.0.1 and localhost)" ;;
+  esac
 
   os=$(uname -s | tr '[:upper:]' '[:lower:]')
   case "$os" in
@@ -120,11 +135,23 @@ main() {
     [ -n "$version" ] || fail "could not find the latest release at $base/latest (is the repository public?)"
   fi
 
+  case "$version" in
+    v[0-9]*.[0-9]*.[0-9]* | v[0-9]*.[0-9]*.[0-9]*[-+]*) ;;
+    *) fail "invalid version: $version (expected something like v2.0.0)" ;;
+  esac
+  case "$version" in
+    *[!0-9A-Za-z.+-]*) fail "invalid version: $version (expected something like v2.0.0)" ;;
+  esac
+
   asset="burzblog-$version-$os-$arch"
   sums="SHA256SUMS-$version"
 
   tmp=$(mktemp -d "${TMPDIR:-/tmp}/burzblog-install.XXXXXX")
-  trap 'rm -rf "$tmp"' EXIT INT TERM HUP
+  staged=
+  trap 'rm -rf "$tmp"; [ -z "$staged" ] || rm -f "$staged"' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  trap 'exit 129' HUP
 
   say "Installing burzblog $version ($os/$arch)"
   fetch "$base/download/$version/$asset" "$tmp/$asset" || fail "could not download $base/download/$version/$asset"
@@ -142,6 +169,8 @@ main() {
     dir=$BURZBLOG_INSTALL_DIR
   elif [ -w /usr/local/bin ]; then
     dir=/usr/local/bin
+  elif [ "$(id -u)" = 0 ]; then
+    fail "/usr/local/bin is not writable and \$HOME/.local/bin is not a sensible place for root; set BURZBLOG_INSTALL_DIR"
   else
     dir=$HOME/.local/bin
   fi
@@ -152,12 +181,17 @@ main() {
     say "  sudo install -m 755 \"$tmp/$asset\" \"$dir/burzblog\""
     say "or rerun with BURZBLOG_INSTALL_DIR=\$HOME/.local/bin"
     # Keep the verified download so the command above still works.
-    trap - EXIT INT TERM HUP
+    trap - EXIT
     return 1
   fi
 
-  chmod +x "$tmp/$asset"
-  mv -f "$tmp/$asset" "$dir/burzblog"
+  # Stage inside $dir so the final mv is a same-filesystem rename: the old
+  # binary is replaced atomically and never left truncated.
+  staged=$dir/.burzblog.install.$$
+  cp "$tmp/$asset" "$staged"
+  chmod 755 "$staged"
+  mv -f "$staged" "$dir/burzblog"
+  staged=
   if [ "$os" = darwin ] && have xattr; then
     xattr -d com.apple.quarantine "$dir/burzblog" 2>/dev/null || true
   fi
