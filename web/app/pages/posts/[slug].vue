@@ -10,6 +10,7 @@ import {
   editedLabel,
   exactTime,
   isScheduled,
+  publishesLabel,
   scheduledLabel,
   zoneLabel,
 } from "../../utils/time";
@@ -434,7 +435,7 @@ const menu = computed(() => {
       onSelect: () => action("restore"),
     });
     status.push({
-      label: "Delete for good…",
+      label: "Delete post…",
       icon: "i-lucide-trash-2",
       color: "error" as const,
       onSelect: fromMenu(remove),
@@ -806,7 +807,7 @@ const primary = computed(() => {
           class="schedule-note"
           :datetime="post.publishAt"
           :title="`${exactTime(post.publishAt)} (${zoneLabel()})`"
-          >{{ scheduledLabel(post.publishAt) }}</time
+          >{{ publishesLabel(post.publishAt) }}</time
         >
       </div>
       <span
@@ -1083,7 +1084,7 @@ const primary = computed(() => {
         Published {{ exactTime(post.publishedOn) }}.</template
       >
       <template v-if="scheduled && post.publishAt">
-        Publishes {{ exactTime(post.publishAt) }} ({{ zoneLabel() }}).</template
+        Publishes {{ exactTime(post.publishAt) }}, {{ zoneLabel() }}.</template
       >
     </footer>
 

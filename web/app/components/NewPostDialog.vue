@@ -75,6 +75,7 @@ const create = async () => {
             spellcheck="false"
             autocapitalize="none"
             maxlength="120"
+            placeholder="Filled in from the title"
             :color="slugError ? 'error' : undefined"
             :aria-describedby="slugError ? 'new-slug-error' : 'new-slug-hint'"
             @input="
