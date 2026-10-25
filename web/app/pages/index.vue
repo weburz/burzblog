@@ -168,6 +168,15 @@ const origin = typeof window === "undefined" ? "" : window.location.origin;
         </button>
       </div>
       <div class="list-find">
+        <USelect
+          v-model="sort"
+          :items="sorts"
+          value-key="value"
+          label-key="label"
+          icon="i-lucide-arrow-down-up"
+          aria-label="Sort posts"
+          class="list-sort-select"
+        />
         <UInput
           id="post-search"
           v-model="search"
@@ -181,17 +190,6 @@ const origin = typeof window === "undefined" ? "" : window.location.origin;
             <UKbd v-if="!search" value="/" class="max-sm:hidden" />
           </template>
         </UInput>
-        <label class="list-sort">
-          <span class="list-sort-label">Sort</span>
-          <USelect
-            v-model="sort"
-            :items="sorts"
-            value-key="value"
-            label-key="label"
-            aria-label="Sort"
-            class="list-sort-select"
-          />
-        </label>
       </div>
     </div>
 
