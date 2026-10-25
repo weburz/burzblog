@@ -8,6 +8,11 @@ BurzBlog is one Go binary. It runs the server, serves the browser panel, and is
 also the command-line client. It is small enough for a Raspberry Pi under
 systemd.
 
+Website: [burzblog.weburz.com](https://burzblog.weburz.com/). Downloads:
+[latest release](https://github.com/weburz/burzblog/releases/latest).
+
+![The BurzBlog editor: Markdown on the left, a live preview of the published post on the right](docs/images/editor-light.png)
+
 ```text
  browser panel ─┐                         ┌─> your site's build downloads
                 ├─> burzblog serve ── SQLite        published posts as .md files
@@ -35,6 +40,8 @@ systemd.
 Not included yet: image and video uploads (use hosted image URLs), roles and
 permissions (every account can do everything), and serving the public blog
 itself.
+
+![The post list in the dark theme, with drafts, a scheduled post and published posts](docs/images/posts-dark.png)
 
 ## Quick start
 
