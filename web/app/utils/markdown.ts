@@ -37,6 +37,8 @@ export const wrap = (
 const lineStart = (source: string, index: number) =>
   source.lastIndexOf("\n", index - 1) + 1;
 
+export const taskPrefix = "- [ ] ";
+
 // Toggle a prefix ("## ", "- ", "> ", "1. ") on every line the selection
 // touches. Headings replace an existing heading level instead of stacking.
 export const prefixLines = (
@@ -56,7 +58,9 @@ export const prefixLines = (
     ? /^#{1,6} /
     : prefix === "1. "
       ? /^\d+\. /
-      : new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`);
+      : prefix === taskPrefix
+        ? /^(?:[-*] (?:\[[ xX]\] )?|\d+\. )/
+        : new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`);
   const allHave = lines.every((line) => line.startsWith(prefix));
   const next = lines.map((line, index) => {
     if (allHave) return line.slice(prefix.length);
@@ -94,6 +98,144 @@ export const codeBlock = (source: string, start: number, end: number): Edit => {
   const text = source.slice(0, start) + inserted + source.slice(end);
   const inner = start + needsBreak.length + 4;
   return { text, start: inner, end: inner + selected.length };
+};
+
+// Only http(s) images are allowed; uploads are not part of the editor.
+// Returns a message for the writer, or "" when the URL is fine.
+export const imageUrlError = (url: string): string => {
+  const value = url.trim();
+  if (!value) return "Enter the image address.";
+  try {
+    const { protocol } = new URL(value);
+    if (protocol === "https:" || protocol === "http:") return "";
+  } catch {
+    // Falls through to the message below.
+  }
+  return "Use a full address that starts with https:// or http://.";
+};
+
+// An image with alt text, replacing the selection.
+export const image = (
+  source: string,
+  start: number,
+  end: number,
+  alt: string,
+  url: string,
+): Edit => {
+  const inserted = `![${alt.replace(/[[\]]/g, "").replace(/\s+/g, " ").trim()}](${url.trim()})`;
+  const caret = start + inserted.length;
+  return {
+    text: source.slice(0, start) + inserted + source.slice(end),
+    start: caret,
+    end: caret,
+  };
+};
+
+// Insert a block (table, rule) on its own lines with blank lines around it, so
+// a rule never turns the paragraph above into a heading.
+const insertBlock = (
+  source: string,
+  start: number,
+  end: number,
+  block: string,
+): { text: string; offset: number } => {
+  const before = source.slice(0, start);
+  const after = source.slice(end);
+  const lead = !before
+    ? ""
+    : before.endsWith("\n\n")
+      ? ""
+      : before.endsWith("\n")
+        ? "\n"
+        : "\n\n";
+  const trail = after && !after.startsWith("\n") ? "\n" : "";
+  return {
+    text: `${before}${lead}${block}\n${trail}${after}`,
+    offset: before.length + lead.length,
+  };
+};
+
+// A two-column table skeleton with the first header cell selected to type over.
+export const table = (source: string, start: number, end: number): Edit => {
+  const header = "Column 1";
+  const block = `| ${header} | Column 2 |\n| --- | --- |\n|  |  |`;
+  const { text, offset } = insertBlock(source, start, end, block);
+  return { text, start: offset + 2, end: offset + 2 + header.length };
+};
+
+export const horizontalRule = (source: string, start: number, end: number): Edit => {
+  const { text, offset } = insertBlock(source, start, end, "---");
+  const caret = offset + 4;
+  return { text, start: caret, end: caret };
+};
+
+const listItem = /^(\s*)([-*+]|\d+\.)( \[[ xX]\])? (.*)$/;
+
+// Enter in a list item: continue the list, or end it when the item is empty.
+// Returns null when Enter should behave normally (not at the end of a list item).
+export const continueList = (source: string, start: number, end: number): Edit | null => {
+  if (start !== end) return null;
+  const from = lineStart(source, start);
+  const found = source.indexOf("\n", start);
+  const to = found === -1 ? source.length : found;
+  if (to !== start) return null;
+  const match = listItem.exec(source.slice(from, to));
+  if (!match) return null;
+  const [, indent, marker, task, content] = match as unknown as [
+    string,
+    string,
+    string,
+    string | undefined,
+    string,
+  ];
+  if (!content.trim()) {
+    return { text: source.slice(0, from) + source.slice(to), start: from, end: from };
+  }
+  const next = /^\d+\.$/.test(marker) ? `${Number.parseInt(marker, 10) + 1}.` : marker;
+  const inserted = `\n${indent}${next}${task ? " [ ]" : ""} `;
+  const caret = start + inserted.length;
+  return {
+    text: source.slice(0, start) + inserted + source.slice(end),
+    start: caret,
+    end: caret,
+  };
+};
+
+// Tab and Shift+Tab in a list item move it by two spaces, for every line the
+// selection touches. Returns null when the cursor is not in a list item, or
+// when there is nothing left to outdent, so the browser keeps its focus order.
+export const indentList = (
+  source: string,
+  start: number,
+  end: number,
+  outdent: boolean,
+): Edit | null => {
+  const from = lineStart(source, start);
+  const last = end > start && source[end - 1] === "\n" ? end - 1 : end;
+  const found = source.indexOf("\n", last);
+  const to = found === -1 ? source.length : found;
+  const lines = source.slice(from, to).split("\n");
+  if (!listItem.test(lines[0]!)) return null;
+  let changed = false;
+  const shifts: number[] = [];
+  const next = lines.map((line) => {
+    if (!listItem.test(line)) {
+      shifts.push(0);
+      return line;
+    }
+    const removed = outdent ? Math.min(2, /^ */.exec(line)![0].length) : 0;
+    const result = outdent ? line.slice(removed) : `  ${line}`;
+    if (result !== line) changed = true;
+    shifts.push(outdent ? -removed : 2);
+    return result;
+  });
+  if (!changed) return null;
+  const total = shifts.reduce((sum, n) => sum + n, 0);
+  return {
+    text: source.slice(0, from) + next.join("\n") + source.slice(to),
+    start: Math.max(from, start + shifts[0]!),
+    end: Math.max(from, end + total),
+  };
 };
 
 const words = /[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu;

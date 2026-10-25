@@ -33,6 +33,8 @@ const confirm = reactive({
   run: () => {},
 });
 const justSaved = ref(false);
+const shortcutsOpen = useState("shortcuts-open", () => false);
+const { focused, toggle: toggleFocus } = useFocusedWriting();
 const titleField = ref<HTMLTextAreaElement | null>(null);
 const editor = ref<{ focus: () => void; element: HTMLTextAreaElement | null } | null>(
   null,
@@ -387,6 +389,16 @@ const menu = computed(() => {
       },
       { label: "Download .md", icon: "i-lucide-download", onSelect: download },
     ],
+    [
+      {
+        label: "Keyboard shortcuts",
+        icon: "i-lucide-keyboard",
+        kbds: ["?"],
+        onSelect: () => {
+          shortcutsOpen.value = true;
+        },
+      },
+    ],
     status,
   ];
 });
@@ -439,6 +451,14 @@ watch([mode, ratio], () => {
   } catch {
     /* storage unavailable */
   }
+});
+// Focus mode writes in one centred column, whatever layout was chosen.
+const layout = computed<Mode>(() => (focused.value ? "write" : mode.value));
+// Entering or leaving focus mode removes the focused control, so the cursor
+// goes back to the writing.
+watch(focused, async () => {
+  await nextTick();
+  editor.value?.focus();
 });
 const modes = computed(() =>
   (narrow.value ? ["write", "preview"] : ["write", "split", "preview"]).map((m) => ({
@@ -498,11 +518,20 @@ const titleKey = (event: KeyboardEvent) => {
   }
 };
 
-// Ctrl/Cmd+S saves from anywhere on the page.
+// Ctrl/Cmd+S saves from anywhere on the page, Ctrl/Cmd+Shift+F toggles focus
+// mode, and Esc leaves it (unless a dialog or menu is open and wants the key).
 const keydown = (event: KeyboardEvent) => {
-  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
+  const key = event.key.toLowerCase();
+  if ((event.metaKey || event.ctrlKey) && !event.altKey && key === "s") {
     event.preventDefault();
     void save();
+  } else if ((event.metaKey || event.ctrlKey) && event.shiftKey && key === "f") {
+    event.preventDefault();
+    toggleFocus();
+  } else if (key === "escape" && focused.value && !event.defaultPrevented) {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest("[role=dialog], [role=menu]")) return;
+    focused.value = false;
   }
 };
 const beforeUnload = (event: BeforeUnloadEvent) => {
@@ -573,8 +602,18 @@ const primary = computed(() => {
     </div>
   </div>
   <p v-else-if="!post || !draft" class="loading" role="status">Opening the post…</p>
-  <div v-else class="editor-shell" :data-mode="mode">
+  <div v-else class="editor-shell" :data-mode="layout" :data-focus="focused">
     <header class="editor-bar">
+      <UTooltip v-if="focused" text="Leave focus mode" :kbds="['escape']">
+        <UButton
+          icon="i-lucide-minimize-2"
+          color="neutral"
+          variant="ghost"
+          class="focus-exit"
+          aria-label="Leave focus mode"
+          @click="focused = false"
+        />
+      </UTooltip>
       <NuxtLink to="/" class="editor-back" aria-label="All posts">
         <span class="brand-mark" aria-hidden="true" />
         <UIcon name="i-lucide-arrow-left" class="size-4" />
@@ -727,17 +766,29 @@ const primary = computed(() => {
     </div>
 
     <div class="editor-toolbar">
-      <div class="segment" role="group" aria-label="Layout">
-        <button
-          v-for="m in modes"
-          :key="m.value"
-          type="button"
-          class="segment-item"
-          :aria-pressed="mode === m.value"
-          @click="mode = m.value"
-        >
-          {{ m.label }}
-        </button>
+      <div class="editor-toolbar-start">
+        <div class="segment" role="group" aria-label="Layout">
+          <button
+            v-for="m in modes"
+            :key="m.value"
+            type="button"
+            class="segment-item"
+            :aria-pressed="mode === m.value"
+            @click="mode = m.value"
+          >
+            {{ m.label }}
+          </button>
+        </div>
+        <UTooltip text="Focus mode" :kbds="['meta', 'shift', 'f']">
+          <UButton
+            icon="i-lucide-maximize-2"
+            color="neutral"
+            variant="ghost"
+            size="sm"
+            aria-label="Focus mode"
+            @click="toggleFocus"
+          />
+        </UTooltip>
       </div>
       <span class="editor-count">{{ lengthLabel(words) }}</span>
     </div>
@@ -746,13 +797,13 @@ const primary = computed(() => {
       ref="panes"
       class="editor-panes"
       :style="
-        mode === 'split'
+        layout === 'split'
           ? { gridTemplateColumns: `${ratio}fr 9px ${1 - ratio}fr` }
           : undefined
       "
     >
       <section
-        v-show="mode !== 'preview'"
+        v-show="layout !== 'preview'"
         ref="writePane"
         class="write-pane"
         aria-label="Writing"
@@ -785,7 +836,7 @@ const primary = computed(() => {
         </div>
       </section>
       <div
-        v-if="mode === 'split'"
+        v-if="layout === 'split'"
         class="pane-divider"
         role="separator"
         aria-orientation="vertical"
@@ -798,7 +849,7 @@ const primary = computed(() => {
         @keydown="dividerKey"
       />
       <PostPreview
-        v-show="mode !== 'write'"
+        v-show="layout !== 'write'"
         :body="draft.body"
         :meta="{
           title: draft.title,
@@ -806,7 +857,7 @@ const primary = computed(() => {
           coverUrl: draft.coverUrl,
           coverAlt: draft.coverAlt,
         }"
-        :scroll="mode === 'split' ? scrollRatio : undefined"
+        :scroll="layout === 'split' ? scrollRatio : undefined"
       />
     </div>
 

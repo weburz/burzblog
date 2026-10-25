@@ -219,7 +219,8 @@ burzblog new "My first post"</code></pre>
     <p v-else-if="loading" class="loading" role="status">Loading posts…</p>
 
     <p v-if="list && list.items.length" class="list-foot list-foot-keys muted">
-      Press <UKbd value="n" /> for a new post, <UKbd value="/" /> to search.
+      Press <UKbd value="n" /> for a new post, <UKbd value="/" /> to search,
+      <UKbd value="?" /> for all shortcuts.
     </p>
 
     <NewPostDialog v-model:open="creating" @created="created" />

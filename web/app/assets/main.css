@@ -740,6 +740,71 @@ code {
   border-top: 1px solid var(--bb-border);
   font-size: 12px;
 }
+.editor-toolbar-start {
+  display: flex;
+  align-items: center;
+  gap: var(--bb-space-2);
+}
+.focus-exit {
+  display: none;
+}
+.editor-shell[data-focus="true"] .editor-bar {
+  position: fixed;
+  top: var(--bb-space-3);
+  right: var(--bb-space-3);
+  z-index: 5;
+  height: auto;
+  gap: var(--bb-space-2);
+  padding: var(--bb-space-1) var(--bb-space-2) var(--bb-space-1) var(--bb-space-3);
+  border: 1px solid var(--bb-border);
+  border-radius: var(--bb-radius-m);
+  background: var(--bb-surface);
+  opacity: 0.6;
+  transition: opacity 120ms;
+}
+.editor-shell[data-focus="true"] .editor-bar:hover,
+.editor-shell[data-focus="true"] .editor-bar:focus-within {
+  opacity: 1;
+}
+.editor-shell[data-focus="true"] .focus-exit {
+  display: inline-flex;
+  order: 2;
+}
+.editor-shell[data-focus="true"] .editor-back,
+.editor-shell[data-focus="true"] .editor-crumb,
+.editor-shell[data-focus="true"] .editor-actions,
+.editor-shell[data-focus="true"] .editor-toolbar,
+.editor-shell[data-focus="true"] .editor-foot,
+.editor-shell[data-focus="true"] .md-tools {
+  display: none;
+}
+.editor-shell[data-focus="true"] .write-column {
+  max-width: 720px;
+  padding-top: var(--bb-space-8);
+}
+.shortcut-group + .shortcut-group {
+  margin-top: var(--bb-space-5);
+}
+.shortcut-title {
+  margin-bottom: var(--bb-space-2);
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--bb-text-2);
+}
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bb-space-4);
+  padding: var(--bb-space-2) 0;
+  border-bottom: 1px solid var(--bb-border);
+  font-size: 14px;
+}
+.shortcut-row dd {
+  display: flex;
+  flex: none;
+  gap: var(--bb-space-1);
+}
 
 /* Post settings and history */
 .details {

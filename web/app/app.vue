@@ -6,6 +6,7 @@ const { state, load, signOut } = useCurrentSession();
 // The editor reports unsaved writing here, so signing out can warn first.
 const dirty = useState("editor-dirty", () => false);
 const editorFailed = useState("editor-failed", () => false);
+const shortcutsOpen = useState("shortcuts-open", () => false);
 const route = useRoute();
 const error = ref("");
 const confirmingSignOut = ref(false);
@@ -24,6 +25,19 @@ const expired = () => {
 };
 onMounted(() => window.addEventListener("burzblog:session-expired", expired));
 onUnmounted(() => window.removeEventListener("burzblog:session-expired", expired));
+
+// "?" opens the shortcut list, unless the writer is typing in a field.
+const helpKey = (event: KeyboardEvent) => {
+  if (event.key !== "?" || event.metaKey || event.ctrlKey || event.altKey) return;
+  if (!state.value.authenticated) return;
+  const target = event.target as HTMLElement | null;
+  if (target?.closest("input, textarea, select, [contenteditable], [role=dialog]"))
+    return;
+  event.preventDefault();
+  shortcutsOpen.value = true;
+};
+onMounted(() => window.addEventListener("keydown", helpKey));
+onUnmounted(() => window.removeEventListener("keydown", helpKey));
 
 const leave = async () => {
   confirmingSignOut.value = false;
@@ -110,6 +124,7 @@ useHead({
           />
         </template>
       </UModal>
+      <ShortcutsDialog v-if="state.authenticated" v-model:open="shortcutsOpen" />
       <ConfirmDialog
         v-model:open="confirmingSignOut"
         title="Sign out with unsaved changes?"
