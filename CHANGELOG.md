@@ -21,6 +21,10 @@ All notable changes are recorded here, following
 
 ### Added
 
+- Full backup: `GET /api/backup.tar.gz`, **Settings → Backup** in the panel and
+  `burzblog backup [dir]` download every post, drafts and archived included, as
+  `<status>/<slug>.md` files with a `README.txt`. Needs a session or write
+  token; export tokens are refused. History stays in the database file.
 - Terminal workflow: `burzblog login`, `list`, `new`, `edit` (opens `$EDITOR`),
   `pull`, `push`, `publish`, `unpublish`, `archive`, `restore`, `open`,
   `export`, `logout`, `whoami`; host commands `serve` and `user add|passwd|list`.

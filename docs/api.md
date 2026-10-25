@@ -9,7 +9,7 @@ There are no unauthenticated content routes.
 |---|---|---|
 | Browser panel | `HttpOnly`, `SameSite=Strict` session cookie from `POST /api/login` (`__Host-burzblog` over HTTPS) | `Origin` equal to the configured origin, and `X-CSRF-Token` from `GET /api/session` |
 | CLI | `Authorization: Bearer bzb_...` write token from `POST /api/auth/token` | nothing else |
-| Website build | `Authorization: Bearer bzb_...` export token created in Settings | can only call `GET /api/export.tar.gz` |
+| Website build | `Authorization: Bearer bzb_...` export token created in Settings | can only call `GET /api/export.tar.gz`; `GET /api/backup.tar.gz` answers 403 |
 
 Sessions last 12 hours. Each username gets ten sign-in attempts per 15 minutes;
 a successful sign-in resets the count. There is no instance-wide limit, so one
@@ -94,7 +94,14 @@ What the CLI edits: the post as frontmatter plus body (see
 |---|---|
 | `GET /api/posts/{slug}/markdown` | `text/markdown`, with `ETag: "<version>"` |
 | `PUT /api/posts/{slug}/markdown` | `If-Match: "<version>"` saves; `If-None-Match: *` creates a new post |
-| `GET /api/export.tar.gz` | every published post as `<slug>.md` in a gzipped tar |
+| `GET /api/export.tar.gz` | every published post as `<slug>.md` in a gzipped tar; export tokens allowed |
+| `GET /api/backup.tar.gz` | every post, drafts and archived included, as `<status>/<slug>.md` plus a `README.txt` in a gzipped tar; session or write token, not export tokens |
+
+The backup holds current posts only, always with a `status` line (archived posts
+are stored as `draft`; the folder says `archived`). Revisions are not included:
+back up the database file for those (see [self-hosting](self-hosting.md#backups)).
+The response is `Content-Disposition: attachment` with a dated name such as
+`burzblog-backup-2026-10-25.tar.gz`, and `Cache-Control: no-store`.
 
 ## Health
 

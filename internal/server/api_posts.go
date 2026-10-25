@@ -488,3 +488,70 @@ func (s *Server) export(w http.ResponseWriter, r *http.Request) {
 		s.log.Error("export failed", "err", err)
 	}
 }
+
+// backup streams every post, drafts and archived ones included, as
+// <status>/<slug>.md in a gzipped tar with a README.txt, for a full copy of
+// the writing. Revisions are not included.
+func (s *Server) backup(w http.ResponseWriter, r *http.Request) {
+	posts, err := s.store.AllPosts(r.Context())
+	if err != nil {
+		s.internal(w, r, err)
+		return
+	}
+	now := time.Now().UTC()
+	w.Header().Set("Content-Type", "application/gzip")
+	w.Header().Set("Content-Disposition", `attachment; filename="burzblog-backup-`+now.Format("2006-01-02")+`.tar.gz"`)
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("X-BurzBlog-Posts", strconv.Itoa(len(posts)))
+	gz := gzip.NewWriter(w)
+	tw := tar.NewWriter(gz)
+	add := func(name, doc string, modTime time.Time) error {
+		hdr := &tar.Header{
+			Name: name, Mode: 0o644, Size: int64(len(doc)), ModTime: modTime,
+			Typeflag: tar.TypeReg, Format: tar.FormatPAX,
+		}
+		if err := tw.WriteHeader(hdr); err != nil {
+			return err
+		}
+		_, err := io.WriteString(tw, doc)
+		return err
+	}
+	err = add("README.txt", backupReadme(now, s.cfg.Version, len(posts)), now)
+	for _, p := range posts {
+		if err != nil {
+			break
+		}
+		err = add(string(p.Status)+"/"+p.Slug+".md", post.Encode(p), p.UpdatedAt)
+	}
+	if err == nil {
+		err = tw.Close()
+	}
+	if err == nil {
+		err = gz.Close()
+	}
+	if err != nil {
+		s.log.Error("backup failed", "err", err)
+	}
+}
+
+func backupReadme(at time.Time, version string, posts int) string {
+	return fmt.Sprintf(`BurzBlog backup
+
+Made:    %s
+Version: BurzBlog %s
+Posts:   %d
+
+This archive holds every post as it is now, as Markdown with frontmatter, in
+one folder per status: draft/, published/ and archived/. Earlier versions
+(history), accounts and tokens are not included; the database file is the
+complete backup (see docs/self-hosting.md).
+
+To restore, push each file to a running BurzBlog:
+
+  burzblog push <folder>/<slug>.md
+
+The file name is the post's slug. Archived posts are stored with status: draft
+in their frontmatter; run "burzblog archive <slug>" after pushing to archive
+them again.
+`, at.Format(time.RFC3339), version, posts)
+}

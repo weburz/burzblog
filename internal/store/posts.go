@@ -330,6 +330,25 @@ func (s *Store) Revision(ctx context.Context, slug string, version int64) (*Revi
 	return &r, nil
 }
 
+// AllPosts returns every post in full, whatever its status, by status and
+// slug.
+func (s *Store) AllPosts(ctx context.Context) ([]*post.Post, error) {
+	rows, err := s.db.QueryContext(ctx, "SELECT "+postColumns+" FROM posts ORDER BY status, slug")
+	if err != nil {
+		return nil, fmt.Errorf("list all posts: %w", err)
+	}
+	defer rows.Close()
+	var list []*post.Post
+	for rows.Next() {
+		p, err := scanPost(rows)
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, p)
+	}
+	return list, rows.Err()
+}
+
 // PublishedPosts returns every published post in full, by slug.
 func (s *Store) PublishedPosts(ctx context.Context) ([]*post.Post, error) {
 	rows, err := s.db.QueryContext(ctx, "SELECT "+postColumns+" FROM posts WHERE status = 'published' ORDER BY slug")

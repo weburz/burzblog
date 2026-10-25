@@ -21,7 +21,9 @@ Changing a password ends every other session.
 
 **API tokens.** `bzb_` plus 256 random bits, shown once, stored as a SHA-256
 digest. Write tokens (from `burzblog login`) can do what a signed-in user can.
-Export tokens can only download published posts. Both are listed in Settings
+Export tokens can only download published posts; the full backup
+(`/api/backup.tar.gz`, drafts and archived posts included) needs a session or a
+write token. Both are listed in Settings
 with their last use and can be revoked there.
 
 **The panel.** Served with a Content Security Policy that allows only the

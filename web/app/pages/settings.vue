@@ -307,6 +307,39 @@ const scopeUse = (t: Token) =>
       </div>
     </section>
 
+    <section class="settings-section" aria-labelledby="backup-heading">
+      <div class="settings-aside">
+        <h2 id="backup-heading" class="section-title">Backup</h2>
+        <p class="muted">
+          One download with every post, including drafts and archived ones, as Markdown
+          files.
+        </p>
+      </div>
+      <div class="settings-main">
+        <div>
+          <UButton
+            as="a"
+            href="/api/backup.tar.gz"
+            download
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-download"
+            >Download all posts</UButton
+          >
+        </div>
+        <p class="field-hint">
+          History is not included. The database file is the complete backup, with every
+          earlier version; see
+          <a
+            href="https://github.com/weburz/burzblog/blob/main/docs/self-hosting.md#backups"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Backups in the self-hosting guide</a
+          >.
+        </p>
+      </div>
+    </section>
+
     <section class="settings-section" aria-labelledby="account-heading">
       <div class="settings-aside">
         <h2 id="account-heading" class="section-title">Password</h2>

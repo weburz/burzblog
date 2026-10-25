@@ -254,6 +254,16 @@ func (c *Client) SaveMarkdown(ctx context.Context, slug, doc string, version int
 	return &p, nil
 }
 
+// Backup downloads every post, whatever its status, as a gzipped tar. The
+// caller closes it.
+func (c *Client) Backup(ctx context.Context) (io.ReadCloser, error) {
+	resp, err := c.request(ctx, http.MethodGet, "/api/backup.tar.gz", nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	return resp.Body, nil
+}
+
 // Export downloads published posts as a gzipped tar. The caller closes it.
 func (c *Client) Export(ctx context.Context) (io.ReadCloser, error) {
 	resp, err := c.request(ctx, http.MethodGet, "/api/export.tar.gz", nil, nil)
