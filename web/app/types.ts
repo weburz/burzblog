@@ -80,6 +80,18 @@ export interface Session {
   csrf?: string;
 }
 
+// The answer to a correct password when the account also needs a code.
+export interface SecondFactorReply {
+  second_factor: true;
+  challenge: string;
+}
+
+export interface TwoFactorStatus {
+  enabled: boolean;
+  pending: boolean;
+  recoveryCodes: number;
+}
+
 export interface Revision {
   version: number;
   title: string;

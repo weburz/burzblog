@@ -1,21 +1,28 @@
 <script setup lang="ts">
 import { nextTick, ref } from "vue";
-import { errorMessage } from "../utils/api";
+import { ApiError, errorMessage } from "../utils/api";
 
 const props = defineProps<{ compact?: boolean; username?: string }>();
 const emit = defineEmits<{ success: [] }>();
-const { signIn } = useCurrentSession();
+const { signIn, completeSignIn } = useCurrentSession();
 const name = ref(props.username ?? "");
 const password = ref("");
 const busy = ref(false);
 const error = ref("");
+// Set when the password was right but the account needs a two-factor code.
+const challenge = ref("");
+const codeError = ref("");
 
 const submit = async () => {
   busy.value = true;
   error.value = "";
   try {
-    await signIn(name.value.trim(), password.value);
+    const pending = await signIn(name.value.trim(), password.value);
     password.value = "";
+    if (pending) {
+      challenge.value = pending;
+      return;
+    }
     emit("success");
   } catch (cause) {
     error.value = errorMessage(cause);
@@ -28,10 +35,45 @@ const submit = async () => {
     busy.value = false;
   }
 };
+
+const submitCode = async (code: string) => {
+  busy.value = true;
+  codeError.value = "";
+  try {
+    await completeSignIn(challenge.value, code);
+    challenge.value = "";
+    emit("success");
+  } catch (cause) {
+    codeError.value = errorMessage(cause);
+    // A timed-out or spent challenge needs the password again.
+    if (cause instanceof ApiError && cause.code === "challenge") restart(codeError.value);
+  } finally {
+    busy.value = false;
+  }
+};
+
+const restart = (message = "") => {
+  challenge.value = "";
+  codeError.value = "";
+  error.value = message;
+};
 </script>
 
 <template>
-  <form class="login" :class="{ 'login-compact': compact }" @submit.prevent="submit">
+  <TotpStep
+    v-if="challenge"
+    :compact="compact"
+    :busy="busy"
+    :error="codeError"
+    @submit="submitCode"
+    @restart="restart()"
+  />
+  <form
+    v-else
+    class="login"
+    :class="{ 'login-compact': compact }"
+    @submit.prevent="submit"
+  >
     <div v-if="!compact" class="login-intro">
       <h1 class="login-title">A quiet place to write.</h1>
       <p class="muted">
