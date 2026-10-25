@@ -92,16 +92,13 @@ const submit = async () => {
       </div>
       <div class="field">
         <label for="setup-password">Password</label>
-        <UInput
+        <PasswordInput
           id="setup-password"
           v-model="password"
-          type="password"
           autocomplete="new-password"
           required
           :minlength="minPassword"
-          class="w-full"
-          size="xl"
-          aria-describedby="setup-password-hint"
+          describedby="setup-password-hint"
         />
         <p id="setup-password-hint" class="field-hint">
           At least {{ minPassword }} characters. A few unrelated words work well.
@@ -109,16 +106,13 @@ const submit = async () => {
       </div>
       <div class="field">
         <label for="setup-repeat">Repeat password</label>
-        <UInput
+        <PasswordInput
           id="setup-repeat"
           v-model="repeat"
-          type="password"
           autocomplete="new-password"
           required
-          class="w-full"
-          size="xl"
-          :color="mismatch ? 'error' : undefined"
-          :aria-describedby="mismatch ? 'setup-repeat-error' : undefined"
+          :invalid="mismatch"
+          :describedby="mismatch ? 'setup-repeat-error' : undefined"
         />
         <p v-if="mismatch" id="setup-repeat-error" class="field-error">
           The two passwords are different.
