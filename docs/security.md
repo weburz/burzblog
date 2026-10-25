@@ -7,9 +7,18 @@ to it; they read the website your build produces.
 
 **Accounts.** Passwords are hashed with Argon2id (19 MiB, 2 passes), at least
 12 characters. At most two hashes run at once, so a burst of sign-ins cannot
-exhaust a Pi's memory. Unknown usernames take as long as known ones. Failed
+exhaust a Pi's memory. A sign-in that cannot get a slot within two seconds is
+answered `503` with `Retry-After` instead of queueing, so a flood of junk
+usernames cannot build an unbounded queue, and one client address may have at
+most four sign-ins in progress. That per-address cap uses the connecting address only
+(`X-Forwarded-For` is ignored on purpose), so it separates clients only when
+they connect directly; behind a reverse proxy everyone shares the proxy's
+address and a flood is shed as a whole. It is load shedding, never a lockout:
+real sign-ins work again as soon as the flood stops. Unknown usernames take as
+long as known ones, and nothing is shed by whether an account exists. Failed
 sign-ins are limited per username, counted before the password is checked so
-parallel guesses cannot slip past (see [API](api.md)). There
+parallel guesses cannot slip past (see [API](api.md)); expired counters are
+pruned as sign-ins arrive. There
 is no self sign-up; accounts are created on the host with `burzblog user add`.
 
 **Browser sessions.** A random 256-bit session id in an `HttpOnly`,
