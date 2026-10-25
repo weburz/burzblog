@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, watch } from "vue";
-import type { Revision } from "../types";
+import { computed, ref, watch } from "vue";
+import type { Revision, RevisionList, RevisionState, RevisionSummary } from "../types";
 import { errorMessage, request } from "../utils/api";
+import { changeSummary } from "../utils/changes";
 import { lineDiff, diffTooLong } from "../utils/diff";
 import { editedLabel, exactTime } from "../utils/time";
 
@@ -14,7 +15,8 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ restore: [version: number] }>();
 
-const items = ref<Revision[] | null>(null);
+const items = ref<RevisionSummary[] | null>(null);
+const current = ref<RevisionState | null>(null);
 const error = ref("");
 const selected = ref<Revision | null>(null);
 const loadingOne = ref(false);
@@ -25,15 +27,33 @@ watch(open, async (value) => {
   items.value = null;
   error.value = "";
   try {
-    items.value = (
-      await request<{ items: Revision[] }>(`/api/posts/${props.slug}/revisions`)
-    ).items;
+    const list = await request<RevisionList>(`/api/posts/${props.slug}/revisions`);
+    current.value = list.current;
+    items.value = list.items;
   } catch (cause) {
     error.value = errorMessage(cause);
   }
 });
 
-const pick = async (rev: Revision) => {
+// Each row says what that version changed compared with the one before it.
+// The oldest has nothing to compare with: v1 is where the post began, and an
+// older start means the list was cut off.
+const summaryOf = (index: number): string => {
+  const list = items.value;
+  const rev = list?.[index];
+  if (!list || !rev) return "";
+  const before = list[index + 1];
+  if (before) return changeSummary(before, rev);
+  return rev.version === 1 ? "Created" : "";
+};
+// The post as it is now heads the list, with what the latest save changed.
+const currentSummary = computed(() => {
+  const latest = items.value?.[0];
+  if (!current.value) return "";
+  return latest ? changeSummary(latest, current.value) : "Created";
+});
+
+const pick = async (rev: RevisionSummary) => {
   loadingOne.value = true;
   error.value = "";
   try {
@@ -122,15 +142,26 @@ const pick = async (rev: Revision) => {
           No earlier versions yet. They appear here each time you save.
         </p>
         <ol v-else-if="items" class="history-list">
-          <li v-for="rev in items" :key="rev.version">
+          <li v-if="current">
+            <div class="history-row history-current" aria-current="true">
+              <span class="history-version">v{{ version }}</span>
+              <span class="history-title">{{ current.title || "Untitled" }}</span>
+              <span class="history-change">{{ currentSummary }}</span>
+              <StatusBadge :status="current.status" />
+              <span class="muted">Current version</span>
+            </div>
+          </li>
+          <li v-for="(rev, index) in items" :key="rev.version">
             <button
               type="button"
               class="history-row"
               :disabled="loadingOne"
+              :aria-label="`Version ${rev.version}, ${rev.title || 'Untitled'}: ${summaryOf(index)}. ${rev.status}, saved ${exactTime(rev.savedAt)}${rev.savedBy ? ` by ${rev.savedBy}` : ''}`"
               @click="pick(rev)"
             >
               <span class="history-version">v{{ rev.version }}</span>
               <span class="history-title">{{ rev.title || "Untitled" }}</span>
+              <span class="history-change">{{ summaryOf(index) }}</span>
               <StatusBadge :status="rev.status" />
               <time :datetime="rev.savedAt" :title="exactTime(rev.savedAt)" class="muted"
                 >{{ editedLabel(rev.savedAt)

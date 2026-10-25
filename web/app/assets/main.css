@@ -775,7 +775,7 @@ code {
 .history-row {
   display: grid;
   grid-template-columns: 44px minmax(0, 1fr) auto;
-  grid-template-areas: "v title badge" "v when when";
+  grid-template-areas: "v title badge" "v change change" "v when when";
   align-items: center;
   gap: 2px 12px;
   width: 100%;
@@ -800,12 +800,27 @@ code {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.history-change {
+  grid-area: change;
+  font-size: 13px;
+  color: var(--bb-text-2);
+  font-variant-numeric: tabular-nums;
+}
 .history-row .badge {
   grid-area: badge;
 }
-.history-row time {
+.history-row time,
+.history-current > .muted {
   grid-area: when;
   font-size: 13px;
+}
+.history-current {
+  cursor: default;
+  background: var(--bb-blue-soft);
+  border-radius: var(--bb-radius-s);
+}
+.history-current:hover {
+  background: var(--bb-blue-soft);
 }
 .history-head {
   margin: -8px 0 12px -10px;

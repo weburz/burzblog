@@ -69,10 +69,18 @@ A post:
 | `PUT /api/posts/{slug}` | `{version, slug, title, description, body, coverUrl, coverAlt, extra, publishedOn, updatedOn}`; `version` must be current, a new `slug` renames |
 | `POST /api/posts/{slug}/publish` | `{version}`; also `unpublish`, `archive`, `restore` |
 | `DELETE /api/posts/{slug}?version=N` | only archived posts; removes its history too |
-| `GET /api/posts/{slug}/revisions` | earlier versions, newest first |
+| `GET /api/posts/{slug}/revisions` | `{items, current}`: earlier versions, newest first, without bodies; see below |
 | `GET /api/posts/{slug}/revisions/{v}` | one earlier version in full |
 | `POST /api/posts/{slug}/revisions/{v}/restore` | `{version}` → saves that content as a new version |
 | `POST /api/preview` | `{markdown}` → `{html}`, sanitized |
+
+Each revision in the list carries `version`, `savedAt`, `savedBy` and a state:
+`slug`, `title`, `status`, `words` (the body's word count) and the digests
+`descriptionDigest`, `coverDigest` and `settingsDigest` (extra and dates).
+`current` has the same state for the post as it is now. Equal digests mean the
+field is equal, so the panel can say what a save changed by comparing a
+revision with the next one, or with `current` for the newest. Digests are
+opaque and may change between releases.
 
 A save that changes nothing returns the post unchanged, without a new version.
 Every change keeps the previous content as a revision.

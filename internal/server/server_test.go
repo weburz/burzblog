@@ -495,3 +495,54 @@ func TestMarkdownStatusRules(t *testing.T) {
 		t.Errorf("archived to published from a file = %d, want 422", resp.StatusCode)
 	}
 }
+
+func TestRevisionListSummarizesChanges(t *testing.T) {
+	h := newHarness(t, nil)
+	h.login()
+	if resp, out := h.do("POST", "/api/posts", map[string]any{"title": "Hello", "slug": "hello"}); resp.StatusCode != 201 {
+		t.Fatalf("create = %d %v", resp.StatusCode, out)
+	}
+	save := func(version int, change map[string]any) {
+		t.Helper()
+		body := map[string]any{"version": version, "slug": "hello", "title": "Hello", "description": "", "body": "",
+			"coverUrl": "", "coverAlt": "", "extra": "", "publishedOn": nil, "updatedOn": nil}
+		for k, v := range change {
+			body[k] = v
+		}
+		if resp, out := h.do("PUT", "/api/posts/hello", body); resp.StatusCode != 200 {
+			t.Fatalf("save v%d = %d %v", version, resp.StatusCode, out)
+		}
+	}
+	save(1, map[string]any{"body": "one two three", "description": "short"})
+	save(2, map[string]any{"body": "one two three four", "description": "short"})
+
+	resp, out := h.do("GET", "/api/posts/hello/revisions", nil)
+	if resp.StatusCode != 200 {
+		t.Fatalf("list = %d %v", resp.StatusCode, out)
+	}
+	items := out["items"].([]any)
+	if len(items) != 2 {
+		t.Fatalf("items = %v", items)
+	}
+	newest, oldest := items[0].(map[string]any), items[1].(map[string]any)
+	if newest["version"] != 2.0 || newest["words"] != 3.0 || oldest["words"] != 0.0 || newest["title"] != "Hello" || newest["slug"] != "hello" {
+		t.Errorf("revision states = %v", items)
+	}
+	current := out["current"].(map[string]any)
+	if current["words"] != 4.0 || current["status"] != "draft" {
+		t.Errorf("current = %v", current)
+	}
+	if newest["descriptionDigest"] != current["descriptionDigest"] || oldest["descriptionDigest"] == newest["descriptionDigest"] {
+		t.Errorf("description digests: %v %v %v", oldest, newest, current)
+	}
+	if newest["coverDigest"] != current["coverDigest"] || newest["settingsDigest"] != current["settingsDigest"] {
+		t.Errorf("unchanged fields differ: %v %v", newest, current)
+	}
+	if _, has := newest["body"]; has {
+		t.Errorf("list leaks bodies: %v", newest)
+	}
+
+	if resp, _ := h.do("GET", "/api/posts/missing/revisions", nil); resp.StatusCode != 404 {
+		t.Errorf("missing post revisions = %d", resp.StatusCode)
+	}
+}

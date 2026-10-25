@@ -118,6 +118,9 @@ func TestUpdatePostVersionsAndRevisions(t *testing.T) {
 	if err != nil || len(revs) != 1 || revs[0].Version != 1 || revs[0].SavedBy != "u1" {
 		t.Fatalf("revisions = %+v, %v", revs, err)
 	}
+	if revs[0].Words != 1 || revs[0].Post.Slug != "a" || revs[0].Post.Body != "" {
+		t.Errorf("revision summary = %+v, want one word, slug a, no body", revs[0])
+	}
 	old, err := s.Revision(ctx, "a", 1)
 	if err != nil || old.Post.Body != "one" {
 		t.Fatalf("revision 1 = %+v, %v", old, err)

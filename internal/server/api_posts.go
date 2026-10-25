@@ -3,6 +3,8 @@ package server
 import (
 	"archive/tar"
 	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -325,17 +327,65 @@ type revisionReply struct {
 	Post    *postReply  `json:"post,omitempty"`
 }
 
+// revisionState is what the panel needs to say what a save changed: the
+// fields it shows, a word count and short digests of the rest.
+type revisionState struct {
+	Slug              string      `json:"slug"`
+	Title             string      `json:"title"`
+	Status            post.Status `json:"status"`
+	Words             int         `json:"words"`
+	DescriptionDigest string      `json:"descriptionDigest"`
+	CoverDigest       string      `json:"coverDigest"`
+	SettingsDigest    string      `json:"settingsDigest"`
+}
+
+type revisionSummary struct {
+	Version int64     `json:"version"`
+	SavedAt time.Time `json:"savedAt"`
+	SavedBy string    `json:"savedBy"`
+	revisionState
+}
+
+// digest is a short fingerprint of parts: equal inputs give equal digests.
+func digest(parts ...string) string {
+	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
+	return hex.EncodeToString(sum[:6])
+}
+
+func stamp(t *time.Time) string {
+	if t == nil {
+		return ""
+	}
+	return t.UTC().Format(time.RFC3339)
+}
+
+func stateOf(p *post.Post, words int) revisionState {
+	return revisionState{
+		Slug: p.Slug, Title: p.Title, Status: p.Status, Words: words,
+		DescriptionDigest: digest(p.Description),
+		CoverDigest:       digest(p.CoverURL, p.CoverAlt),
+		SettingsDigest:    digest(p.Extra, stamp(p.PublishedOn), stamp(p.UpdatedOn)),
+	}
+}
+
 func (s *Server) listRevisions(w http.ResponseWriter, r *http.Request) {
-	list, err := s.store.Revisions(r.Context(), r.PathValue("slug"))
+	slug := r.PathValue("slug")
+	list, err := s.store.Revisions(r.Context(), slug)
 	if err != nil {
 		s.postError(w, r, err, nil)
 		return
 	}
-	items := make([]revisionReply, 0, len(list))
-	for _, rev := range list {
-		items = append(items, revisionReply{Version: rev.Version, Title: rev.Post.Title, Status: rev.Post.Status, SavedAt: rev.SavedAt, SavedBy: rev.SavedBy})
+	current, err := s.store.GetPost(r.Context(), slug)
+	if err != nil {
+		s.postError(w, r, err, nil)
+		return
 	}
-	reply(w, http.StatusOK, map[string]any{"items": items})
+	items := make([]revisionSummary, 0, len(list))
+	for _, rev := range list {
+		items = append(items, revisionSummary{Version: rev.Version, SavedAt: rev.SavedAt, SavedBy: rev.SavedBy,
+			revisionState: stateOf(&rev.Post, rev.Words)})
+	}
+	reply(w, http.StatusOK, map[string]any{"items": items, "current": stateOf(current, post.CountWords(current.Body))})
 }
 
 func (s *Server) revision(w http.ResponseWriter, r *http.Request) *store.Revision {
