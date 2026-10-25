@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
 import type { Settings, Token } from "../types";
 import { errorMessage, request } from "../utils/api";
+import { MIN_PASSWORD, passwordStrength } from "../utils/password-strength";
 import { themeOptions } from "../utils/theme";
 import { editedLabel, exactTime } from "../utils/time";
 
@@ -34,6 +35,7 @@ const next = ref("");
 const repeat = ref("");
 const passwordBusy = ref(false);
 const passwordError = ref("");
+const strength = computed(() => passwordStrength(next.value));
 const mismatch = computed(() => repeat.value !== "" && next.value !== repeat.value);
 const changePassword = async () => {
   if (mismatch.value) return;
@@ -435,42 +437,46 @@ const scopeUse = (t: Token) =>
         />
         <div class="field">
           <label for="pw-current">Current password</label>
-          <UInput
+          <PasswordInput
             id="pw-current"
             v-model="current"
-            type="password"
             autocomplete="current-password"
             required
-            class="w-full"
           />
         </div>
         <div class="field">
           <label for="pw-next">New password</label>
-          <UInput
+          <PasswordInput
             id="pw-next"
             v-model="next"
-            type="password"
             autocomplete="new-password"
             required
-            minlength="12"
-            class="w-full"
-            aria-describedby="pw-next-hint"
+            :minlength="MIN_PASSWORD"
+            describedby="pw-next-hint"
           />
           <p id="pw-next-hint" class="field-hint">
-            At least 12 characters. A few unrelated words work well.
+            At least {{ MIN_PASSWORD }} characters. A few unrelated words work well.
+          </p>
+          <p
+            class="field-hint strength"
+            :class="`strength-${strength.level}`"
+            role="status"
+            aria-live="polite"
+          >
+            <template v-if="strength.level !== 'empty'"
+              >{{ strength.length }} characters. {{ strength.hint }}</template
+            >
           </p>
         </div>
         <div class="field">
           <label for="pw-repeat">Repeat new password</label>
-          <UInput
+          <PasswordInput
             id="pw-repeat"
             v-model="repeat"
-            type="password"
             autocomplete="new-password"
             required
-            class="w-full"
-            :color="mismatch ? 'error' : undefined"
-            :aria-describedby="mismatch ? 'pw-repeat-error' : undefined"
+            :invalid="mismatch"
+            :describedby="mismatch ? 'pw-repeat-error' : undefined"
           />
           <p v-if="mismatch" id="pw-repeat-error" class="field-error">
             The two new passwords are different.

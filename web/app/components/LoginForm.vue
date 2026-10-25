@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, ref } from "vue";
+import { computed, nextTick, ref } from "vue";
 import { errorMessage } from "../utils/api";
 
 const props = defineProps<{ compact?: boolean; username?: string }>();
@@ -7,6 +7,9 @@ const emit = defineEmits<{ success: [] }>();
 const { signIn } = useCurrentSession();
 const name = ref(props.username ?? "");
 const password = ref("");
+const resetCommand = computed(
+  () => `burzblog user passwd ${name.value.trim() || "<name>"}`,
+);
 const busy = ref(false);
 const error = ref("");
 
@@ -55,18 +58,23 @@ const submit = async () => {
     </div>
     <div class="field">
       <label for="login-password">Password</label>
-      <UInput
+      <PasswordInput
         id="login-password"
         v-model="password"
-        type="password"
         autocomplete="current-password"
         required
         :autofocus="Boolean(props.username)"
-        class="w-full"
-        size="xl"
-        :aria-describedby="error ? 'login-error' : undefined"
+        :describedby="error ? 'login-error' : undefined"
       />
     </div>
+    <details class="login-forgot">
+      <summary>Forgot your password?</summary>
+      <p class="muted">
+        BurzBlog has no email, so accounts are managed on the server. Ask whoever runs
+        BurzBlog to run this command; it also signs the account out everywhere.
+      </p>
+      <CopyField :value="resetCommand" label="the password reset command" />
+    </details>
     <p v-if="error" id="login-error" class="alert" role="alert">{{ error }}</p>
     <div class="login-actions">
       <UButton
