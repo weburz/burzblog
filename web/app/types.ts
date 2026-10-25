@@ -64,6 +64,28 @@ export interface Revision {
   post?: Post;
 }
 
+// What the revision list reports per version, enough to say what a save changed.
+export interface RevisionState {
+  slug: string;
+  title: string;
+  status: PostStatus;
+  words: number;
+  descriptionDigest: string;
+  coverDigest: string;
+  settingsDigest: string;
+}
+
+export interface RevisionSummary extends RevisionState {
+  version: number;
+  savedAt: string;
+  savedBy: string;
+}
+
+export interface RevisionList {
+  items: RevisionSummary[];
+  current: RevisionState;
+}
+
 export interface Token {
   id: number;
   name: string;

@@ -265,16 +265,20 @@ type Revision struct {
 	Version int64
 	SavedAt time.Time
 	SavedBy string
-	Post    post.Post
+	// Words is set by Revisions, which leaves the body out.
+	Words int
+	Post  post.Post
 }
 
-// Revisions lists a post's earlier versions, newest first, without bodies.
+// Revisions lists a post's earlier versions, newest first, without bodies but
+// with word counts.
 func (s *Store) Revisions(ctx context.Context, slug string) ([]Revision, error) {
 	p, err := s.GetPost(ctx, slug)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT version, title, status, length(body), saved_at, saved_by
+	rows, err := s.db.QueryContext(ctx, `SELECT version, slug, title, description, status, body, cover_url, cover_alt,
+		extra, published_on, updated_on, saved_at, saved_by
 		FROM revisions WHERE post_id = ? ORDER BY version DESC LIMIT 200`, p.ID)
 	if err != nil {
 		return nil, fmt.Errorf("list revisions: %w", err)
@@ -283,12 +287,16 @@ func (s *Store) Revisions(ctx context.Context, slug string) ([]Revision, error) 
 	list := []Revision{}
 	for rows.Next() {
 		var r Revision
-		var status, saved string
-		var size int
-		if err := rows.Scan(&r.Version, &r.Post.Title, &status, &size, &saved, &r.SavedBy); err != nil {
+		var status, saved, body string
+		var publishedOn, updatedOn sql.NullString
+		if err := rows.Scan(&r.Version, &r.Post.Slug, &r.Post.Title, &r.Post.Description, &status, &body,
+			&r.Post.CoverURL, &r.Post.CoverAlt, &r.Post.Extra, &publishedOn, &updatedOn, &saved, &r.SavedBy); err != nil {
 			return nil, fmt.Errorf("list revisions: %w", err)
 		}
+		r.Words = post.CountWords(body)
 		r.Post.Status = post.Status(status)
+		r.Post.PublishedOn = timePtr(publishedOn)
+		r.Post.UpdatedOn = timePtr(updatedOn)
 		r.SavedAt = parseStamp(saved)
 		list = append(list, r)
 	}

@@ -775,7 +775,7 @@ code {
 .history-row {
   display: grid;
   grid-template-columns: 44px minmax(0, 1fr) auto;
-  grid-template-areas: "v title badge" "v when when";
+  grid-template-areas: "v title badge" "v change change" "v when when";
   align-items: center;
   gap: 2px 12px;
   width: 100%;
@@ -799,6 +799,12 @@ code {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.history-change {
+  grid-area: change;
+  font-size: 13px;
+  color: var(--bb-text-2);
+  font-variant-numeric: tabular-nums;
 }
 .history-row .badge {
   grid-area: badge;
