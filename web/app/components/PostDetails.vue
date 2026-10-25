@@ -20,8 +20,11 @@ const props = defineProps<{
   status: PostStatus;
   savedSlug: string;
   readonly?: boolean;
+  // Old slugs of this post that redirect to it.
+  redirects?: string[];
   closeFocus?: (event: Event) => void;
 }>();
+const emit = defineEmits<{ removeRedirect: [from: string] }>();
 
 const published = computed({
   get: () => toLocalInput(draft.value.publishedOn),
@@ -69,14 +72,32 @@ const setUpdatedNow = () => {
           />
           <p id="detail-slug-hint" class="field-hint">
             <template v-if="slugChanged && status === 'published'">
-              This post is live. A new slug gives it a new address, and links to
-              <span class="mono">{{ savedSlug }}</span> will stop working.
+              This post is live. A new slug gives it a new address. The old address
+              <span class="mono">{{ savedSlug }}</span> will redirect here.
             </template>
             <template v-else
               >Lowercase words joined by hyphens. Also the file name readers' sites
               use.</template
             >
           </p>
+          <div v-if="redirects?.length" class="redirects">
+            <p id="detail-redirects-label" class="field-hint">
+              These old addresses redirect to this post:
+            </p>
+            <ul aria-labelledby="detail-redirects-label">
+              <li v-for="from in redirects" :key="from">
+                <span class="mono">{{ from }}</span>
+                <UButton
+                  color="neutral"
+                  variant="ghost"
+                  size="xs"
+                  icon="i-lucide-x"
+                  :aria-label="`Remove the redirect from ${from}`"
+                  @click="emit('removeRedirect', from)"
+                />
+              </li>
+            </ul>
+          </div>
         </div>
 
         <div class="field">

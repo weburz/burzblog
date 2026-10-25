@@ -311,3 +311,18 @@ func (c *Client) Export(ctx context.Context) (io.ReadCloser, error) {
 	}
 	return resp.Body, nil
 }
+
+// Redirect sends an old slug of a renamed post to its current slug.
+type Redirect struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
+// Redirects lists the old slugs of renamed published posts.
+func (c *Client) Redirects(ctx context.Context) ([]Redirect, error) {
+	var l struct {
+		Items []Redirect `json:"items"`
+	}
+	err := c.json(ctx, http.MethodGet, "/api/content/redirects", nil, &l)
+	return l.Items, err
+}

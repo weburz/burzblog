@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -91,9 +92,13 @@ func notModified(w http.ResponseWriter, r *http.Request, tag string) bool {
 // publishedPost loads a published post, or answers 404 for a missing slug and
 // for any other status alike.
 func (s *Server) publishedPost(w http.ResponseWriter, r *http.Request) (*post.Post, bool) {
-	p, err := s.store.GetPost(r.Context(), r.PathValue("slug"))
+	slug := r.PathValue("slug")
+	p, err := s.store.GetPost(r.Context(), slug)
 	if err == nil && p.Status != post.Published {
 		err = store.ErrNotFound
+	}
+	if errors.Is(err, store.ErrNotFound) && s.movedPost(w, r, slug) {
+		return nil, false
 	}
 	if err != nil {
 		s.postError(w, r, err, nil)

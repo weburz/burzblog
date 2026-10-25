@@ -33,7 +33,10 @@ longer published:
 BURZBLOG_SERVER=https://blog.example.com BURZBLOG_TOKEN=bzb_... burzblog export --out content/blogs --clean
 ```
 
-The archive contains one `<slug>.md` per published post and nothing else.
+The archive contains one `<slug>.md` per published post and a `redirects.json`
+with the old addresses of renamed posts (see
+[Redirecting renamed posts](#redirecting-renamed-posts)). `burzblog export`
+writes the same two kinds of file into its `--out` folder.
 
 ## The file format
 
@@ -116,6 +119,63 @@ add `content/blogs/` to `.gitignore`. The schema (`title`, `description`,
 `status`, `timestamps`, `coverImage`, `sitemap`) already matches what BurzBlog
 exports; add `tags: z.array(z.string()).default([])`, `author`, `canonical` and
 `seo: z.object({ title, description })` if your site uses them.
+
+## Redirecting renamed posts
+
+When you change a published post's slug, BurzBlog remembers the old one.
+`redirects.json` in the export (and `GET /api/content/redirects`) lists them:
+
+```json
+{ "items": [{ "from": "old-slug", "to": "new-slug" }] }
+```
+
+`to` is always the post's current slug, and only published posts are listed.
+Your site decides what an address looks like, so map `from` and `to` onto it. In
+a Nuxt site, load the file into `routeRules` so each old address answers 301:
+
+```ts
+// nuxt.config.ts
+import { existsSync, readFileSync } from "node:fs";
+
+const file = "content/blogs/redirects.json";
+const moved: { from: string; to: string }[] = existsSync(file)
+  ? JSON.parse(readFileSync(file, "utf8")).items
+  : [];
+
+export default defineNuxtConfig({
+  routeRules: Object.fromEntries(
+    moved.map(({ from, to }) => [
+      `/blog/${from}`,
+      { redirect: { to: `/blog/${to}`, statusCode: 301 } },
+    ]),
+  ),
+});
+```
+
+`routeRules` are read when the site builds, and BurzBlog rebuilds it on every
+save of a published post (see below), so a rename is live after the next build.
+For a site that renders on a server and fetches posts at request time, ask the
+content API instead: `GET /api/content/posts/old-slug` answers `308` with the
+current slug, so a server middleware only needs to follow it:
+
+```ts
+// server/middleware/redirects.ts
+export default defineEventHandler(async (event) => {
+  const match = event.path.match(/^\/blog\/([a-z0-9-]+)$/);
+  if (!match) return;
+  const res = await fetch(`${process.env.BURZBLOG_SERVER}/api/content/posts/${match[1]}`, {
+    headers: { Authorization: `Bearer ${process.env.BURZBLOG_TOKEN}` },
+    redirect: "manual",
+  });
+  if (res.status !== 308) return;
+  const { redirect } = await res.json();
+  return sendRedirect(event, `/blog/${redirect}`, 301);
+});
+```
+
+If you export into `content/blogs`, keep `redirects.json` out of Nuxt Content's
+`include` pattern (the example above only matches `*.md`). Remove a redirect in
+the panel, under the post's slug in its settings, when you no longer want it.
 
 ## 3. Rebuild on publish
 

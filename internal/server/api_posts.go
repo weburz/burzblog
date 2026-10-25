@@ -607,6 +607,9 @@ func (s *Server) export(w http.ResponseWriter, r *http.Request) {
 		return addToTar(tw, p.Slug+".md", post.Encode(p), p.UpdatedAt)
 	})
 	if err == nil {
+		err = s.addRedirects(r.Context(), tw)
+	}
+	if err == nil {
 		err = tw.Close()
 	}
 	if err == nil {

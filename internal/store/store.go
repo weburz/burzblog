@@ -188,6 +188,14 @@ var migrations = []string{
 	ALTER TABLE revisions ADD COLUMN seo_title TEXT NOT NULL DEFAULT '';
 	ALTER TABLE revisions ADD COLUMN seo_description TEXT NOT NULL DEFAULT '';
 	ALTER TABLE revisions ADD COLUMN canonical_url TEXT NOT NULL DEFAULT '';`,
+	// Old slugs of renamed posts, so a website can redirect old addresses.
+	// A redirect points at the post, not at a slug, so chains need no work.
+	`CREATE TABLE slug_redirects (
+		old_slug TEXT PRIMARY KEY CHECK (length(old_slug) BETWEEN 1 AND 120),
+		post_id INTEGER NOT NULL REFERENCES posts (id) ON DELETE CASCADE,
+		created_at TEXT NOT NULL
+	);
+	CREATE INDEX slug_redirects_post ON slug_redirects (post_id);`,
 }
 
 // migrationSteps run in the migration's transaction after its SQL, for work

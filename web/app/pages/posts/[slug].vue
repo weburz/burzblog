@@ -162,6 +162,41 @@ const load = async () => {
   }
 };
 onMounted(load);
+
+// The old slugs that redirect to this post, shown in its settings.
+const redirects = ref<string[]>([]);
+watch(
+  () => post.value?.slug,
+  async (slug) => {
+    if (!slug) return;
+    try {
+      const found = await request<{ items: string[] }>(
+        `/api/posts/${encodeURIComponent(slug)}/redirects`,
+      );
+      if (post.value?.slug === slug) redirects.value = found.items;
+    } catch {
+      redirects.value = [];
+    }
+  },
+  { immediate: true },
+);
+const removeRedirect = async (from: string) => {
+  if (!post.value) return;
+  try {
+    await request(
+      `/api/posts/${encodeURIComponent(post.value.slug)}/redirects/${encodeURIComponent(from)}`,
+      "DELETE",
+    );
+    redirects.value = redirects.value.filter((old) => old !== from);
+    toast.add({ title: "Redirect removed", color: "success" });
+  } catch (cause) {
+    toast.add({
+      title: "Could not remove the redirect",
+      description: errorMessage(cause),
+      color: "error",
+    });
+  }
+};
 watch(loadError, (message) => (editorFailed.value = Boolean(message)));
 onUnmounted(() => (editorFailed.value = false));
 
@@ -1100,7 +1135,9 @@ const primary = computed(() => {
       :status="post.status"
       :saved-slug="post.slug"
       :readonly="archived"
+      :redirects="redirects"
       :close-focus="closeFocus"
+      @remove-redirect="removeRedirect"
     />
     <HistoryPanel
       v-model:open="historyOpen"

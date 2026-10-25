@@ -802,7 +802,11 @@ Settings) instead of running burzblog login.`,
 					return err
 				}
 			}
-			fmt.Fprintf(a.Out, "%s Exported %s to %s", a.paint(green, "✓"), count(len(files), "published post", "published posts"), out)
+			posts := len(files)
+			if _, ok := files[redirectsFile]; ok {
+				posts--
+			}
+			fmt.Fprintf(a.Out, "%s Exported %s to %s", a.paint(green, "✓"), count(posts, "published post", "published posts"), out)
 			if removed > 0 {
 				fmt.Fprintf(a.Out, " (removed %d no longer published)", removed)
 			}
@@ -815,8 +819,11 @@ Settings) instead of running burzblog login.`,
 	return cmd
 }
 
+// redirectsFile is the export's list of old slugs, next to the posts.
+const redirectsFile = "redirects.json"
+
 // readExport reads the export archive fully before anything is written, and
-// accepts only flat <slug>.md regular files.
+// accepts only flat <slug>.md regular files and redirects.json.
 func readExport(r io.Reader) (map[string][]byte, error) {
 	gz, err := gzip.NewReader(r)
 	if err != nil {
@@ -834,7 +841,7 @@ func readExport(r io.Reader) (map[string][]byte, error) {
 			return nil, fmt.Errorf("read export: %w", err)
 		}
 		slug := strings.TrimSuffix(hdr.Name, ".md")
-		if hdr.Typeflag != tar.TypeReg || !strings.HasSuffix(hdr.Name, ".md") || post.ValidateSlug(slug) != nil {
+		if hdr.Typeflag != tar.TypeReg || (hdr.Name != redirectsFile && (!strings.HasSuffix(hdr.Name, ".md") || post.ValidateSlug(slug) != nil)) {
 			return nil, fmt.Errorf("the export contains an unexpected entry %q", hdr.Name)
 		}
 		var buf bytes.Buffer

@@ -91,7 +91,9 @@ Single-line fields reject control characters, tabs included, like `title`.
 | `POST /api/posts/{slug}/publish` | `{version}`; also `unpublish`, `archive`, `restore` |
 | `POST /api/posts/{slug}/schedule` | `{version, at}` → the draft with `publishAt` set; see below |
 | `POST /api/posts/{slug}/unschedule` | `{version}` → the draft without a `publishAt`; a no-op if it had none |
-| `DELETE /api/posts/{slug}?version=N` | only archived posts; removes its history too |
+| `DELETE /api/posts/{slug}?version=N` | only archived posts; removes its history and its redirects too |
+| `GET /api/posts/{slug}/redirects` | `{items: ["old-slug", ...]}`: the old slugs that redirect to the post, by slug, whatever the post's status; see [slug redirects](#slug-redirects) |
+| `DELETE /api/posts/{slug}/redirects/{from}` | removes the redirect from one old slug of this post → `{deleted: true}`; 404 `not_found` if the post has no such redirect |
 | `GET /api/posts/{slug}/revisions` | `{items, current}`: earlier versions, newest first, without bodies; see below |
 | `GET /api/posts/{slug}/revisions/{v}` | one earlier version in full |
 | `POST /api/posts/{slug}/revisions/{v}/restore` | `{version}` → saves that content as a new version |
@@ -148,6 +150,20 @@ Publishing, unpublishing or archiving a post by hand ends its schedule, as does
 keeps the schedule. Scheduling and unscheduling are saves: each makes a new
 version and needs the current `version`.
 
+### Slug redirects
+
+Renaming a post (a `PUT` with a new `slug`) keeps its old slug
+as a redirect to the post, so addresses on your website do not break. The
+redirect belongs to the post, not to a slug, so renaming again points every
+earlier slug at the newest one (`a` to `b` to `c` leaves `a` and `b` both going
+to `c`). A slug that is live always wins: creating a post or renaming one to a
+slug that is only a redirect removes that redirect, and a post renamed back to
+an old slug stops redirecting from it. Deleting a post deletes its redirects.
+Restoring a revision keeps the current slug, so it adds none. Removing a
+redirect with `DELETE` is the only other way to end one. Redirects are
+published to websites only while their post is published; see the
+[content API](#content-api).
+
 ## Markdown documents
 
 What the CLI edits: the post as frontmatter plus body (see
@@ -182,7 +198,17 @@ whether one exists. Without a credential every route answers 401.
 | `GET /api/content/posts/{slug}` | one published post as JSON, with `body` |
 | `GET /api/content/posts/{slug}?format=markdown` | `text/markdown`: the post's frontmatter document, byte for byte what `export.tar.gz` holds as `<slug>.md`; `format` is `json` (default) or `markdown`, anything else is a 422 |
 | `GET /api/content/posts/{slug}/html` | `{slug, version, html}`: the body rendered and sanitized like `POST /api/preview`, with the same [limits](#preview-limits) (422 `preview_limit`, 503 `busy`) |
+| `GET /api/content/redirects` | `{items: [{from, to}]}`: old slugs of renamed published posts by `from`, with the post's current slug as `to`; redirects to drafts, scheduled and archived posts are left out |
 | `GET /api/content/tags` | `{items: [{tag, count}]}`: tags of published posts by name, with how many published posts carry each; tags used only by drafts, scheduled or archived posts are left out |
+
+An old slug of a published post, on `GET /api/content/posts/{slug}` and its
+`/html` form, answers `308 Permanent Redirect` with `Location:
+/api/content/posts/<current-slug>` (the rest of the path and the query are
+kept) and the body `{"redirect": "<current-slug>"}`. Clients that follow
+redirects end at the post. If the post is not published, or the slug was never
+a redirect, the answer is the same `404 not_found` as for any missing slug, so a
+redirect cannot be used to find unpublished posts. Redirects are not part of
+`GET /api/content/posts` or its items.
 
 An item is `{slug, title, description, coverUrl, coverAlt, tags, author,
 seoTitle, seoDescription, canonicalUrl, publishedOn, updatedOn, updatedAt,

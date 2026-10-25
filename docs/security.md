@@ -47,7 +47,8 @@ username.
 **Content API.** `GET /api/content/*` serves published posts as JSON, Markdown
 and sanitized HTML to a website. It needs a session or any token, so it is not
 an unauthenticated content route, and it adds no data the export does not
-already give an export token. A draft, scheduled or archived post answers
+already give an export token. Old slugs redirect (308) and are listed only while
+their post is published, so a redirect is not a way to find unpublished posts. A draft, scheduled or archived post answers
 exactly like a missing slug, so the API cannot be used to learn which exist.
 Its responses are `Cache-Control: private, max-age=60` with an `ETag` instead
 of `no-store`: the website fetches the same posts often, and revalidating with

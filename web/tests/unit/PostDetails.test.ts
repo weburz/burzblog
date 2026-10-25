@@ -23,9 +23,12 @@ const draftWith = (change: Partial<PostDraft> = {}): PostDraft =>
     ...change,
   });
 
-const show = (draft: PostDraft) =>
+const show = (
+  draft: PostDraft,
+  extra: { status?: "draft" | "published"; redirects?: string[] } = {},
+) =>
   mount(PostDetails, {
-    props: { open: true, draft, status: "draft", savedSlug: "hello" },
+    props: { open: true, draft, status: "draft", savedSlug: "hello", ...extra },
     global: {
       stubs: {
         USlideover: { template: "<div><slot name='body' /></div>" },
@@ -92,5 +95,30 @@ describe("post settings: blog metadata", () => {
     expect(wrapper.find("#detail-canonical-hint").text()).not.toContain(
       "full https address",
     );
+  });
+});
+
+describe("post settings: slug redirects", () => {
+  it("promises a redirect when a live post's slug changes", () => {
+    const hint = (draft: PostDraft, status: "draft" | "published") =>
+      show(draft, { status }).find("#detail-slug-hint").text();
+    expect(hint(draftWith({ slug: "renamed" }), "published")).toContain(
+      "The old address hello will redirect here.",
+    );
+    expect(hint(draftWith(), "published")).not.toContain("redirect");
+    expect(hint(draftWith({ slug: "renamed" }), "draft")).not.toContain("redirect");
+  });
+
+  it("lists existing redirects and asks to remove one", async () => {
+    const wrapper = show(draftWith(), { redirects: ["first", "second"] });
+    const items = wrapper.findAll(".redirects li");
+    expect(items.map((li) => li.find(".mono").text())).toEqual(["first", "second"]);
+    await items[1]!.find("button").trigger("click");
+    expect(wrapper.emitted("removeRedirect")).toEqual([["second"]]);
+  });
+
+  it("shows no list without redirects", () => {
+    expect(show(draftWith()).find(".redirects").exists()).toBe(false);
+    expect(show(draftWith(), { redirects: [] }).find(".redirects").exists()).toBe(false);
   });
 });
