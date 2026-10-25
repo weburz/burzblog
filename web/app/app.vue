@@ -5,6 +5,7 @@ import { themeOptions } from "./utils/theme";
 
 const { state, load, signOut } = useCurrentSession();
 const theme = usePreferredTheme();
+const { enabled: shortcutsEnabled } = useEnabledShortcuts();
 let stopTheme = () => {};
 onMounted(() => (stopTheme = theme.start()));
 onUnmounted(() => stopTheme());
@@ -34,7 +35,7 @@ onUnmounted(() => window.removeEventListener("burzblog:session-expired", expired
 // "?" opens the shortcut list, unless the writer is typing in a field.
 const helpKey = (event: KeyboardEvent) => {
   if (event.key !== "?" || event.metaKey || event.ctrlKey || event.altKey) return;
-  if (!state.value.authenticated) return;
+  if (!shortcutsEnabled.value || !state.value.authenticated) return;
   const target = event.target as HTMLElement | null;
   if (target?.closest("input, textarea, select, [contenteditable], [role=dialog]"))
     return;
@@ -77,12 +78,14 @@ const accountItems = computed(() => [
 const editing = computed(() => route.path.startsWith("/posts/") && !editorFailed.value);
 
 useHead({
-  titleTemplate: (title) => (title ? `${title} · BurzBlog` : "BurzBlog"),
+  titleTemplate: (title) =>
+    title && title !== "BurzBlog" ? `${title} · BurzBlog` : "BurzBlog",
 });
 </script>
 
 <template>
   <UApp :toaster="{ position: 'bottom-right' }">
+    <NuxtRouteAnnouncer />
     <div class="shell">
       <a href="#main" class="skip-link">Skip to content</a>
       <header v-if="!editing || !state.authenticated" class="topbar">

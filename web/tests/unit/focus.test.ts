@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { withRetainedFocus } from "../../app/utils/focus";
+import { returnFocusTo, withRetainedFocus } from "../../app/utils/focus";
 
 afterEach(() => {
   document.body.innerHTML = "";
@@ -110,5 +110,25 @@ describe("withRetainedFocus", () => {
       () => [heading],
     );
     expect(document.activeElement).toBe(button);
+  });
+});
+
+describe("returnFocusTo", () => {
+  it("focuses the opener and stops the default focus handling", () => {
+    const button = attach(document.createElement("button"));
+    const event = new Event("focus", { cancelable: true });
+    returnFocusTo(() => button)(event);
+    expect(document.activeElement).toBe(button);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it("leaves the default handling when there is no usable opener", () => {
+    const button = attach(document.createElement("button"));
+    button.disabled = true;
+    for (const target of [null, undefined, button]) {
+      const event = new Event("focus", { cancelable: true });
+      returnFocusTo(() => target)(event);
+      expect(event.defaultPrevented).toBe(false);
+    }
   });
 });

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
 import type { Settings, Token } from "../types";
 import { errorMessage, request } from "../utils/api";
 import { themeOptions } from "../utils/theme";
@@ -8,6 +8,7 @@ import { editedLabel, exactTime } from "../utils/time";
 useHead({ title: "Settings" });
 const toast = useToast();
 const theme = usePreferredTheme();
+const { enabled: shortcutsEnabled } = useEnabledShortcuts();
 
 const settings = ref<Settings | null>(null);
 const tokens = ref<Token[] | null>(null);
@@ -88,6 +89,13 @@ const revoke = async () => {
 const creatingBuild = ref(false);
 const buildName = ref("Site build");
 const newSecret = ref<Token | null>(null);
+const newTokenButton = ref<{ $el: HTMLElement } | null>(null);
+// The form replaces the button, so Cancel hands focus back to it.
+const cancelBuildToken = async () => {
+  creatingBuild.value = false;
+  await nextTick();
+  newTokenButton.value?.$el.focus();
+};
 const createBuildToken = async () => {
   try {
     const token = await request<Token>("/api/tokens", "POST", {
@@ -281,12 +289,13 @@ const scopeUse = (t: Token) =>
             />
           </div>
           <UButton type="submit" color="secondary">Create token</UButton>
-          <UButton color="neutral" variant="ghost" @click="creatingBuild = false"
+          <UButton color="neutral" variant="ghost" @click="cancelBuildToken"
             >Cancel</UButton
           >
         </form>
         <UButton
           v-else-if="!newSecret"
+          ref="newTokenButton"
           color="neutral"
           variant="outline"
           icon="i-lucide-key-round"
@@ -349,7 +358,8 @@ const scopeUse = (t: Token) =>
       <div class="settings-aside">
         <h2 id="appearance-heading" class="section-title">Appearance</h2>
         <p class="muted">
-          Saved in this browser. System follows your computer's setting.
+          Saved in this browser. System follows your computer's setting. Turn off keyboard
+          shortcuts if single keys get in your way.
         </p>
       </div>
       <div class="settings-main">
@@ -367,6 +377,11 @@ const scopeUse = (t: Token) =>
             {{ option.label }}
           </button>
         </div>
+        <USwitch
+          v-model="shortcutsEnabled"
+          label="Keyboard shortcuts"
+          description="Single keys on the posts list (n and /) and ? for the shortcut list. Shortcuts with Ctrl or Cmd always work."
+        />
       </div>
     </section>
 

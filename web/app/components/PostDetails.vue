@@ -10,6 +10,7 @@ const props = defineProps<{
   status: PostStatus;
   savedSlug: string;
   readonly?: boolean;
+  closeFocus?: (event: Event) => void;
 }>();
 
 const published = computed({
@@ -33,6 +34,7 @@ const setUpdatedNow = () => {
     title="Post settings"
     description="How the post is addressed and presented on your site."
     :ui="{ content: 'max-w-md' }"
+    :content="{ onCloseAutoFocus: closeFocus }"
   >
     <template #body>
       <fieldset class="details" :disabled="readonly">

@@ -9,6 +9,7 @@ useHead({ title: "Posts" });
 const route = useRoute();
 const router = useRouter();
 const { state } = useCurrentSession();
+const { enabled: shortcutsEnabled } = useEnabledShortcuts();
 
 type Filter = "" | PostStatus;
 const filters: { value: Filter; label: string }[] = [
@@ -114,7 +115,7 @@ const created = (post: Post) => navigateTo(`/posts/${post.slug}`);
 // "/" jumps to search and "n" starts a post, unless the writer is typing.
 const shortcut = (event: KeyboardEvent) => {
   const target = event.target as HTMLElement | null;
-  if (event.metaKey || event.ctrlKey || event.altKey) return;
+  if (!shortcutsEnabled.value || event.metaKey || event.ctrlKey || event.altKey) return;
   if (
     target?.closest(
       "input, textarea, [contenteditable], [role=dialog], [role=combobox], [role=listbox]",
@@ -200,8 +201,12 @@ const origin = typeof window === "undefined" ? "" : window.location.origin;
       >
     </p>
 
-    <div v-if="list && list.items.length" aria-live="polite" class="sr-only">
-      {{ list.items.length }} {{ list.items.length === 1 ? "post" : "posts" }} shown
+    <div aria-live="polite" class="sr-only">
+      <template v-if="list && list.items.length"
+        >{{ list.items.length }}
+        {{ list.items.length === 1 ? "post" : "posts" }} shown</template
+      >
+      <template v-else-if="list">{{ emptyText }}</template>
     </div>
 
     <ul v-if="list && list.items.length" class="post-list" :aria-busy="loading">
@@ -263,7 +268,10 @@ burzblog new "My first post"</code></pre>
 
     <p v-else-if="loading" class="loading" role="status">Loading posts…</p>
 
-    <p v-if="list && list.items.length" class="list-foot list-foot-keys muted">
+    <p
+      v-if="shortcutsEnabled && list && list.items.length"
+      class="list-foot list-foot-keys muted"
+    >
       Press <UKbd value="n" /> for a new post, <UKbd value="/" /> to search,
       <UKbd value="?" /> for all shortcuts.
     </p>

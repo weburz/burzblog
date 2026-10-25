@@ -36,6 +36,8 @@
   --ui-secondary: var(--color-burzblue-600);
   --ui-text-inverted: #1f2937;
   --ui-error: #b42318;
+  --ui-text-dimmed: var(--bb-text-3);
+  --ui-border-accented: #7f8b99;
   --bb-bg: #fafaf8;
   --bb-surface: #ffffff;
   --bb-surface-2: #f3f3ef;
@@ -66,7 +68,7 @@
   --bb-radius-m: 8px;
   --bb-terminal: #1f2937;
   --bb-terminal-ink: #eaeef4;
-  --bb-placeholder: #9aa5b1;
+  --bb-placeholder: var(--bb-text-3);
 }
 
 /* Dark: deep blue-slate from the burzblue scale, yellow kept as the one accent.
@@ -81,7 +83,7 @@
   --ui-bg-accented: var(--bb-border);
   --ui-border: var(--bb-border);
   --ui-border-muted: var(--bb-border);
-  --ui-border-accented: var(--bb-border-strong);
+  --ui-border-accented: #6f7c8b;
   --ui-text: var(--bb-text);
   --ui-text-toned: var(--bb-text);
   --ui-text-highlighted: #f4f6f8;
@@ -106,7 +108,7 @@
   --bb-danger-soft: #2e1918;
   --bb-terminal: #0b0f14;
   --bb-terminal-ink: #dfe5ec;
-  --bb-placeholder: #6d7987;
+  --bb-placeholder: #8794a3;
 }
 * {
   box-sizing: border-box;
@@ -388,7 +390,9 @@ code {
   background: var(--bb-surface);
   color: var(--bb-text);
   font-weight: 650;
-  box-shadow: 0 0 0 1px var(--bb-border-strong);
+  box-shadow:
+    0 0 0 1px var(--bb-border-strong),
+    inset 0 -2px 0 var(--bb-blue);
 }
 .segment-count {
   font-size: 12px;
@@ -728,6 +732,7 @@ code {
 .description-field:focus-visible,
 .md-source:focus-visible {
   outline: none;
+  background: var(--bb-blue-soft);
   box-shadow: -14px 0 0 -12px var(--bb-blue);
 }
 .md-editor {
