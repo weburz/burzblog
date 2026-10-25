@@ -361,8 +361,37 @@ code {
   flex-wrap: wrap;
   margin-bottom: 12px;
 }
+.list-find {
+  display: flex;
+  align-items: center;
+  gap: 8px 12px;
+  flex-wrap: wrap;
+}
 .list-search {
   width: min(320px, 100%);
+}
+.list-sort {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.list-sort-label {
+  font-size: 13px;
+  color: var(--bb-text-2);
+}
+.list-sort-select {
+  width: 11rem;
+}
+@media (max-width: 640px) {
+  .list-find,
+  .list-sort,
+  .list-search {
+    width: 100%;
+  }
+  .list-sort-select {
+    flex: 1 1 auto;
+    width: auto;
+  }
 }
 .post-list {
   list-style: none;

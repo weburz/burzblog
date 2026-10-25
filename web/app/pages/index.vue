@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
-import type { Post, PostList, PostStatus } from "../types";
+import type { Post, PostList, PostStatus, PostSummary } from "../types";
 import { errorMessage, request } from "../utils/api";
 import { wordLabel } from "../utils/markdown";
-import { editedLabel, exactTime } from "../utils/time";
+import { editedLabel, exactTime, publishedLabel } from "../utils/time";
 
 useHead({ title: "Posts" });
 const route = useRoute();
@@ -20,8 +20,19 @@ const filters: { value: Filter; label: string }[] = [
 const asFilter = (value: unknown): Filter =>
   filters.some((f) => f.value === value) ? (value as Filter) : "";
 
-// The address holds the filter and search, so Back and reload keep them.
+type Sort = "updated" | "published" | "title" | "created";
+const sorts: { value: Sort; label: string }[] = [
+  { value: "updated", label: "Recently edited" },
+  { value: "published", label: "Publish date" },
+  { value: "title", label: "Title A–Z" },
+  { value: "created", label: "Newest created" },
+];
+const asSort = (value: unknown): Sort =>
+  sorts.find((s) => s.value === value)?.value ?? "updated";
+
+// The address holds the filter, search and sort, so Back and reload keep them.
 const status = ref<Filter>(asFilter(route.query.status));
+const sort = ref<Sort>(asSort(route.query.sort));
 const search = ref(typeof route.query.q === "string" ? route.query.q : "");
 const list = ref<PostList | null>(null);
 const loading = ref(true);
@@ -36,6 +47,7 @@ const load = async () => {
   const query = new URLSearchParams();
   if (status.value) query.set("status", status.value);
   if (search.value.trim()) query.set("q", search.value.trim());
+  if (sort.value !== "updated") query.set("sort", sort.value);
   try {
     const result = await request<PostList>(`/api/posts?${query}`);
     // A slower, older request must not overwrite a newer one.
@@ -48,12 +60,16 @@ const load = async () => {
 };
 
 let debounce: ReturnType<typeof setTimeout> | undefined;
-watch([status, search], ([s, q], [oldS]) => {
+watch([status, search, sort], ([s, q, o], [oldS, , oldO]) => {
   void router.replace({
-    query: { ...(s ? { status: s } : {}), ...(q.trim() ? { q: q.trim() } : {}) },
+    query: {
+      ...(s ? { status: s } : {}),
+      ...(q.trim() ? { q: q.trim() } : {}),
+      ...(o !== "updated" ? { sort: o } : {}),
+    },
   });
   clearTimeout(debounce);
-  if (s !== oldS) void load();
+  if (s !== oldS || o !== oldO) void load();
   else debounce = setTimeout(load, 200);
 });
 onMounted(load);
@@ -84,13 +100,27 @@ const clearFilters = () => {
   search.value = "";
 };
 
+// One secondary line per row: published posts show when they went out,
+// everything else when it was last edited.
+const isPublished = (post: PostSummary) =>
+  post.status === "published" && Boolean(post.publishedOn);
+const rowDate = (post: PostSummary) =>
+  isPublished(post)
+    ? publishedLabel(post.publishedOn as string)
+    : editedLabel(post.updatedAt);
+
 const created = (post: Post) => navigateTo(`/posts/${post.slug}`);
 
 // "/" jumps to search and "n" starts a post, unless the writer is typing.
 const shortcut = (event: KeyboardEvent) => {
   const target = event.target as HTMLElement | null;
   if (event.metaKey || event.ctrlKey || event.altKey) return;
-  if (target?.closest("input, textarea, [contenteditable], [role=dialog]")) return;
+  if (
+    target?.closest(
+      "input, textarea, [contenteditable], [role=dialog], [role=combobox], [role=listbox]",
+    )
+  )
+    return;
   if (event.key === "/") {
     event.preventDefault();
     document.querySelector<HTMLInputElement>("#post-search")?.focus();
@@ -137,19 +167,32 @@ const origin = typeof window === "undefined" ? "" : window.location.origin;
           }}</span>
         </button>
       </div>
-      <UInput
-        id="post-search"
-        v-model="search"
-        type="search"
-        icon="i-lucide-search"
-        placeholder="Search titles and slugs"
-        aria-label="Search posts"
-        class="list-search"
-      >
-        <template #trailing>
-          <UKbd v-if="!search" value="/" class="max-sm:hidden" />
-        </template>
-      </UInput>
+      <div class="list-find">
+        <UInput
+          id="post-search"
+          v-model="search"
+          type="search"
+          icon="i-lucide-search"
+          placeholder="Search titles and slugs"
+          aria-label="Search posts"
+          class="list-search"
+        >
+          <template #trailing>
+            <UKbd v-if="!search" value="/" class="max-sm:hidden" />
+          </template>
+        </UInput>
+        <label class="list-sort">
+          <span class="list-sort-label">Sort</span>
+          <USelect
+            v-model="sort"
+            :items="sorts"
+            value-key="value"
+            label-key="label"
+            aria-label="Sort"
+            class="list-sort-select"
+          />
+        </label>
+      </div>
     </div>
 
     <p v-if="error" class="alert" role="alert">
@@ -181,10 +224,14 @@ const origin = typeof window === "undefined" ? "" : window.location.origin;
           <span class="post-words">{{ wordLabel(post.words) }}</span>
           <time
             class="post-edited"
-            :datetime="post.updatedAt"
-            :title="exactTime(post.updatedAt)"
-            >{{ editedLabel(post.updatedAt) }}
-            <span v-if="post.updatedBy && post.updatedBy !== state.username" class="muted"
+            :datetime="post.publishedOn ?? post.updatedAt"
+            :title="`Edited ${exactTime(post.updatedAt)}`"
+            >{{ rowDate(post) }}
+            <span
+              v-if="
+                !isPublished(post) && post.updatedBy && post.updatedBy !== state.username
+              "
+              class="muted"
               >by {{ post.updatedBy }}</span
             ></time
           >

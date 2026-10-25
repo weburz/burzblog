@@ -224,6 +224,13 @@ func TestPostLifecycle(t *testing.T) {
 		t.Errorf("counts = %v", counts)
 	}
 
+	if resp, out := h.do("GET", "/api/posts?sort=title", nil); resp.StatusCode != 200 || out["items"] == nil {
+		t.Errorf("sort=title = %d %v", resp.StatusCode, out)
+	}
+	if resp, out := h.do("GET", "/api/posts?sort=words", nil); resp.StatusCode != 422 || out["error"].(map[string]any)["code"] != "validation" {
+		t.Errorf("sort=words = %d %v", resp.StatusCode, out)
+	}
+
 	_, revs := h.do("GET", "/api/posts/hello-world/revisions", nil)
 	if n := len(revs["items"].([]any)); n != 2 {
 		t.Errorf("revisions = %d, want 2", n)

@@ -89,7 +89,12 @@ func (s *Server) listPosts(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "bad_request", "Status must be draft, published or archived.", "")
 		return
 	}
-	list, counts, err := s.store.ListPosts(r.Context(), store.Filter{Status: status, Query: r.URL.Query().Get("q")})
+	sort := store.Sort(r.URL.Query().Get("sort"))
+	if sort != "" && !store.ValidSort(sort) {
+		fail(w, http.StatusUnprocessableEntity, "validation", "Sort must be updated, published, title or created.", "sort")
+		return
+	}
+	list, counts, err := s.store.ListPosts(r.Context(), store.Filter{Status: status, Query: r.URL.Query().Get("q"), Sort: sort})
 	if err != nil {
 		s.internal(w, r, err)
 		return
