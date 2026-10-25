@@ -449,9 +449,18 @@ func (s *Server) preview(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	html, err := render.HTML(body.Markdown)
-	if err != nil {
-		fail(w, http.StatusRequestEntityTooLarge, "too_large", "The post is too large to preview.", "")
+	html, err := render.HTML(r.Context(), body.Markdown)
+	var limit *render.LimitError
+	switch {
+	case errors.As(err, &limit):
+		fail(w, http.StatusUnprocessableEntity, "preview_limit", "This post cannot be previewed as written. Saving still works.", limit.Message)
+		return
+	case errors.Is(err, render.ErrBusy):
+		w.Header().Set("Retry-After", "5")
+		fail(w, http.StatusServiceUnavailable, "busy", "The server is busy rendering other previews. The preview will refresh on your next edit.", "")
+		return
+	case err != nil:
+		s.internal(w, r, err)
 		return
 	}
 	reply(w, http.StatusOK, map[string]string{"html": html})
