@@ -819,11 +819,12 @@ Settings) instead of running burzblog login.`,
 	return cmd
 }
 
-// siteFiles are the feeds and sitemap an export holds when the server knows
-// the website's address. They are written next to the posts.
-var siteFiles = map[string]bool{"feed.xml": true, "feed.atom": true, "feed.json": true, "sitemap.xml": true}
+// siteFiles are the files an export holds besides posts: redirects.json, and
+// the feeds and sitemap when the server knows the website's address. They are
+// written next to the posts.
+var siteFiles = map[string]bool{"redirects.json": true, "feed.xml": true, "feed.atom": true, "feed.json": true, "sitemap.xml": true}
 
-// maxSiteFile bounds one feed or sitemap in an export.
+// maxSiteFile bounds one site file in an export.
 const maxSiteFile = 64 << 20
 
 // readExport reads the export archive fully before anything is written, and

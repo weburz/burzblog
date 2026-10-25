@@ -147,6 +147,10 @@ func (s *Store) CreatePost(ctx context.Context, p *post.Post, by string) (*post.
 	if err := indexPost(ctx, tx, created); err != nil {
 		return nil, err
 	}
+	// A live slug wins over a redirect that used to claim it.
+	if err := dropRedirect(ctx, tx, created.Slug); err != nil {
+		return nil, err
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit create: %w", err)
 	}
@@ -479,6 +483,19 @@ func (s *Store) UpdatePost(ctx context.Context, slug string, version int64, by s
 		}
 		if err := insertTags(ctx, tx, current.ID, next.Tags); err != nil {
 			return nil, err
+		}
+	}
+	if next.Slug != current.Slug {
+		// The new slug is live, so it stops being a redirect; the old one
+		// starts being one. Earlier redirects of this post point at the
+		// post, so they follow the rename without any work.
+		if err := dropRedirect(ctx, tx, next.Slug); err != nil {
+			return nil, err
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO slug_redirects (old_slug, post_id, created_at)
+			VALUES (?, ?, ?) ON CONFLICT (old_slug) DO UPDATE SET post_id = excluded.post_id`,
+			current.Slug, current.ID, now); err != nil {
+			return nil, fmt.Errorf("keep redirect: %w", err)
 		}
 	}
 	updated.Tags = next.Tags

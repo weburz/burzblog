@@ -614,6 +614,9 @@ func (s *Server) export(w http.ResponseWriter, r *http.Request) {
 		err = s.addSiteFiles(r.Context(), tw)
 	}
 	if err == nil {
+		err = s.addRedirects(r.Context(), tw)
+	}
+	if err == nil {
 		err = tw.Close()
 	}
 	if err == nil {

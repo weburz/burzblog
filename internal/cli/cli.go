@@ -129,7 +129,7 @@ Exit codes: 0 ok, 1 error, 2 usage, 3 conflict, 4 not found, 5 not signed in,
 		},
 	}
 	root.PersistentFlags().BoolVar(&a.asJSON, "json", false,
-		"print results (list, whoami, new, pull, push, diff, status, publish, unpublish, archive, restore, schedule, unschedule, backup, import) and errors as JSON")
+		"print results (list, whoami, new, pull, push, diff, status, publish, unpublish, archive, restore, schedule, unschedule, backup, import, redirects) and errors as JSON")
 	root.AddGroup(
 		&cobra.Group{ID: "write", Title: "Writing:"},
 		&cobra.Group{ID: "account", Title: "Connecting:"},
@@ -142,7 +142,7 @@ Exit codes: 0 ok, 1 error, 2 usage, 3 conflict, 4 not found, 5 not signed in,
 		a.statusCmd("unschedule", "Cancel a draft's scheduled publish time"),
 		a.statusCmd("archive", "Hide a post from the list without deleting it"),
 		a.statusCmd("restore", "Bring an archived post back as a draft"),
-		a.openCmd(), a.exportCmd(), a.importCmd(), a.backupCmd()} {
+		a.openCmd(), a.exportCmd(), a.importCmd(), a.backupCmd(), a.redirectsCmd()} {
 		c.GroupID = "write"
 		root.AddCommand(c)
 	}

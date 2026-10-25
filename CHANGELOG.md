@@ -49,6 +49,16 @@ All notable changes are recorded here, following
   accounts yet. New endpoints `GET /api/setup` and `POST /api/setup`; see the
   [API](docs/api.md) and [security model](docs/security.md#what-is-protected-and-how).
 
+- Renaming a post's slug keeps the old one as a redirect (migration 5, table
+  `slug_redirects`). Chains collapse, so every earlier slug points at the post's
+  newest one; a live slug wins over a redirect; deleting a post deletes its
+  redirects. `GET /api/content/redirects` lists `{from, to}` for published posts
+  only, an old slug on `GET /api/content/posts/{slug}` answers `308` with the
+  current address, and the export holds the same list as `redirects.json`.
+  The panel's post settings note that the old address will redirect and list a
+  post's redirects with a remove button (`GET /api/posts/{slug}/redirects`,
+  `DELETE /api/posts/{slug}/redirects/{from}`); `burzblog redirects [--json]`
+  lists them, and `burzblog export` writes `redirects.json` next to the posts.
 - `burzblog diff <file.md|slug> [file.md]` shows a unified, colored diff from
   the server's current post to a local file and says whether the file is based
   on the server's current version or an older one. It exits 0 when identical

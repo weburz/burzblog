@@ -339,8 +339,8 @@ func TestFeedsNeedSiteURL(t *testing.T) {
 	}
 	defer resp.Body.Close()
 	files := readArchive(t, resp.Body)
-	if _, ok := files["live.md"]; !ok || len(files) != 3 {
-		t.Errorf("export without a site URL holds %d files, want only the 3 posts", len(files))
+	if _, ok := files["live.md"]; !ok || len(files) != 4 {
+		t.Errorf("export without a site URL holds %d files, want only the 3 posts and redirects.json", len(files))
 	}
 }
 
@@ -354,8 +354,8 @@ func TestExportHoldsFeedsAndSitemap(t *testing.T) {
 	}
 	defer resp.Body.Close()
 	files := readArchive(t, resp.Body)
-	if len(files) != 7 {
-		t.Fatalf("export holds %d files, want 3 posts and 4 site files", len(files))
+	if len(files) != 8 {
+		t.Fatalf("export holds %d files, want 3 posts, redirects.json and 4 site files", len(files))
 	}
 	for file, endpoint := range map[string]string{"feed.xml": "feed.xml", "feed.atom": "feed.atom", "feed.json": "feed.json", "sitemap.xml": "sitemap.xml"} {
 		_, live := c.get(c.export, "/api/content/"+endpoint)

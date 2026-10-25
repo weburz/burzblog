@@ -272,6 +272,19 @@ Writes every post, drafts and archived ones too, to
 complete backup (see [self-hosting](self-hosting.md#backups)). The panel offers
 the same download under **Settings → Backup**.
 
+## Renamed posts: redirects
+
+```sh
+burzblog redirects            # FROM and TO, one line per old slug
+burzblog redirects --json     # {"items":[{"from":"old-slug","to":"new-slug"}]}
+```
+
+Lists the old slugs of renamed published posts and the slug each has now, the
+same list a website gets from `GET /api/content/redirects`. `burzblog export`
+also writes it to `redirects.json` in the output folder. Rename a post by
+changing its slug in the panel's post settings; that is also where a redirect is
+removed.
+
 ## Build machines
 
 For reader-site builds, use a build token from **Settings → Your website**
@@ -315,8 +328,8 @@ run unattended: `echo "$PASSWORD" | burzblog login https://blog.example.com -u a
 `--json` is a global flag, so it works the same on every command and always
 means one JSON document on standard output (one line). It is supported by
 `list`, `whoami`, `new`, `pull`, `push`, `diff`, `status`, `publish`,
-`unpublish`, `archive`, `restore`, `schedule`, `unschedule`, `backup` and
-`import`. Other commands ignore it and print their usual text, but their
+`unpublish`, `archive`, `restore`, `schedule`, `unschedule`, `backup`,
+`import` and `redirects`. Other commands ignore it and print their usual text, but their
 failures are still JSON. `new` never opens an editor with `--json`.
 
 | Command | Output |
@@ -329,6 +342,7 @@ failures are still JSON. `new` never opens an editor with `--json`.
 | `diff` | `{"slug","baseVersion","serverVersion","stale","identical","diff"}`; exit `1` when different |
 | `status` | `{"dir","files":[{"file","slug","state","baseVersion","serverVersion"}]}` |
 | `backup` | `{"dir","posts"}` |
+| `redirects` | `{"items":[{"from","to"}]}`; `items` is `[]` when there are none |
 
 The field names are the HTTP API's (see [api.md](api.md#posts)); bodies are
 never included. `publishedOn` is `null` until a post is published, and
