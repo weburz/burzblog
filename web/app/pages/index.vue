@@ -44,27 +44,44 @@ const sort = ref<Sort>(asSort(route.query.sort));
 const search = ref(typeof route.query.q === "string" ? route.query.q : "");
 const list = ref<PostList | null>(null);
 const loading = ref(true);
+const loadingMore = ref(false);
 const error = ref("");
 const creating = ref(false);
 
+// The server sends one page at a time, so a big blog opens fast; "Show more"
+// asks for the next one.
+const pageSize = 100;
 let sequence = 0;
-const load = async () => {
+const load = async (more = false) => {
   const ticket = ++sequence;
-  loading.value = true;
+  loading.value = !more;
+  loadingMore.value = more;
   error.value = "";
-  const query = new URLSearchParams();
+  const query = new URLSearchParams({ limit: String(pageSize) });
+  if (more && list.value) query.set("offset", String(list.value.items.length));
   if (status.value) query.set("status", status.value);
   if (search.value.trim()) query.set("q", search.value.trim());
   if (sort.value !== "updated") query.set("sort", sort.value);
   try {
     const result = await request<PostList>(`/api/posts?${query}`);
     // A slower, older request must not overwrite a newer one.
-    if (ticket === sequence) list.value = result;
+    if (ticket === sequence) list.value = more ? appendPage(list.value, result) : result;
   } catch (cause) {
     if (ticket === sequence) error.value = errorMessage(cause);
   } finally {
-    if (ticket === sequence) loading.value = false;
+    if (ticket === sequence) {
+      loading.value = false;
+      loadingMore.value = false;
+    }
   }
+};
+// A post edited since the first page can shift the next one; skip repeats.
+const appendPage = (current: PostList | null, next: PostList): PostList => {
+  const seen = new Set(current?.items.map((p) => p.slug));
+  return {
+    ...next,
+    items: [...(current?.items ?? []), ...next.items.filter((p) => !seen.has(p.slug))],
+  };
 };
 
 // The command palette's "Go to" entries change the filter from outside.
@@ -84,9 +101,9 @@ watch([status, search, sort], ([s, q, o], [oldS, , oldO]) => {
   });
   clearTimeout(debounce);
   if (s !== oldS || o !== oldO) void load();
-  else debounce = setTimeout(load, 200);
+  else debounce = setTimeout(() => void load(), 200);
 });
-onMounted(load);
+onMounted(() => void load());
 
 const total = computed(() => {
   const c = list.value?.counts;
@@ -225,7 +242,7 @@ const origin = typeof window === "undefined" ? "" : window.location.origin;
 
     <p v-if="error" class="alert" role="alert">
       {{ error }}
-      <UButton size="xs" color="neutral" variant="outline" class="ml-2" @click="load"
+      <UButton size="xs" color="neutral" variant="outline" class="ml-2" @click="load()"
         >Try again</UButton
       >
     </p>
@@ -313,6 +330,20 @@ burzblog new "My first post"</code></pre>
     </div>
 
     <p v-else-if="loading" class="loading" role="status">Loading posts…</p>
+
+    <p v-if="list && list.items.length < list.total" class="list-foot muted">
+      Showing {{ list.items.length.toLocaleString() }} of
+      {{ list.total.toLocaleString() }}.
+      <UButton
+        size="xs"
+        color="neutral"
+        variant="outline"
+        class="ml-2"
+        :loading="loadingMore"
+        @click="load(true)"
+        >Show more</UButton
+      >
+    </p>
 
     <p
       v-if="shortcutsEnabled && list && list.items.length"

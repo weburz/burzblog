@@ -209,7 +209,7 @@ func TestListPosts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(list) != 2 || counts != (Counts{Draft: 1, Published: 1, Archived: 1}) {
+	if len(list) != 2 || counts != (Counts{Draft: 1, Published: 1, Archived: 1, Matched: 2}) {
 		t.Errorf("list = %+v counts = %+v", list, counts)
 	}
 	list, _, _ = s.ListPosts(ctx, Filter{Query: "GO"})

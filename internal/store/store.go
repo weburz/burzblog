@@ -14,6 +14,8 @@ import (
 
 	// Pure-Go SQLite driver, so one cross-compiled binary runs on a Pi.
 	_ "modernc.org/sqlite"
+
+	"github.com/weburz/burzblog/internal/post"
 )
 
 // Errors callers can branch on.
@@ -160,6 +162,47 @@ var migrations = []string{
 	// Revisions keep content history only, so they do not mirror these.
 	`ALTER TABLE posts ADD COLUMN publish_at TEXT;
 	ALTER TABLE posts ADD COLUMN publish_by TEXT NOT NULL DEFAULT '';`,
+	// Lists show a word count, so keep it next to the post and revision
+	// instead of reading every body to count it (backfillWords fills it in).
+	`ALTER TABLE posts ADD COLUMN words INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE revisions ADD COLUMN words INTEGER NOT NULL DEFAULT 0;`,
+}
+
+// migrationSteps run in the migration's transaction after its SQL, for work
+// SQL cannot do. Keyed by the migration's number (its index + 1).
+var migrationSteps = map[int]func(context.Context, *sql.Tx) error{
+	3: backfillWords,
+}
+
+// backfillWords counts the words of the posts and revisions that existed
+// before the words column did.
+func backfillWords(ctx context.Context, tx *sql.Tx) error {
+	for _, table := range []string{"posts", "revisions"} {
+		rows, err := tx.QueryContext(ctx, "SELECT id, body FROM "+table)
+		if err != nil {
+			return err
+		}
+		counts := map[int64]int{}
+		for rows.Next() {
+			var id int64
+			var body string
+			if err := rows.Scan(&id, &body); err != nil {
+				rows.Close()
+				return err
+			}
+			counts[id] = post.CountWords(body)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		for id, n := range counts {
+			if _, err := tx.ExecContext(ctx, "UPDATE "+table+" SET words = ? WHERE id = ?", n, id); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (s *Store) migrate(ctx context.Context) error {
@@ -178,6 +221,12 @@ func (s *Store) migrate(ctx context.Context) error {
 		if _, err := tx.ExecContext(ctx, migrations[i]); err != nil {
 			tx.Rollback()
 			return fmt.Errorf("apply migration %d: %w", i+1, err)
+		}
+		if step := migrationSteps[i+1]; step != nil {
+			if err := step(ctx, tx); err != nil {
+				tx.Rollback()
+				return fmt.Errorf("apply migration %d: %w", i+1, err)
+			}
 		}
 		if _, err := tx.ExecContext(ctx, fmt.Sprintf("PRAGMA user_version = %d", i+1)); err != nil {
 			tx.Rollback()

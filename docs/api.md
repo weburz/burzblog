@@ -71,7 +71,7 @@ the time a draft publishes itself (UTC, RFC 3339), or `null`; see
 
 | | |
 |---|---|
-| `GET /api/posts?status=&q=&sort=` | `{items, counts}`; items have no body; without `status`, archived posts are left out; `status` is `draft`, `published`, `archived` or `scheduled` (drafts with a `publishAt`); `counts` has `draft`, `published`, `archived` and `scheduled`, and scheduled drafts are counted in `draft` too; `sort` is `updated` (default, newest first), `published` (newest first, unpublished last), `title` (A to Z, ignoring case) or `created` (newest first); any other value is a 422; items carry `publishAt` |
+| `GET /api/posts?status=&q=&sort=&limit=&offset=` | `{items, total, counts}`; items have no body; `limit` (1 to 500) and `offset` page the result, and without `limit` every match is returned; `total` is the number of matches before paging, `counts` ignores the filter and paging; a bad `limit` or `offset` is a 422; without `status`, archived posts are left out; `status` is `draft`, `published`, `archived` or `scheduled` (drafts with a `publishAt`); `counts` has `draft`, `published`, `archived` and `scheduled`, and scheduled drafts are counted in `draft` too; `sort` is `updated` (default, newest first), `published` (newest first, unpublished last), `title` (A to Z, ignoring case) or `created` (newest first); any other value is a 422; items carry `publishAt` |
 | `POST /api/posts` | `{title, slug?, ...}` → new draft; the slug is made from the title when omitted |
 | `GET /api/posts/{slug}` | one post |
 | `PUT /api/posts/{slug}` | `{version, slug, title, description, body, coverUrl, coverAlt, extra, publishedOn, updatedOn}`; `version` must be current, a new `slug` renames |
