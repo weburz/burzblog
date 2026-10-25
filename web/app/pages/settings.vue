@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
 import type { Settings, Token } from "../types";
 import { errorMessage, request } from "../utils/api";
+import { examplePostUrl, fetchCommand, siteFiles } from "../utils/site";
 import { themeOptions } from "../utils/theme";
 import { editedLabel, exactTime } from "../utils/time";
 
@@ -151,6 +152,8 @@ const exportCommand = computed(
   () =>
     `curl -fsSL -H "Authorization: Bearer $BURZBLOG_TOKEN" \\\n  ${origin.value}/api/export.tar.gz | tar -xz -C content/blogs`,
 );
+const site = computed(() => settings.value?.site);
+const feedFiles = computed(() => (site.value ? siteFiles(site.value) : []));
 const scopeUse = (t: Token) =>
   t.lastUsedAt ? `Last used ${editedLabel(t.lastUsedAt).toLowerCase()}` : "Never used";
 </script>
@@ -346,6 +349,50 @@ const scopeUse = (t: Token) =>
               URL (on Vercel: Project, Settings, Git, Deploy Hooks) and have whoever runs
               this BurzBlog server set it as
               <span class="mono">BURZBLOG_DEPLOY_HOOK</span>, then restart BurzBlog.
+            </p>
+          </div>
+        </div>
+
+        <h3 class="sub-title">3. Feeds and sitemap</h3>
+        <div
+          v-if="settings"
+          class="deploy-card"
+          :data-state="site?.configured ? 'ok' : 'none'"
+        >
+          <div v-if="site?.configured">
+            <p class="deploy-title">
+              <UIcon name="i-lucide-rss" class="size-4" />Feeds are ready for
+              {{ site.url }}
+            </p>
+            <p class="muted">
+              Posts link to <span class="mono">{{ examplePostUrl(site) }}</span
+              >. Your site's build can fetch these files with a build token, and the
+              download from step 1 contains them too:
+            </p>
+            <ul class="feed-list">
+              <li v-for="file in feedFiles" :key="file.path">
+                <CopyField
+                  :label="file.name"
+                  multiline
+                  :value="fetchCommand(origin, file)"
+                />
+              </li>
+            </ul>
+          </div>
+          <div v-else>
+            <p class="deploy-title">
+              <UIcon name="i-lucide-circle-pause" class="size-4" />Not set up yet
+            </p>
+            <p class="muted">
+              An RSS, Atom and JSON feed and a sitemap are made for your website to
+              publish, but they need its public address for absolute links. Have whoever
+              runs this BurzBlog server set
+              <span class="mono">BURZBLOG_SITE_URL</span> (for example
+              <span class="mono">https://example.com</span>), and optionally
+              <span class="mono">BURZBLOG_SITE_TITLE</span>,
+              <span class="mono">BURZBLOG_POST_PATH</span> and
+              <span class="mono">BURZBLOG_TAG_PATH</span>, then restart BurzBlog. It is
+              read-only here.
             </p>
           </div>
         </div>

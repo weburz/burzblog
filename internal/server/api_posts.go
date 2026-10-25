@@ -3,12 +3,15 @@ package server
 import (
 	"archive/tar"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -590,7 +593,8 @@ func (s *Server) preview(w http.ResponseWriter, r *http.Request) {
 }
 
 // export streams every published post as <slug>.md in a gzipped tar, for
-// reader builds. Posts are read and written one at a time, so memory use does
+// reader builds, followed by feed.xml, feed.atom, feed.json and sitemap.xml
+// when a site URL is set. Posts are read and written one at a time, so memory use does
 // not grow with the blog.
 func (s *Server) export(w http.ResponseWriter, r *http.Request) {
 	counts, err := s.store.StatusCounts(r.Context())
@@ -607,6 +611,9 @@ func (s *Server) export(w http.ResponseWriter, r *http.Request) {
 		return addToTar(tw, p.Slug+".md", post.Encode(p), p.UpdatedAt)
 	})
 	if err == nil {
+		err = s.addSiteFiles(r.Context(), tw)
+	}
+	if err == nil {
 		err = tw.Close()
 	}
 	if err == nil {
@@ -615,6 +622,22 @@ func (s *Server) export(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.log.Error("export failed", "err", err)
 	}
+}
+
+// addSiteFiles adds the feeds and the sitemap to an export archive when a site
+// URL is set.
+func (s *Server) addSiteFiles(ctx context.Context, tw *tar.Writer) error {
+	files, err := s.siteFiles(ctx)
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	for _, name := range slices.Sorted(maps.Keys(files)) {
+		if err := addToTar(tw, name, string(files[name]), now); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func addToTar(tw *tar.Writer, name, doc string, modTime time.Time) error {

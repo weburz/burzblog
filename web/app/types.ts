@@ -130,9 +130,21 @@ export interface DeployStatus {
   lastError: string;
 }
 
+export interface SiteSettings {
+  configured: boolean;
+  feeds: string[];
+  url?: string;
+  title?: string;
+  description?: string;
+  language?: string;
+  postPath?: string;
+  tagPath?: string;
+}
+
 export interface Settings {
   username: string;
   origin: string;
   version: string;
   deploy: DeployStatus;
+  site: SiteSettings;
 }

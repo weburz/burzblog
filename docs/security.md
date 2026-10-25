@@ -49,6 +49,9 @@ and sanitized HTML to a website. It needs a session or any token, so it is not
 an unauthenticated content route, and it adds no data the export does not
 already give an export token. A draft, scheduled or archived post answers
 exactly like a missing slug, so the API cannot be used to learn which exist.
+The feeds and sitemap (`feed.xml`, `feed.atom`, `feed.json`, `sitemap.xml`) are
+part of it and of the export: the same published data behind the same gate,
+with links built from the operator's `--site-url`, never from request headers.
 Its responses are `Cache-Control: private, max-age=60` with an `ETag` instead
 of `no-store`: the website fetches the same posts often, and revalidating with
 `If-None-Match` keeps that cheap on a small host. `private` keeps shared caches

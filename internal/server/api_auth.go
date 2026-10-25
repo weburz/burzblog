@@ -245,6 +245,7 @@ func (s *Server) settings(w http.ResponseWriter, r *http.Request) {
 		"origin":   s.origin.String(),
 		"version":  s.cfg.Version,
 		"deploy":   s.deploy.status(),
+		"site":     s.siteSettings(),
 	})
 }
 

@@ -80,9 +80,22 @@ address to download posts.
 | `--data` | `BURZBLOG_DATA`, then systemd's `STATE_DIRECTORY` | `./burzblog-data` |
 | `--origin` | `BURZBLOG_ORIGIN` | `http://<addr>` |
 | `--deploy-hook` | `BURZBLOG_DEPLOY_HOOK` | none |
+| `--site-url` | `BURZBLOG_SITE_URL` | none (feeds and sitemap answer 409) |
+| `--site-title` | `BURZBLOG_SITE_TITLE` | the site URL's host |
+| `--site-description` | `BURZBLOG_SITE_DESCRIPTION` | the title |
+| `--site-language` | `BURZBLOG_SITE_LANGUAGE` | `en` |
+| `--post-path` | `BURZBLOG_POST_PATH` | `/blog/{slug}` |
+| `--tag-path` | `BURZBLOG_TAG_PATH` | none (no tag pages in the sitemap) |
 
 Prefer the environment for the deploy hook so it does not show up in process
 listings.
+
+The `--site-*`, `--post-path` and `--tag-path` settings describe your public
+website (not BurzBlog's own address, `--origin`). They only build the links in
+the feeds and sitemap. `--site-url` is an address without a path, such as
+`https://example.com`; the paths must start with `/` and hold `{slug}` or
+`{tag}` once. They are not secret. BurzBlog refuses to start when one is
+invalid. See [publishing](publishing.md#feeds-and-sitemap).
 
 ## Backups
 

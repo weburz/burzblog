@@ -49,6 +49,19 @@ All notable changes are recorded here, following
 - Public-repository files: `SECURITY.md`, `CODE_OF_CONDUCT.md`, issue and pull
   request templates, and a fuller `CONTRIBUTING.md`.
 
+- Feeds and a sitemap for the website to serve: `GET /api/content/feed.xml`
+  (RSS 2.0), `feed.atom` (Atom 1.0), `feed.json` (JSON Feed 1.1) and
+  `sitemap.xml`, behind the same credentials as the rest of the content API,
+  with `?limit=` (up to 100) and `?tag=` on the feeds, full sanitized HTML
+  bodies (a post the renderer refuses keeps its description), `ETag` and 304.
+  They need the new `serve` settings `--site-url`, `--site-title`,
+  `--site-description`, `--site-language`, `--post-path` (default
+  `/blog/{slug}`) and `--tag-path` (or `BURZBLOG_SITE_URL` and friends) and
+  answer 409 `site_url_missing` without a site URL. With a site URL the export
+  archive also holds the four files, and `burzblog export` writes them next to
+  the posts. `GET /api/settings` reports the `site`, and Settings → Your website
+  shows the feed status.
+
 ### Changed
 
 - Build (export) tokens may now read published content through

@@ -1171,6 +1171,13 @@ code {
 .deploy-card[data-state="failed"] {
   border-color: var(--bb-danger);
 }
+.feed-list {
+  display: grid;
+  gap: 10px;
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+}
 .deploy-title {
   display: flex;
   align-items: center;
