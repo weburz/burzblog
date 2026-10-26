@@ -225,14 +225,14 @@ website to publish. Readers never contact BurzBlog, so the site copies the files
 at build time and serves them itself. Tell BurzBlog where the site lives:
 
 ```sh
-BURZBLOG_SITE_URL=https://jarmos.dev
-BURZBLOG_SITE_TITLE="Jarmos"
+BURZBLOG_SITE_URL=https://example.com
+BURZBLOG_SITE_TITLE="Example Blog"
 BURZBLOG_SITE_DESCRIPTION="Notes on software"
 BURZBLOG_POST_PATH=/blog/{slug}      # the default
 BURZBLOG_TAG_PATH=/blog/tags/{tag}   # optional: tag pages in the sitemap
 ```
 
-Post links are `https://jarmos.dev/blog/<slug>`, so `--post-path` must match the
+Post links are `https://example.com/blog/<slug>`, so `--post-path` must match the
 route your site uses (the default fits a Nuxt Content layout with
 `content/blogs/<slug>.md` served at `/blog/<slug>`). Then either take the files
 from the archive you already download:
@@ -255,7 +255,7 @@ done
 Files in `public/` are served at `/feed.xml` and `/sitemap.xml` after
 `nuxt generate`. Reference them from your pages with
 `<link rel="alternate" type="application/rss+xml" href="/feed.xml">` and in
-`robots.txt` as `Sitemap: https://jarmos.dev/sitemap.xml`. Without a site URL
+`robots.txt` as `Sitemap: https://example.com/sitemap.xml`. Without a site URL
 the routes answer `409 site_url_missing` and the archive has no such files.
 Feed items hold each post as sanitized HTML; links inside a post are written as
 the author wrote them, so use absolute links in posts that readers will open

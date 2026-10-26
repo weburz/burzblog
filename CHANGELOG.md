@@ -162,14 +162,15 @@ All notable changes are recorded here, following
 
 ### Changed
 
+- `docs/architecture.md` describes how BurzBlog is built and replaces the
+  older design documents. Documentation examples use `example.com`.
 - Build (export) tokens may now read published content through
   `GET /api/content/*` as well as the export; they are still refused on every
   other route.
 - The first-run posts page hides the filters and search box until there is
   something to filter, and the panel's phone layout, row dates, dialog headers,
   and the wording for schedule, delete and the command palette were tidied.
-- The design document moved from `docs/superpowers/specs/` to `docs/design/`,
-  and examples and tests use neutral names.
+- Examples and tests use neutral names.
 - Help texts: `--json` now lists `schedule` and `unschedule`, `serve --data`
   names `$BURZBLOG_DATA`, `pull -o` says the file must be named `<slug>.md`, and
   `login`, `open`, `schedule` and `user` gained examples.
@@ -212,7 +213,7 @@ All notable changes are recorded here, following
 
 ### Changed
 
-- **BurzBlog is now one Go binary with SQLite storage** (ADR-013). Posts are
+- **BurzBlog is now one Go binary with SQLite storage**. Posts are
   Markdown in a database; there are no content files on the server and no Git
   integration. The binary serves the API and the embedded panel and is also
   the terminal client. The Python package, recovery journals, Git transport
@@ -303,8 +304,8 @@ All notable changes are recorded here, following
 - Browser editor: Markdown source with safe preview, explicit Save, Ctrl/Cmd+S, draft/publish metadata.
 - Revision-aware conflict handling with an explicit disk-version choice; rename and archive.
 - Authenticated API with one Argon2id administrator, CSRF and origin checks, terminal-only `init-admin`/`reset-admin`.
-- Git: scoped commit, fetch, fast-forward update, non-forced push, branches, private HTTPS remotes via token file (ADR-010).
-- Single-process production topology with hash-based CSP (ADR-011).
+- Git: scoped commit, fetch, fast-forward update, non-forced push, branches, private HTTPS remotes via token file.
+- Single-process production topology with hash-based CSP.
 - Container image and hardened Compose (non-root, read-only, dropped capabilities, loopback-only port).
 - Backup/restore drill and validated Caddy and nginx examples.
 - Responsive admin UI (desktop, tablet, phone) with AA contrast, keyboard and dialog focus handling.
