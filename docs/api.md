@@ -1,7 +1,9 @@
 # HTTP API
 
 Everything the panel, the CLI and the website do goes through this JSON API
-under `/api`. There are no unauthenticated content routes.
+under `/api`. There are no unauthenticated content routes. The one public
+route outside `/api` serves uploaded files at `/media/{name}`; see
+[Media](#media).
 
 ## Authentication
 
@@ -35,8 +37,8 @@ Codes include `bad_request` (400: invalid JSON, an unknown `status`, a missing
 or expired sign-in challenge, a token request without its code), `rate_limited`
 (429), `origin`/`csrf`/`scope`/`setup_token` (403), `not_found` (404), `validation` and
 `preview_limit` (422), `busy` (503), `slug_taken`, `conflict`, `state`, `setup_done` and
-`deploy_unconfigured` (409), `version_required` (428), `too_large` (413) and
-`content_type` (415).
+`deploy_unconfigured` and `in_use` (409), `version_required` (428), `too_large`
+(413), `content_type` and `unsupported_type` (415) and `media_disabled` (501).
 
 A `conflict` also carries the post as it is now, so clients can show both
 versions: `{ "error": {...}, "current": { ...post } }`.
@@ -191,6 +193,39 @@ redirect with `DELETE` is the only other way to end one. Redirects are
 published to websites only while their post is published; see the
 [content API](#content-api).
 
+## Media
+
+Images and PDFs for posts. Uploading, listing and deleting need a session or a
+write token, like every other change (`Origin` and `X-CSRF-Token` for the
+browser); export tokens get 403 `scope`.
+
+| | |
+|---|---|
+| `POST /api/media` | `multipart/form-data` with a `file` part and an optional `alt` text field (at most 1000 bytes). 201 with the record, or 200 with the existing record when the same bytes were uploaded before (the first upload's `alt` and name stay) |
+| `GET /api/media` | `{items, total}`, newest first; `?limit=` (1 to 500) and `?offset=` page it, without `limit` every upload is returned |
+| `DELETE /api/media/{id}` | deletes the record and the file. 409 `in_use` names up to ten posts (any status) whose body or cover mention the file; `?force=true` deletes anyway and leaves those links broken. Earlier revisions are not checked |
+| `GET /media/{name}` | the file itself. **Public, no sign-in** (see [security](security.md#uploaded-files)) |
+
+A record is `{id, name, url, originalName, mime, size, width, height, alt,
+uploadedBy, createdAt}`. `url` is absolute, built from the configured origin
+(`--origin`), so a post that embeds it keeps working in an export or on the
+website. `width` and `height` are present for JPEG, PNG and GIF only; BurzBlog
+does no image processing.
+
+What is accepted is decided from the file's first bytes, never from the name or
+the `Content-Type` the client sends: JPEG, PNG, GIF, WebP, AVIF and PDF. JPEG,
+PNG and GIF must also decode. Anything else, SVG included, is 415
+`unsupported_type`; a file that starts like a PNG, JPEG or GIF but does not
+decode is 422 `validation`. The size limit is 10 MiB, set with
+`burzblog serve --max-upload-mb` or `BURZBLOG_MAX_UPLOAD_MB` (up to 256); a
+bigger file is 413 `too_large`. A server without media storage answers 501
+`media_disabled`.
+
+The stored `name` is 32 hexadecimal characters of the file's SHA-256 digest and
+an extension from its detected type (`.jpg`, `.png`, `.gif`, `.webp`, `.avif`,
+`.pdf`); the uploaded file name is kept only as `originalName`, for display.
+The same bytes therefore always have the same address.
+
 ## Markdown documents
 
 What the CLI edits: the post as frontmatter plus body (see
@@ -203,12 +238,14 @@ post's metadata fields above; other keys under `seo` stay in `extra`.
 | `GET /api/posts/{slug}/markdown` | `text/markdown`, with `ETag: "<version>"` |
 | `PUT /api/posts/{slug}/markdown` | `If-Match: "<version>"` saves; `If-None-Match: *` creates a new post |
 | `GET /api/export.tar.gz` | every published post as `<slug>.md` in a gzipped tar, then `feed.xml`, `feed.atom`, `feed.json` and `sitemap.xml` when a [site URL](#feeds-and-sitemap) is set; export tokens allowed |
-| `GET /api/backup.tar.gz` | every post, drafts and archived included, as `<status>/<slug>.md` plus a `README.txt` in a gzipped tar; session or write token, not export tokens |
+| `GET /api/backup.tar.gz` | every post, drafts and archived included, as `<status>/<slug>.md`, a `README.txt`, and every uploaded file as `media/<name>`, in a gzipped tar; session or write token, not export tokens |
 
 The backup holds current posts only, always with a `status` line (archived posts
 are stored as `draft`; the folder says `archived`). Revisions are not included:
 back up the database file for those (see [self-hosting](self-hosting.md#backups)).
-The response is `Content-Disposition: attachment` with a dated name such as
+Uploaded files are added as they are stored; one that is missing from the data
+directory is logged and skipped. The export holds no files: posts refer to
+uploads by their absolute `url`. The response is `Content-Disposition: attachment` with a dated name such as
 `burzblog-backup-2026-10-25.tar.gz`, and `Cache-Control: no-store`.
 
 ## Content API

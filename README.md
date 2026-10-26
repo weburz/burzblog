@@ -40,7 +40,8 @@ Website: [burzblog.weburz.com](https://burzblog.weburz.com/). Downloads:
   Nuxt Content and other static site generators read. An optional deploy hook
   (for example a Vercel deploy hook) rebuilds the site after you publish.
 
-Not included yet: image and video uploads (use hosted image URLs), roles and
+Uploads cover images and PDFs (not video or SVG); for video use a hosted URL.
+Not included yet: roles and
 permissions (every account can do everything), and serving the public blog
 itself.
 

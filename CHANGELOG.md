@@ -8,6 +8,20 @@ All notable changes are recorded here, following
 
 ### Added
 
+- Image and PDF uploads. `POST /api/media` (session with CSRF, or a write
+  token; export tokens get 403) takes a multipart `file` and optional `alt`,
+  decides the type from the file's bytes (JPEG, PNG, GIF, WebP, AVIF, PDF; SVG
+  and anything else is refused), caps the size (10 MiB, `--max-upload-mb` or
+  `BURZBLOG_MAX_UPLOAD_MB`), and stores it under a content-derived name in
+  `<data>/media/`, deduplicating identical uploads. `GET /api/media` lists,
+  `DELETE /api/media/{id}` removes (409 `in_use` while a post mentions the file,
+  unless `?force=true`). Files are served publicly, and only they, at
+  `/media/{name}` with `nosniff`, a sandboxing CSP, immutable caching and PDFs
+  as downloads; see the security notes. The panel has a Media page (drag and
+  drop, copy address or Markdown, delete) and an upload-or-choose picker in the
+  image dialog and for the cover. `backup.tar.gz` and `burzblog backup` include
+  the files as `media/<name>`. Migration 8 adds the `media` table. The example
+  nginx and Caddy configs now allow 12 MiB request bodies.
 - Search finds words in post bodies, not only titles, slugs and descriptions.
   `?q=` on `GET /api/posts` and `GET /api/content/posts`, the panel's posts
   search box and `burzblog list --search` use an FTS5 index over title,
