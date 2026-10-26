@@ -100,7 +100,7 @@ export const codeBlock = (source: string, start: number, end: number): Edit => {
   return { text, start: inner, end: inner + selected.length };
 };
 
-// Only http(s) images are allowed; uploads are not part of the editor.
+// Only http(s) images are allowed; uploaded images are inserted by their URL.
 // Returns a message for the writer, or "" when the URL is fine.
 export const imageUrlError = (url: string): string => {
   const value = url.trim();
@@ -170,16 +170,47 @@ export const horizontalRule = (source: string, start: number, end: number): Edit
 };
 
 const listItem = /^(\s*)([-*+]|\d+\.)( \[[ xX]\])? (.*)$/;
+const quoteLine = /^(\s*)> ?(.*)$/;
 
-// Enter in a list item: continue the list, or end it when the item is empty.
-// Returns null when Enter should behave normally (not at the end of a list item).
+// Whether the cursor sits inside an open fenced code block, where list and
+// quote markers are code and must stay untouched.
+const inFence = (source: string, index: number): boolean => {
+  const lines = source.slice(0, lineStart(source, index)).split("\n");
+  return lines.filter((line) => /^\s{0,3}(```|~~~)/.test(line)).length % 2 === 1;
+};
+
+// Remove an empty list or quote line. A blank line is left behind so what the
+// writer types next is a new paragraph, not a continuation of the item.
+const leaveBlock = (source: string, from: number, to: number): Edit => {
+  const before = source.slice(0, from);
+  const gap = before && !before.endsWith("\n\n") ? "\n" : "";
+  const caret = from + gap.length;
+  return { text: before + gap + source.slice(to), start: caret, end: caret };
+};
+
+// Enter in a list item or quote: continue it, or end it when the item is empty
+// (an empty nested item moves out one level first). Returns null when Enter
+// should behave normally (not at the end of a list item, or inside code).
 export const continueList = (source: string, start: number, end: number): Edit | null => {
   if (start !== end) return null;
   const from = lineStart(source, start);
   const found = source.indexOf("\n", start);
   const to = found === -1 ? source.length : found;
-  if (to !== start) return null;
-  const match = listItem.exec(source.slice(from, to));
+  if (to !== start || inFence(source, start)) return null;
+  const line = source.slice(from, to);
+  const quote = !listItem.test(line) ? quoteLine.exec(line) : null;
+  if (quote) {
+    const [, indent, content] = quote as unknown as [string, string, string];
+    if (!content.trim()) return leaveBlock(source, from, to);
+    const inserted = `\n${indent}> `;
+    const caret = start + inserted.length;
+    return {
+      text: source.slice(0, start) + inserted + source.slice(end),
+      start: caret,
+      end: caret,
+    };
+  }
+  const match = listItem.exec(line);
   if (!match) return null;
   const [, indent, marker, task, content] = match as unknown as [
     string,
@@ -189,10 +220,30 @@ export const continueList = (source: string, start: number, end: number): Edit |
     string,
   ];
   if (!content.trim()) {
-    return { text: source.slice(0, from) + source.slice(to), start: from, end: from };
+    if (indent.length === 0) return leaveBlock(source, from, to);
+    const kept = indent.slice(Math.min(2, indent.length));
+    const text = `${source.slice(0, from)}${kept}${line.slice(indent.length)}${source.slice(to)}`;
+    const caret = from + kept.length + line.length - indent.length;
+    return { text, start: caret, end: caret };
   }
   const next = /^\d+\.$/.test(marker) ? `${Number.parseInt(marker, 10) + 1}.` : marker;
   const inserted = `\n${indent}${next}${task ? " [ ]" : ""} `;
+  const caret = start + inserted.length;
+  return {
+    text: source.slice(0, start) + inserted + source.slice(end),
+    start: caret,
+    end: caret,
+  };
+};
+
+// Enter inside a fenced code block keeps the indentation of the line above, so
+// nested code does not have to be re-indented by hand. Null elsewhere.
+export const keepIndent = (source: string, start: number, end: number): Edit | null => {
+  if (!inFence(source, start)) return null;
+  const from = lineStart(source, start);
+  const indent = /^[ \t]*/.exec(source.slice(from, start))![0];
+  if (!indent) return null;
+  const inserted = `\n${indent}`;
   const caret = start + inserted.length;
   return {
     text: source.slice(0, start) + inserted + source.slice(end),
@@ -215,7 +266,7 @@ export const indentList = (
   const found = source.indexOf("\n", last);
   const to = found === -1 ? source.length : found;
   const lines = source.slice(from, to).split("\n");
-  if (!listItem.test(lines[0]!)) return null;
+  if (!listItem.test(lines[0]!) || inFence(source, start)) return null;
   let changed = false;
   const shifts: number[] = [];
   const next = lines.map((line) => {

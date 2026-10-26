@@ -7,6 +7,7 @@ import {
   image,
   imageUrlError,
   indentList,
+  keepIndent,
   lengthLabel,
   link,
   prefixLines,
@@ -188,9 +189,24 @@ describe("continueList", () => {
     expect(at("- a\n  - b")?.text).toBe("- a\n  - b\n  - ");
   });
   it("ends the list on an empty item", () => {
-    expect(at("- one\n- ")).toEqual({ text: "- one\n", start: 6, end: 6 });
-    expect(at("1. one\n2. ")?.text).toBe("1. one\n");
+    expect(at("- one\n- ")).toEqual({ text: "- one\n\n", start: 7, end: 7 });
+    expect(at("1. one\n2. ")?.text).toBe("1. one\n\n");
     expect(at("- [ ] ")?.text).toBe("");
+  });
+  it("does not stack blank lines when leaving a list", () => {
+    expect(at("intro\n\n- ")).toEqual({ text: "intro\n\n", start: 7, end: 7 });
+  });
+  it("moves an empty nested item out one level first", () => {
+    expect(at("- a\n  - ")).toEqual({ text: "- a\n- ", start: 6, end: 6 });
+    expect(at("- a\n    - ")?.text).toBe("- a\n  - ");
+  });
+  it("continues quotes and ends them on an empty line", () => {
+    expect(at("> wise words")).toEqual({ text: "> wise words\n> ", start: 15, end: 15 });
+    expect(at("> wise\n> ")).toEqual({ text: "> wise\n\n", start: 8, end: 8 });
+  });
+  it("leaves code blocks alone", () => {
+    expect(at("```md\n- not a list")).toBeNull();
+    expect(at("```md\n- x\n```\n- real")?.text).toBe("```md\n- x\n```\n- real\n- ");
   });
   it("leaves other lines and mid-line cursors alone", () => {
     expect(at("plain text")).toBeNull();
@@ -201,6 +217,21 @@ describe("continueList", () => {
   });
   it("continues between items when the cursor ends a middle item", () => {
     expect(continueList("- a\n- b", 3, 3)?.text).toBe("- a\n- \n- b");
+  });
+});
+
+describe("keepIndent", () => {
+  it("keeps the indentation of the line inside a code block", () => {
+    const source = "```js\n  call(";
+    expect(keepIndent(source, source.length, source.length)).toEqual({
+      text: "```js\n  call(\n  ",
+      start: source.length + 3,
+      end: source.length + 3,
+    });
+  });
+  it("does nothing outside code or on unindented lines", () => {
+    expect(keepIndent("  plain", 7, 7)).toBeNull();
+    expect(keepIndent("```js\nflat", 10, 10)).toBeNull();
   });
 });
 
@@ -222,6 +253,9 @@ describe("indentList", () => {
   it("returns null outside a list so Tab keeps moving focus", () => {
     expect(indentList("plain", 2, 2, false)).toBeNull();
     expect(indentList("plain", 2, 2, true)).toBeNull();
+  });
+  it("returns null inside a code block", () => {
+    expect(indentList("```\n- a", 7, 7, false)).toBeNull();
   });
   it("returns null when there is nothing to outdent", () => {
     expect(indentList("- a", 3, 3, true)).toBeNull();
