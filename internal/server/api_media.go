@@ -149,14 +149,14 @@ func (s *Server) readUpload(w http.ResponseWriter, r *http.Request) (data []byte
 		case "alt":
 			b, err := io.ReadAll(io.LimitReader(part, maxUploadAlt+1))
 			if err != nil || len(b) > maxUploadAlt || !utf8.Valid(b) {
-				fail(w, http.StatusUnprocessableEntity, "validation", "Alt text must be text of at most 1000 bytes.", "alt")
+				fail(w, http.StatusUnprocessableEntity, "validation", "Alt text must be text of at most 1000 bytes.", "")
 				return nil, "", "", false
 			}
 			alt = strings.TrimSpace(string(b))
 		}
 	}
 	if !found || len(data) == 0 {
-		fail(w, http.StatusUnprocessableEntity, "validation", "Attach a non-empty file in the \"file\" field.", "file")
+		fail(w, http.StatusUnprocessableEntity, "validation", "Attach a non-empty file in the \"file\" field.", "")
 		return nil, "", "", false
 	}
 	return data, filename, alt, true
@@ -178,10 +178,10 @@ func (s *Server) uploadMedia(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case errors.Is(err, media.ErrUnsupported):
 		fail(w, http.StatusUnsupportedMediaType, "unsupported_type",
-			"Upload a JPEG, PNG, GIF, WebP, AVIF or PDF file. SVG is not accepted.", "file")
+			"Upload a JPEG, PNG, GIF, WebP, AVIF or PDF file. SVG is not accepted.", "")
 		return
 	case errors.Is(err, media.ErrCorrupt):
-		fail(w, http.StatusUnprocessableEntity, "validation", "That image is damaged or is not what its first bytes claim.", "file")
+		fail(w, http.StatusUnprocessableEntity, "validation", "That image is damaged or is not what its first bytes claim.", "")
 		return
 	case err != nil:
 		s.internal(w, r, err)

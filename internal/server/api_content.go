@@ -135,7 +135,7 @@ func (s *Server) contentList(w http.ResponseWriter, r *http.Request) {
 func (s *Server) contentPost(w http.ResponseWriter, r *http.Request) {
 	format := r.URL.Query().Get("format")
 	if format != "" && format != "json" && format != "markdown" {
-		fail(w, http.StatusUnprocessableEntity, "validation", "Format must be json or markdown.", "format")
+		fail(w, http.StatusUnprocessableEntity, "validation", "Format must be json or markdown.", "")
 		return
 	}
 	p, ok := s.publishedPost(w, r)
