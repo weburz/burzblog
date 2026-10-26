@@ -90,6 +90,8 @@ curl -H "Authorization: Bearer $BURZBLOG_TOKEN" \
 
 ## Docs
 
+Also on the website: [burzblog.weburz.com/docs](https://burzblog.weburz.com/docs/).
+
 | Guide | What's inside |
 |---|---|
 | [Running BurzBlog](docs/self-hosting.md) | systemd, HTTPS with Caddy or nginx, backups, upgrades |

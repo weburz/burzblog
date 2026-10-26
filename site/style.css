@@ -510,9 +510,229 @@ thead th {
   gap: 20px;
 }
 
+/* Docs (site/docs/, generated from docs/*.md by `task site:docs`) */
+.docs {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 56px;
+  padding-block: 40px 72px;
+}
+.docs-nav {
+  position: sticky;
+  top: 24px;
+  align-self: start;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  font-size: 0.98rem;
+}
+.docs-nav-title {
+  margin: 0 0 6px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+.docs-nav ul {
+  list-style: none;
+  margin: 0 0 24px;
+  padding: 0;
+}
+.docs-nav a {
+  display: block;
+  padding: 5px 10px;
+  margin-left: -10px;
+  border-left: 3px solid transparent;
+  border-radius: 0 6px 6px 0;
+  color: var(--text-2);
+  text-decoration: none;
+}
+.docs-nav a:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+.docs-nav a[aria-current="page"] {
+  color: var(--text);
+  font-weight: 700;
+  border-left-color: var(--accent);
+  background: var(--surface-2);
+}
+.top nav a[aria-current="page"] {
+  color: var(--text);
+}
+.docs-main {
+  min-width: 0;
+  max-width: 780px;
+}
+.docs-main h1 {
+  font-size: clamp(2.2rem, 1.4rem + 2.6vw, 3.2rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  margin-bottom: 1rem;
+}
+.docs-main > h2 {
+  font-size: 1.5rem;
+  margin: 2.5rem 0 1rem;
+}
+.docs-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+}
+.docs-cards li {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 18px 20px;
+}
+.docs-cards li:hover {
+  border-color: var(--border-strong);
+}
+.docs-cards a {
+  font-weight: 700;
+  font-size: 1.15rem;
+  color: var(--text);
+  text-decoration: none;
+}
+.docs-cards a::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+.docs-cards p {
+  margin: 6px 0 0;
+  font-size: 0.98rem;
+  color: var(--text-2);
+}
+.doc {
+  font-size: 1.06rem;
+}
+.doc h2 {
+  font-size: clamp(1.5rem, 1.2rem + 1vw, 1.9rem);
+  margin: 2.6rem 0 0.9rem;
+  padding-top: 1.4rem;
+  border-top: 1px solid var(--border);
+}
+.doc h3 {
+  font-size: 1.2rem;
+  margin: 2rem 0 0.6rem;
+}
+.doc h4 {
+  margin: 1.5rem 0 0.5rem;
+}
+.doc h2,
+.doc h3,
+.doc h4,
+.doc [id] {
+  scroll-margin-top: 16px;
+}
+.doc ul,
+.doc ol {
+  padding-left: 1.4em;
+  margin: 0 0 1rem;
+}
+.doc li + li {
+  margin-top: 0.3em;
+}
+.doc blockquote {
+  margin: 0 0 1rem;
+  padding: 2px 0 2px 18px;
+  border-left: 3px solid var(--accent);
+  color: var(--text-2);
+}
+.doc pre {
+  background: var(--term);
+  color: var(--term-ink);
+  border-radius: 10px;
+  padding: 16px 18px;
+  margin: 0 0 1.2rem;
+  font-size: 0.82rem;
+  line-height: 1.65;
+  overflow-x: auto;
+}
+@media (prefers-color-scheme: dark) {
+  .doc pre {
+    border: 1px solid var(--border);
+  }
+}
+.doc table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  margin: 0 0 1.2rem;
+  font-size: 0.95rem;
+}
+.doc th,
+.doc td {
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+  vertical-align: top;
+}
+.doc th {
+  background: var(--surface-2);
+  font-weight: 700;
+}
+.doc hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 2rem 0;
+}
+.doc-toc {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 14px 20px;
+  margin: 0 0 2rem;
+  font-size: 0.98rem;
+}
+.doc-toc p {
+  margin: 0 0 6px;
+  font-weight: 700;
+}
+.doc-toc ul {
+  margin: 0;
+  padding-left: 1.2em;
+  columns: 2 220px;
+  column-gap: 32px;
+}
+.doc-toc li {
+  break-inside: avoid;
+}
+.doc-source {
+  margin-top: 3rem;
+  font-size: 0.95rem;
+}
+
 @media (max-width: 860px) {
   .hero-head {
     grid-template-columns: 1fr;
+  }
+  .docs {
+    grid-template-columns: 1fr;
+    gap: 24px;
+    padding-top: 24px;
+  }
+  .docs-nav {
+    position: static;
+    max-height: none;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 0 24px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.94rem;
+  }
+  .docs-nav a {
+    padding-block: 3px;
+  }
+  .docs-nav ul {
+    margin-bottom: 12px;
   }
   .split,
   .steps {
@@ -535,7 +755,7 @@ thead th {
   }
 }
 @media (max-width: 560px) {
-  .top nav a:not(.nav-cta):not([href="#how-it-works"]) {
+  .top nav a:not(.nav-cta):not([href="#how-it-works"]):not([href="./"]):not([href="docs/"]) {
     display: none;
   }
   .top nav {

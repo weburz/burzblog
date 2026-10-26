@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Containers · BurzBlog docs</title>
+    <meta name="description" content="The plain binary under systemd is the simplest way to run BurzBlog (see self-hosting). If you prefer containers, the image holds the same single binary on a distroless base, under 20 MB." />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; img-src 'self'; style-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'"
+    />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#fafaf8" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#12171d" media="(prefers-color-scheme: dark)" />
+    <link rel="canonical" href="https://burzblog.weburz.com/docs/containers.html" />
+    <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="../style.css" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="top">
+      <div class="wrap top-inner">
+        <a class="brand" href="../" aria-label="BurzBlog home"><span class="mark" aria-hidden="true"></span>BurzBlog</a>
+        <nav aria-label="Main">
+          <a href="./">Docs</a>
+          <a href="https://github.com/weburz/burzblog">GitHub</a>
+          <a class="nav-cta" href="../#install">Download</a>
+        </nav>
+      </div>
+    </header>
+
+    <div class="wrap docs">
+      <nav class="docs-nav" aria-label="Documentation">
+        <div>
+          <p class="docs-nav-title">Guides</p>
+          <ul>
+            <li><a href="self-hosting.html">Running BurzBlog</a></li>
+            <li><a href="terminal.html">Writing from the terminal</a></li>
+            <li><a href="publishing.html">Connecting your website</a></li>
+            <li><a href="containers.html" aria-current="page">Containers</a></li>
+          </ul>
+        </div>
+        <div>
+          <p class="docs-nav-title">Reference</p>
+          <ul>
+            <li><a href="api.html">HTTP API</a></li>
+            <li><a href="security.html">Security model</a></li>
+            <li><a href="architecture.html">Architecture</a></li>
+          </ul>
+        </div>
+      </nav>
+
+      <main id="main" class="docs-main">
+        <article class="doc">
+          <h1>Containers</h1>
+          <nav class="doc-toc" aria-label="On this page">
+            <p>On this page</p>
+            <ul>
+              <li><a href="#build-and-run-with-compose">Build and run with Compose</a></li>
+              <li><a href="#published-images">Published images</a></li>
+              <li><a href="#coolify">Coolify</a></li>
+              <li><a href="#checks">Checks</a></li>
+            </ul>
+          </nav>
+<p>The plain binary under systemd is the simplest way to run BurzBlog (see
+<a href="self-hosting.html">self-hosting</a>). If you prefer containers, the image holds the
+same single binary on a distroless base, under 20 MB.</p>
+<h2 id="build-and-run-with-compose">Build and run with Compose</h2>
+<pre><code class="language-sh">cp .env.example .env          # set BURZBLOG_ORIGIN, BURZBLOG_UID/GID
+mkdir -m 700 data             # owned by BURZBLOG_UID
+task docker:build
+docker compose up -d
+docker compose logs burzblog       # open the &quot;/setup#token=...&quot; link it prints
+</code></pre>
+<p>On a fresh <code>data/</code> the server logs a one-time setup link (valid for 60
+minutes; <code>docker compose restart burzblog</code> prints a new one). Open it to create
+the first account in the browser; the address uses <code>BURZBLOG_ORIGIN</code>, so set
+that to the URL you will open. To create the account from a terminal instead,
+run <code>docker compose run --rm burzblog user add ada</code> before or after starting.</p>
+<p>The container:</p>
+<ul>
+<li>runs as the numeric owner of <code>data/</code> with a read-only root filesystem, no
+capabilities and <code>no-new-privileges</code>;</li>
+<li>keeps everything in <code>/data</code> (the SQLite database), a bind mount here and a
+named volume elsewhere (the image ships <code>/data</code> owned by the runtime user,
+so a new named volume is writable without a <code>--user</code> override), so
+replacing the image never touches your posts;</li>
+<li>publishes port 8080 on host loopback only, for your HTTPS reverse proxy;</li>
+<li>reports health with <code>burzblog healthcheck</code> against <code>/healthz</code>.</li>
+</ul>
+<p><code>compose.dist.yaml</code> is the same service for a published image; pin
+<code>BURZBLOG_IMAGE</code> to a digest.</p>
+<h2 id="published-images">Published images</h2>
+<p>Each release is published to <code>ghcr.io/weburz/burzblog</code> for <code>linux/amd64</code> and
+<code>linux/arm64</code> with the tags <code>X.Y.Z</code> (never overwritten), <code>X.Y</code>, <code>X</code> and
+<code>latest</code>. Pin <code>X.Y.Z</code> or a digest in production; a floating tag follows new
+releases whenever the container is pulled again. Pulling without logging in
+needs the GHCR package to be public (package settings, Change visibility).</p>
+<p>A maintainer publishes from a clean checkout of the <code>vX.Y.Z</code> tag after
+<code>docker login ghcr.io</code>:</p>
+<pre><code class="language-sh">task image:publish -- --dry-run   # smoke-test and build both platforms, push nothing
+task image:publish                # the same, then push the four tags
+</code></pre>
+<p>The task refuses a dirty tree, a commit that is not exactly a <code>vX.Y.Z</code> tag and
+a version that already exists, and prints the pushed digest. The dormant
+<code>.github/workflows/image.yml</code> does the same on a tag.</p>
+<h2 id="coolify">Coolify</h2>
+<p><a href="https://coolify.io">Coolify</a> is a self-hosted PaaS. Coolify's one-click
+service catalogue does not list BurzBlog yet, so deploy it as a custom
+Compose resource:</p>
+<ol>
+<li>In a project, add a resource: Docker Compose Empty.</li>
+<li>Paste the contents of <a href="https://github.com/weburz/burzblog/blob/main/deploy/coolify.yaml"><code>deploy/coolify.yaml</code></a>.</li>
+<li>Open the <code>burzblog</code> service settings and set its domain, for example
+<code>https://blog.example.org</code>. Coolify routes it to port 8080 and issues the
+certificate. <code>SERVICE_URL_BURZBLOG_8080</code> makes Coolify generate that URL
+and <code>BURZBLOG_ORIGIN</code> is set from it, so there is nothing to copy by hand.</li>
+<li>Deploy, then open the service logs. On an empty database the server prints
+<code>open https://.../setup#token=...</code>; open that link within 60 minutes to
+create the first account (restart the service for a new link).</li>
+</ol>
+<p>Optional settings go in the environment variables of the resource:
+<code>BURZBLOG_SITE_URL</code> and <code>BURZBLOG_DEPLOY_HOOK</code> (uncomment them in the file; the
+hook is a secret, mark it as such), and <code>BURZBLOG_VERSION</code> to choose the image.</p>
+<p>The database lives in the <code>burzblog-data</code> named volume; include it in your
+Coolify backups. One instance idles at about 25 MB of memory, and the file
+limits it to 128 MB, which suits a personal blog; raise <code>mem_limit</code> for heavy
+imports.</p>
+<p>To update, set <code>BURZBLOG_VERSION</code> to the new <code>X.Y.Z</code> (or to <code>2</code> to follow the
+latest 2.x.y on every redeploy) and redeploy. The database is migrated when the
+new version starts and migrations are never undone, so take a backup first.</p>
+<h2 id="checks">Checks</h2>
+<p><code>task docker:check</code> lints the Dockerfile with Hadolint, validates the Caddy and
+nginx examples, builds the image and runs <code>scripts/docker-smoke.sh</code>. The smoke
+test runs the image as your user against a throwaway data directory, then
+checks the health endpoint, that anonymous API calls are refused, the panel and
+its CSP, issuing a CLI token, creating and publishing a post, the export, data
+surviving a restart, and the database file mode. It then runs the image the
+way Coolify does, with a fresh named volume and no <code>--user</code>, and checks that it
+starts, creates an account and keeps it across a restart.</p>
+
+          <p class="doc-source"><a href="https://github.com/weburz/burzblog/blob/main/docs/containers.md">Edit this page on GitHub</a></p>
+        </article>
+      </main>
+    </div>
+
+    <footer class="foot">
+      <div class="wrap foot-inner">
+        <p><span class="mark" aria-hidden="true"></span>BurzBlog is made by <a href="https://weburz.com">Weburz</a> and released under the Apache-2.0 license.</p>
+        <nav aria-label="Footer">
+          <a href="https://github.com/weburz/burzblog">Source</a>
+          <a href="https://github.com/weburz/burzblog/blob/main/CHANGELOG.md">Changelog</a>
+          <a href="security.html">Security</a>
+          <a href="https://github.com/weburz/burzblog/issues">Issues</a>
+        </nav>
+      </div>
+    </footer>
+  </body>
+</html>

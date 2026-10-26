@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Security model · BurzBlog docs</title>
+    <meta name="description" content="BurzBlog is a private writing tool for a few trusted authors. Readers never talk to it; they read the website your build produces." />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; img-src 'self'; style-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'"
+    />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#fafaf8" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#12171d" media="(prefers-color-scheme: dark)" />
+    <link rel="canonical" href="https://burzblog.weburz.com/docs/security.html" />
+    <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="../style.css" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="top">
+      <div class="wrap top-inner">
+        <a class="brand" href="../" aria-label="BurzBlog home"><span class="mark" aria-hidden="true"></span>BurzBlog</a>
+        <nav aria-label="Main">
+          <a href="./">Docs</a>
+          <a href="https://github.com/weburz/burzblog">GitHub</a>
+          <a class="nav-cta" href="../#install">Download</a>
+        </nav>
+      </div>
+    </header>
+
+    <div class="wrap docs">
+      <nav class="docs-nav" aria-label="Documentation">
+        <div>
+          <p class="docs-nav-title">Guides</p>
+          <ul>
+            <li><a href="self-hosting.html">Running BurzBlog</a></li>
+            <li><a href="terminal.html">Writing from the terminal</a></li>
+            <li><a href="publishing.html">Connecting your website</a></li>
+            <li><a href="containers.html">Containers</a></li>
+          </ul>
+        </div>
+        <div>
+          <p class="docs-nav-title">Reference</p>
+          <ul>
+            <li><a href="api.html">HTTP API</a></li>
+            <li><a href="security.html" aria-current="page">Security model</a></li>
+            <li><a href="architecture.html">Architecture</a></li>
+          </ul>
+        </div>
+      </nav>
+
+      <main id="main" class="docs-main">
+        <article class="doc">
+          <h1>Security model</h1>
+          <nav class="doc-toc" aria-label="On this page">
+            <p>On this page</p>
+            <ul>
+              <li><a href="#what-is-protected-and-how">What is protected, and how</a></li>
+              <li><a href="#what-is-out-of-scope">What is out of scope</a></li>
+              <li><a href="#reporting-a-vulnerability">Reporting a vulnerability</a></li>
+            </ul>
+          </nav>
+<p>BurzBlog is a private writing tool for a few trusted authors. Readers never talk
+to it; they read the website your build produces.</p>
+<h2 id="what-is-protected-and-how">What is protected, and how</h2>
+<p><strong>Accounts.</strong> Passwords are hashed with Argon2id (19 MiB, 2 passes), at least
+12 characters. At most two hashes run at once, so a burst of sign-ins cannot
+exhaust a Pi's memory. A sign-in that cannot get a slot within two seconds is
+answered <code>503</code> with <code>Retry-After</code> instead of queueing, so a flood of junk
+usernames cannot build an unbounded queue, and one client address may have at
+most four sign-ins in progress. That per-address cap uses the connecting address only
+(<code>X-Forwarded-For</code> is ignored on purpose), so it separates clients only when
+they connect directly; behind a reverse proxy everyone shares the proxy's
+address and a flood is shed as a whole. It is load shedding, never a lockout:
+real sign-ins work again as soon as the flood stops. Unknown usernames take as
+long as known ones, and nothing is shed by whether an account exists. Failed
+sign-ins are limited per username, counted before the password is checked so
+parallel guesses cannot slip past (see <a href="api.html">API</a>); expired counters are
+pruned as sign-ins arrive. There
+is no self sign-up; accounts are created on the host with <code>burzblog user add</code>,
+or once, in the browser, by first-run setup (below). Every account is an
+<code>admin</code> or an <code>author</code> (next paragraph).</p>
+<p><strong>Roles.</strong> An <code>admin</code> can do everything. An <code>author</code> writes and publishes posts
+and looks after their own password, two-factor sign-in and tokens. The first
+account made in the browser by first-run setup is an admin, so are the accounts
+that existed before roles did (migration 8), and so is the first account
+<code>burzblog user add</code> makes; later ones are authors unless you pass
+<code>--role admin</code>. Roles change only on the host:
+<code>burzblog user role &lt;name&gt; admin|author</code>, which refuses to demote the last
+admin so someone can always manage the server. The role is read from the
+database on every request, so a change applies at once to open browser sessions
+and to tokens: a token has the role of the account that owns it. The check is on
+the server; the panel hides what an author cannot do, but that is only a
+courtesy. A request an author may not make is answered <code>403</code> with the error
+code <code>role</code> before the request body is read.</p>
+<table>
+<thead>
+<tr>
+<th>Action</th>
+<th>Route</th>
+<th>Author</th>
+<th>Admin</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Read, create and edit posts, tags, revisions, previews</td>
+<td><code>GET/POST/PUT /api/posts...</code>, <code>GET /api/tags</code>, <code>POST /api/preview</code></td>
+<td>yes</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>Publish, unpublish, archive, restore, schedule</td>
+<td><code>POST /api/posts/{slug}/{action}</code>, <code>PUT .../markdown</code></td>
+<td>yes</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>Set or clear a tag's display label</td>
+<td><code>PUT/DELETE /api/tags/{tag}/label</code></td>
+<td>no</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>Remove a slug redirect</td>
+<td><code>DELETE /api/posts/{slug}/redirects/{from}</code></td>
+<td>yes</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>Upload and list files</td>
+<td><code>POST /api/media</code>, <code>GET /api/media</code></td>
+<td>yes</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>Delete a post</td>
+<td><code>DELETE /api/posts/{slug}</code></td>
+<td>no</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>Delete an uploaded file</td>
+<td><code>DELETE /api/media/{id}</code></td>
+<td>no</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>Own password and two-factor sign-in</td>
+<td><code>/api/account/...</code></td>
+<td>yes</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>Own write tokens: create, list, revoke</td>
+<td><code>POST/GET /api/tokens</code>, <code>DELETE /api/tokens/{id}</code></td>
+<td>yes, own only</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>Export tokens (website builds): create</td>
+<td><code>POST /api/tokens</code> with <code>scope: &quot;export&quot;</code></td>
+<td>no</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>See and revoke other accounts' tokens</td>
+<td><code>GET /api/tokens</code>, <code>DELETE /api/tokens/{id}</code></td>
+<td>no</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>Settings (site, feeds, deploy status)</td>
+<td><code>GET /api/settings</code></td>
+<td>no</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>Newer-version notice</td>
+<td><code>GET /api/updates</code></td>
+<td>no</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>Rebuild the website</td>
+<td><code>POST /api/deploy</code></td>
+<td>no</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>Backup download</td>
+<td><code>GET /api/backup.tar.gz</code></td>
+<td>no</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>Export download</td>
+<td><code>GET /api/export.tar.gz</code></td>
+<td>no</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>Audit log</td>
+<td><code>GET /api/audit</code>, <code>burzblog audit</code></td>
+<td>no</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>Read published content</td>
+<td><code>GET /api/content/...</code></td>
+<td>yes</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>Accounts, roles, passwords, <code>2fa-reset</code></td>
+<td><code>burzblog user ...</code> on the host</td>
+<td>host only</td>
+<td>host only</td>
+</tr>
+</tbody>
+</table>
+<p>Authors are not limited to their own posts: any author can edit and publish any
+post, which suits a few people writing for one blog. Because a token has its
+owner's role, an author's export token cannot be created and an author's token
+cannot download the export; the website build needs an export token made by an
+admin. The content API serves only published posts, so a token of either role
+may read it.</p>
+<p><strong>Audit log.</strong> Sign-ins and sensitive changes are appended to the <code>audit_log</code>
+table: when, who (the account, and the token when the request used one), what,
+what it was done to and the connecting address (<code>X-Forwarded-For</code> is ignored,
+as everywhere). Recorded: sign-in successes, and failures against an existing
+account (a wrong password, or a wrong two-factor code); first-run setup and
+accounts created on the host; two-factor turned on or off and recovery codes
+used; token created or revoked; password changes; role changes; publish,
+unpublish, archive, restore, schedule and unschedule (including a scheduled
+post the server publishes itself, as actor <code>scheduler</code>); post deletion; tag label
+changes (<code>tag.label</code>); slug
+redirect removal; file uploads and deletions; a manual website rebuild; and
+backup downloads. Changes made on the host with <code>burzblog user</code> are recorded as
+actor <code>host</code>. Failed sign-ins for names that do not exist are not recorded, so repeating them cannot grow the
+log; rate-limited attempts are not recorded either. A row is never updated or
+deleted: database triggers refuse both and ids are never reused, so the log
+only grows (an entry is roughly 150 bytes). Anyone with the database file can of
+course rewrite it; the log guards against accounts, not against the host. A
+failure to write an entry is logged and does not undo the action it describes.
+Entries never hold secrets: no passwords, session or API token secrets, the
+deploy hook URL, two-factor secrets or recovery codes. Targets are post slugs,
+account names and token names and ids. Admins read the log in the panel, with
+<code>GET /api/audit</code> and with <code>burzblog audit</code> on the host.</p>
+<p><strong>First-run setup.</strong> <code>POST /api/setup</code> is the one unauthenticated write, and
+it exists so a fresh install does not need a shell to get its first account.
+It is not a content route and is gated three ways: it only works while the
+store has zero accounts; it needs a one-time token that <code>burzblog serve</code> prints
+in its own log and nowhere else; and it needs the same <code>Origin</code> as sign-in. The
+token is 256 random bits (<code>crypto/rand</code>, base64url), held only as a SHA-256
+digest in memory (a restart forgets it and prints a new one), valid for one
+hour, compared in constant time and consumed by the account it creates. It dies
+as soon as any account exists, including one made with <code>burzblog user add</code>
+while the server runs. The link carries it in the URL fragment, so it never
+reaches a proxy, an access log or a <code>Referer</code> header, and the panel removes it
+from the address bar at once. The account is created in a transaction that
+re-checks for zero accounts, so two concurrent requests with a valid token make
+exactly one account (the other gets 409). Hashing uses sign-in's two slots and
+per-address cap, and wrong tokens count against a per-address limit of ten per
+15 minutes. A wrong, expired or used token gets the same 403. <code>GET /api/setup</code>
+answers <code>{&quot;needed&quot;: true|false}</code> without sign-in; that reveals only whether any
+account exists, which the sign-in page's behavior would show anyway. Anyone who
+can read the service log (<code>journalctl</code>, <code>docker logs</code>) while setup is open can
+create the first account, so treat the log as sensitive until you have.</p>
+<p><strong>Two-factor sign-in (TOTP).</strong> An account can require a code from an
+authenticator app after its password (RFC 6238: HMAC-SHA1, 6 digits, 30-second
+steps, one step either side accepted). It is off until someone turns it on in
+Settings, where enrolling needs the current password and then one valid code
+before it takes effect. For an account that uses it, a correct password creates
+no session: the server answers <code>{&quot;second_factor&quot;: true, &quot;challenge&quot;: ...}</code>, and
+only <code>POST /api/login/totp</code> with the challenge and a code starts one. The
+challenge is 256 random bits, valid for five minutes, usable once, tied to the
+account that gave the password, and stored as a SHA-256 digest; asking for a
+new one replaces the old. Codes and passwords share the per-username limit (ten
+attempts per 15 minutes), and a right password does not reset the count until
+the code is right too, so knowing the password does not buy fresh guesses. A
+step that was accepted is remembered, so a code cannot be used twice, even
+inside its window, and an older step is refused after a newer one. Enrolment
+creates ten recovery codes (80 random bits each), shown once, accepted in the
+code field and deleted when used. They are stored as plain SHA-256 digests:
+unlike a password they are not guessable, so a slow hash adds nothing. The
+authenticator secret (160 bits) is stored as-is in the database, like every
+other secret there (BurzBlog has no key to encrypt it with), so the <code>0600</code>
+file and its backups need the same care as the password hashes; anyone who can
+read the file can generate codes. Turning it off needs the password and a code
+and ends every other session. A locked-out person is recovered on the host with
+<code>burzblog user 2fa-reset &lt;name&gt;</code>, which turns it off and ends their sessions.
+Write tokens from <code>burzblog login</code> are not touched by turning it on, off or
+resetting it: the token is the credential. A new <code>burzblog login</code> needs the
+code, so a stolen password alone cannot mint one.</p>
+<p><strong>Browser sessions.</strong> A random 256-bit session id in an <code>HttpOnly</code>,
+<code>SameSite=Strict</code> cookie, <code>Secure</code> and <code>__Host-</code> prefixed over HTTPS. Only its
+SHA-256 digest is stored. Every change also needs the session's CSRF token in a
+header and an <code>Origin</code> header equal to the configured origin; sign-in requires
+the origin too, so another site cannot sign a browser into a different account.
+Changing a password (in Settings or with <code>burzblog user passwd</code>) ends every other
+session and revokes the account's write tokens in the same transaction, so a
+credential minted by someone who knew the old password does not outlive the reset.</p>
+<p><strong>API tokens.</strong> <code>bzb_</code> plus 256 random bits, shown once, stored as a SHA-256
+digest. Write tokens (from <code>burzblog login</code>) can do what a signed-in user can.
+Export tokens can only read published content (the export and the
+<code>GET /api/content/*</code> routes, which show the same data); the full backup
+(<code>/api/backup.tar.gz</code>, drafts and archived posts included) needs a session or a
+write token. Both are listed in Settings
+with their last use and can be revoked there.</p>
+<p>Export tokens are kept when a password changes: they cannot write, and revoking
+them would silently break the website build. Revoke one in Settings if it leaks.
+Outside the export and the content API an export token is refused with 403
+<code>scope</code>, and <code>GET /api/session</code> treats it as anonymous, so it cannot read the
+username.</p>
+<p><strong>Content API.</strong> <code>GET /api/content/*</code> serves published posts as JSON, Markdown
+and sanitized HTML to a website. It needs a session or any token, so it is not
+an unauthenticated content route, and it adds no data the export does not
+already give an export token. Old slugs redirect (308) and are listed only while
+their post is published, so a redirect is not a way to find unpublished posts. A draft, scheduled or archived post answers
+exactly like a missing slug, so the API cannot be used to learn which exist.
+The feeds and sitemap (<code>feed.xml</code>, <code>feed.atom</code>, <code>feed.json</code>, <code>sitemap.xml</code>) are
+part of it and of the export: the same published data behind the same gate,
+with links built from the operator's <code>--site-url</code>, never from request headers.
+Its responses are <code>Cache-Control: private, max-age=60</code> with an <code>ETag</code> instead
+of <code>no-store</code>: the website fetches the same posts often, and revalidating with
+<code>If-None-Match</code> keeps that cheap on a small host. <code>private</code> keeps shared caches
+and proxies from storing a response meant for one authorized caller, <code>Vary: Authorization, Cookie</code> keys it to the credential, and the worst case is a post
+shown up to a minute after an edit or an unpublish. Errors (including the 404s)
+stay <code>no-store</code>, and the other security headers and the <code>default-src 'none'</code>
+policy still apply. The HTML route renders through the preview path, so it has
+the same input limits and render slots. CORS is not enabled: a website calls
+the API from its server or build, not from a visitor's browser.</p>
+<p><strong>The panel.</strong> Served with a Content Security Policy that allows only the
+panel's own scripts (inline bootstrap scripts by hash), no framing, no
+<code>&lt;base&gt;</code> and no plugins; plus <code>nosniff</code>, <code>no-referrer</code>, a restrictive
+Permissions-Policy, and HSTS over HTTPS. API responses are <code>no-store</code> and
+<code>default-src 'none'</code>.</p>
+<p><strong>Previews.</strong> Markdown is rendered without raw HTML and then sanitized with an
+allowlist (no scripts, event handlers, styles or <code>javascript:</code> URLs). The
+result is shown in a sandboxed iframe that cannot run scripts at all, with its
+own policy. Images in previews load from their <code>https://</code> URLs; that is the
+author's own content.</p>
+<p><strong>Preview cost.</strong> Rendering is the one request whose cost depends on what is in
+it, and any session or write token can ask for it every 250 ms. So
+<code>POST /api/preview</code> is bounded in four ways. Before parsing, one linear pass
+refuses constructs whose cost grows faster than their size (very wide or
+numerous tables, deep nesting, huge numbers of lines or headings, paragraphs
+with thousands of unmatched emphasis, code or link markers); the limits are in
+<a href="api.html#preview-limits">the API reference</a>. Output is cut off at 8 MiB. Only
+two renders run at once and a third waits at most 5 seconds before getting a
+503. The body is still allowed up to the size of a post (2 MiB), so an author
+can preview anything they can save. The largest input these limits admit takes
+well under a second and allocates under 160 MiB in total (see
+<code>internal/render/limits_test.go</code>); a typical 2 MiB post takes about 0.15 s.</p>
+<p><strong>Input.</strong> Request bodies are capped at 4 MiB and JSON rejects unknown fields.
+Frontmatter must be a plain mapping: YAML anchors, aliases, merge keys (<code>&lt;&lt;</code>,
+<code>!!merge</code>) and any tag outside the YAML core schema (<code>!!str</code>, <code>!!int</code>,
+<code>!!float</code>, <code>!!bool</code>, <code>!!null</code>, <code>!!timestamp</code>, <code>!!map</code>, <code>!!seq</code>, <code>!!binary</code>) are
+refused at every nesting level, so exports parse the same way in every YAML
+reader. Extra frontmatter saved before these checks that still holds such
+syntax is left out of exports (the rest of the post is exported) until it is
+edited. Slugs are limited to lowercase letters, digits and hyphens, so they
+are always safe file names in exports. Titles, descriptions, cover URLs and
+alt text, token names and usernames are single-line text: they may not contain
+control characters (U+0000 to U+001F, U+007F, U+0080 to U+009F), tabs included,
+because terminals act on them. The body keeps tabs and line breaks and only
+refuses NUL, so code samples with escape sequences still save. Existing data
+is never rewritten: a post that already has such a character still loads, and
+saving it again asks you to fix the named field.</p>
+<p><strong>Uploaded files.</strong> <a id="uploaded-files"></a><code>POST /api/media</code> is a change
+like any other (session with Origin and CSRF, or a write token; export tokens
+get 403). The body is capped at the upload limit (10 MiB by default) plus
+1 MiB of form framing, and is held in memory, so the limit is also the most
+memory one upload takes. What a file is comes from its leading bytes
+(<code>http.DetectContentType</code>, plus a check for AVIF's <code>ftyp</code> box), never from the
+client's <code>Content-Type</code> or file name: only JPEG, PNG, GIF, WebP, AVIF and PDF
+are stored, and JPEG, PNG and GIF must decode, so HTML, scripts and archives
+renamed <code>.png</code> are refused. <strong>SVG is refused outright.</strong> It is an XML document
+that can carry script and external references, and an image served from the
+panel's own origin that runs script would act as the signed-in author.
+Sanitising SVG safely is a project of its own, so authors who need vector art
+export a PNG or host the SVG elsewhere. The stored name is
+<code>&lt;32 hex of SHA-256&gt;&lt;extension&gt;</code>; the client's file name is kept only as a
+label and never reaches the file system, so path traversal has nothing to
+grip. Files live in <code>media/</code> inside the data directory (<code>0700</code>, files <code>0600</code>),
+behind a small <code>media.Storage</code> interface so another backend can replace the
+disk without touching the handlers. Uploads are not scanned for malware.</p>
+<p><em>The one public file route.</em> <code>GET /media/{name}</code> answers without a sign-in.
+This is an exception to &quot;never add an unauthenticated content route&quot;, and is
+deliberate: images in published posts must load in readers' browsers and on
+the website, which cannot carry a session. The route serves immutable assets,
+not posts: it reveals nothing about drafts or about which post uses a file,
+only a file whose 128-bit hash name someone already has, and only what the
+author chose to upload. It does not list anything (listing is
+<code>GET /api/media</code>, authenticated). A file uploaded for a draft is reachable by
+anyone who learns its address, so do not upload what must stay private. The
+name is matched against a strict pattern before any file is opened, so no
+other file can be read. Responses carry <code>X-Content-Type-Options: nosniff</code>, the
+type derived from the extension, <code>Content-Security-Policy: default-src 'none'; sandbox</code>, <code>Cache-Control: public, max-age=31536000, immutable</code>, an <code>ETag</code> (the
+name; content never changes under a name), <code>Cross-Origin-Resource-Policy: cross-origin</code> so other sites can embed the images, and <code>Content-Disposition: inline</code> for images but <code>attachment</code> for PDFs.</p>
+<p><strong>Terminal client.</strong> <code>burzblog</code> never follows an HTTP redirect, because it
+could carry your password or token to plain <code>http://</code> or to another host; it
+stops and prints the address to run <code>burzblog login</code> with instead. Everything
+the server sends that is printed (titles, names, error messages) has control
+characters replaced with U+FFFD, and <code>pull -o -</code> does the same when writing to
+a terminal.</p>
+<p><strong>Scheduled posts.</strong> A scheduled draft publishes as it is at the due time,
+including edits made after scheduling, and still publishes if the session or
+token that scheduled it was revoked: revoking access does not cancel a
+schedule. Unschedule the post to stop it.</p>
+<p><strong>Data at rest.</strong> One SQLite file, created <code>0600</code> in a <code>0700</code> directory. Revisions
+keep every earlier version of every post; they are only removed when an archived
+post is deleted on purpose.</p>
+<p><strong>Deploy hook.</strong> The URL is secret: it is read from the environment, never
+returned by the API, and left out of error messages.</p>
+<p><strong>Outbound requests.</strong> BurzBlog makes none of its own accord. The deploy hook
+is called only when you set one. Update checks are opt-in
+(<code>--check-updates</code>): one <code>GET</code> to the GitHub releases API with a <code>User-Agent</code>
+that holds the BurzBlog version, with a timeout and a response size cap, and
+nothing about posts, accounts or the instance address. The result is shown only
+to admins through <code>GET /api/updates</code>; failures never affect anything else. See
+<a href="self-hosting.html#update-checks">self-hosting</a>.</p>
+<h2 id="what-is-out-of-scope">What is out of scope</h2>
+<ul>
+<li><strong>Per-post ownership.</strong> Any author can edit, publish and archive any post;
+roles separate writing from running the server, not authors from each other.</li>
+<li><strong>TLS.</strong> Terminate HTTPS in a reverse proxy (see <a href="self-hosting.html">self-hosting</a>).
+BurzBlog ignores <code>X-Forwarded-*</code> headers.</li>
+<li><strong>Quotas.</strong> There is no limit on the number or total size of uploads;
+every account is trusted, and the disk is the limit.</li>
+<li><strong>Untrusted authors.</strong> Authors control their post content, including image
+URLs in previews.</li>
+</ul>
+<h2 id="reporting-a-vulnerability">Reporting a vulnerability</h2>
+<p>Email the maintainers listed in the repository rather than opening a public
+issue.</p>
+
+          <p class="doc-source"><a href="https://github.com/weburz/burzblog/blob/main/docs/security.md">Edit this page on GitHub</a></p>
+        </article>
+      </main>
+    </div>
+
+    <footer class="foot">
+      <div class="wrap foot-inner">
+        <p><span class="mark" aria-hidden="true"></span>BurzBlog is made by <a href="https://weburz.com">Weburz</a> and released under the Apache-2.0 license.</p>
+        <nav aria-label="Footer">
+          <a href="https://github.com/weburz/burzblog">Source</a>
+          <a href="https://github.com/weburz/burzblog/blob/main/CHANGELOG.md">Changelog</a>
+          <a href="security.html">Security</a>
+          <a href="https://github.com/weburz/burzblog/issues">Issues</a>
+        </nav>
+      </div>
+    </footer>
+  </body>
+</html>

@@ -13,6 +13,8 @@ the API.
 - `task docker:check`: Hadolint, proxy examples, image build, `scripts/docker-smoke.sh`.
   Run it where Docker exists; otherwise report it as unrun.
 - `task format`: gofmt and oxfmt. Make targets are compatibility aliases.
+- `task site:docs`: render `docs/*.md` into the website (`site/docs/`). Run it after
+  editing a guide; `go:check` fails while the committed pages are out of date.
 
 Layout: `internal/post` (model, validation, frontmatter; no IO), `internal/store`
 (SQLite, migrations in order, never edit a shipped migration), `internal/auth`,
