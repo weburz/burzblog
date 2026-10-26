@@ -1,0 +1,39 @@
+# Weekly version updates, grouped so each ecosystem opens at most one PR for
+# minor and patch bumps. Security updates are separate and arrive as needed.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      go:
+        update-types: [minor, patch]
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+    groups:
+      web:
+        update-types: [minor, patch]
+    ignore:
+      # Pinned until its Chromium 151+ headless regression on WSL2 is fixed (AGENTS.md).
+      - dependency-name: "@playwright/test"
+      - dependency-name: playwright
+      - dependency-name: playwright-core
+      # TypeScript 7 breaks vue-tsc; take majors by hand.
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
+      - dependency-name: vue-tsc
+        update-types: [version-update:semver-major]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly

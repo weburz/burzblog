@@ -201,6 +201,11 @@ All notable changes are recorded here, following
 
 ### Changed
 
+- CI's browser job runs in the Playwright 1.61.1 container instead of
+  installing Chromium's system packages on every run, which took over ten
+  minutes. Every action is on a Node 24 release, ahead of GitHub retiring
+  Node 20. Dependabot opens weekly, grouped version-update PRs for Go, the
+  panel, GitHub Actions and the Docker base images.
 - `docs/architecture.md` describes how BurzBlog is built and replaces the
   older design documents. Documentation examples use `example.com`.
 - Build (export) tokens may now read published content through
