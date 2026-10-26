@@ -8,6 +8,10 @@ All notable changes are recorded here, following
 
 ### Added
 
+- The website counts visits with Umami when the repository variable
+  `UMAMI_WEBSITE_ID` is set. `scripts/site-analytics.sh` adds the tracker at
+  deploy time, so the ID is never committed, and it only counts visits on the
+  site's own domain.
 - Two-factor setup shows a QR code to scan with an authenticator app, drawn in
   the browser so the secret never leaves it; the setup key stays as a fallback
   and no longer wraps inside a group. Settings lists tag labels last, so

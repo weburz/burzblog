@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - "site/**"
+      - "scripts/site-analytics.sh"
       - ".github/workflows/site.yml"
   workflow_dispatch:
 
@@ -14,9 +15,10 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
-# Dormant while repository Actions is disabled. Publishes site/ (plain HTML,
-# no build step) to GitHub Pages at burzblog.weburz.com; site/CNAME sets the
-# domain. Preview locally with `task site:serve`.
+# Publishes site/ (plain HTML, no build step) to GitHub Pages at
+# burzblog.weburz.com; site/CNAME sets the domain. When the repository variable
+# UMAMI_WEBSITE_ID is set, Umami analytics is added at deploy time only, so the
+# ID stays out of the repository. Preview locally with `task site:serve`.
 jobs:
   build:
     runs-on: ubuntu-24.04
@@ -28,6 +30,11 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+      - name: Add analytics
+        if: vars.UMAMI_WEBSITE_ID != ''
+        env:
+          UMAMI_WEBSITE_ID: ${{ vars.UMAMI_WEBSITE_ID }}
+        run: scripts/site-analytics.sh site
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
