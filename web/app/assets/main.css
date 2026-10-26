@@ -752,6 +752,12 @@ code {
   margin: 0 auto;
   padding: 40px 40px 40vh;
 }
+/* Split already narrows the pane; a capped column inside it leaves gutters
+   on both sides and a cramped writing area. */
+.editor-shell[data-mode="split"] .write-column {
+  max-width: none;
+  padding-inline: 32px;
+}
 .title-field,
 .description-field {
   display: block;
@@ -782,10 +788,14 @@ code {
   color: var(--bb-placeholder);
 }
 .title-field:focus-visible,
-.description-field:focus-visible,
-.md-source:focus-visible {
+.description-field:focus-visible {
   outline: none;
   background: var(--bb-blue-soft);
+  box-shadow: -14px 0 0 -12px var(--bb-blue);
+}
+/* The body is the page, not a box on it: no tint, only the caret bar. */
+.md-source:focus-visible {
+  outline: none;
   box-shadow: -14px 0 0 -12px var(--bb-blue);
 }
 .md-editor {
@@ -812,7 +822,7 @@ code {
 .md-source {
   display: block;
   width: 100%;
-  min-height: 50vh;
+  min-height: 65vh;
   padding: 20px 0 0;
   border: 0;
   resize: none;
