@@ -435,8 +435,6 @@ const scopeUse = (t: Token) =>
       </div>
     </section>
 
-    <TagLabelsSection v-if="isAdmin" />
-
     <section v-if="isAdmin" class="settings-section" aria-labelledby="updates-heading">
       <div class="settings-aside">
         <h2 id="updates-heading" class="section-title">Updates</h2>
@@ -603,6 +601,7 @@ const scopeUse = (t: Token) =>
     </section>
 
     <TwoFactorSection />
+    <TagLabelsSection v-if="isAdmin" />
 
     <p v-if="settings" class="list-foot muted">BurzBlog {{ settings.version }}</p>
 

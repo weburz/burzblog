@@ -1229,6 +1229,18 @@ code {
 .copy-field .terminal {
   padding-right: 96px;
 }
+/* A setup key breaks between its groups of four, never inside one. */
+.setup-key .terminal-wrap {
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+/* Always dark on light, whatever the theme, so phone cameras can read it. */
+.totp-qr {
+  display: block;
+  width: 184px;
+  height: 184px;
+  border-radius: var(--bb-radius-m);
+}
 .copy-button {
   position: absolute;
   top: 8px;

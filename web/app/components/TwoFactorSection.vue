@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import type { TwoFactorStatus } from "../types";
 import { errorMessage, request } from "../utils/api";
-import { groupSecret } from "../utils/totp";
+import { groupSecret, qrPath } from "../utils/totp";
 
 const toast = useToast();
 const status = ref<TwoFactorStatus | null>(null);
@@ -15,6 +15,9 @@ const code = ref("");
 const secret = ref("");
 const uri = ref("");
 const recovery = ref<string[]>([]);
+// The otpauth link as a QR code for phone authenticator apps. It is drawn
+// here, so the secret never leaves the browser.
+const qr = computed(() => (uri.value ? qrPath(uri.value) : null));
 const busy = ref(false);
 const error = ref("");
 
@@ -171,10 +174,22 @@ const savedCodes = () => {
           @submit.prevent="confirm"
         >
           <p class="muted">
-            Add this account to an authenticator app (1Password, Aegis, Google
-            Authenticator and others) with the key below, then enter the code it shows.
+            Scan this code with an authenticator app (1Password, Aegis, Google
+            Authenticator and others), then enter the code it shows.
           </p>
-          <CopyField label="Setup key" :value="groupSecret(secret)" />
+          <svg
+            v-if="qr"
+            class="totp-qr"
+            role="img"
+            aria-label="QR code that adds this account to an authenticator app"
+            :viewBox="`0 0 ${qr.size} ${qr.size}`"
+            shape-rendering="crispEdges"
+          >
+            <rect :width="qr.size" :height="qr.size" fill="#fff" />
+            <path :d="qr.d" fill="#000" />
+          </svg>
+          <p class="muted">Can't scan it? Type this key into the app instead.</p>
+          <CopyField class="setup-key" label="Setup key" :value="groupSecret(secret)" />
           <details class="field">
             <summary>Use an otpauth link instead</summary>
             <CopyField label="otpauth link" :value="uri" />
