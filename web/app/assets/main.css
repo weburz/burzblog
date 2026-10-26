@@ -202,9 +202,13 @@ main:focus {
   gap: 22px;
   margin-right: auto;
   margin-left: 24px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 .nav-tab {
   position: relative;
+  white-space: nowrap;
   display: inline-flex;
   align-items: center;
   color: var(--bb-text-2);
@@ -222,6 +226,19 @@ main:focus {
   inset: auto 0 -1px;
   height: 2px;
   background: var(--bb-accent);
+}
+/* On a phone the brand mark alone leaves room for the four tabs. */
+@media (max-width: 480px) {
+  .brand-name {
+    display: none;
+  }
+  .brand-mark {
+    margin-right: 0;
+  }
+  .nav-tabs {
+    gap: 12px;
+    font-size: 14px;
+  }
 }
 .avatar {
   display: inline-grid;
@@ -944,6 +961,7 @@ code {
 }
 .palette-trigger {
   gap: var(--bb-space-2);
+  white-space: nowrap;
   color: var(--bb-text-2);
 }
 .palette-meta {
@@ -1300,7 +1318,7 @@ code {
   }
   .nav-tabs {
     margin-left: 8px;
-    gap: 16px;
+    gap: 14px;
   }
   .page-head {
     margin-top: 28px;

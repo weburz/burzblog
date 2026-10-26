@@ -81,8 +81,14 @@ onMounted(() => {
               </td>
               <td>{{ auditActor(entry) }}</td>
               <td>{{ auditLabel(entry.action) }}</td>
-              <td class="mono">{{ entry.target }}</td>
-              <td class="mono">{{ entry.remote }}</td>
+              <td v-if="entry.target" class="mono" data-label="Target">
+                {{ entry.target }}
+              </td>
+              <td v-else class="mono" />
+              <td v-if="entry.remote" class="mono" data-label="From">
+                {{ entry.remote }}
+              </td>
+              <td v-else class="mono" />
             </tr>
           </tbody>
         </table>
@@ -122,5 +128,35 @@ onMounted(() => {
 }
 .audit-table tr[data-attention] td:nth-child(3) {
   font-weight: 600;
+}
+
+/* A phone cannot fit five columns: stack each entry instead of hiding the
+   target and address off to the side. */
+@media (max-width: 640px) {
+  .audit-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .audit-table tr {
+    display: block;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--bb-border);
+  }
+  .audit-table td {
+    display: block;
+    padding: 0.125rem 0.75rem;
+    border-bottom: 0;
+  }
+  .audit-table td:empty {
+    display: none;
+  }
+  .audit-table td[data-label]::before {
+    content: attr(data-label) ": ";
+    font-family: inherit;
+    color: var(--bb-text-3);
+  }
 }
 </style>
