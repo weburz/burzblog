@@ -128,6 +128,7 @@ func routeCases(otherToken int64) []routeCase {
 		// Admin only.
 		{name: "settings", method: "GET", path: "/api/settings", adminOnly: true, want: 200},
 		{name: "deploy", method: "POST", path: "/api/deploy", body: "{}", adminOnly: true, want: 409},
+		{name: "updates", method: "GET", path: "/api/updates", adminOnly: true, want: 200},
 		{name: "audit log", method: "GET", path: "/api/audit", adminOnly: true, want: 200},
 		{name: "delete post", method: "DELETE", path: "/api/posts/gone?version=2", adminOnly: true, want: 200},
 		{name: "backup", method: "GET", path: "/api/backup.tar.gz", adminOnly: true, want: 200},
