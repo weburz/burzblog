@@ -217,8 +217,8 @@ func TestListPosts(t *testing.T) {
 		t.Errorf("query GO = %+v", list)
 	}
 	list, _, _ = s.ListPosts(ctx, Filter{Query: "%"})
-	if len(list) != 1 || list[0].Slug != "rust" {
-		t.Errorf("query %% should match the literal percent only: %+v", list)
+	if len(list) != 2 {
+		t.Errorf("query %% has no word, so it should filter nothing: %+v", list)
 	}
 	list, _, _ = s.ListPosts(ctx, Filter{Status: post.Archived})
 	if len(list) != 1 || list[0].Slug != "old" {
@@ -274,11 +274,11 @@ func TestListPostsSort(t *testing.T) {
 func TestAccounts(t *testing.T) {
 	s := open(t)
 	ctx := context.Background()
-	u, err := s.CreateUser(ctx, "Ada", "hash1")
+	u, err := s.CreateUser(ctx, "Ada", "hash1", RoleAdmin)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.CreateUser(ctx, "ada", "x"); !errors.Is(err, ErrTaken) {
+	if _, err := s.CreateUser(ctx, "ada", "x", RoleAdmin); !errors.Is(err, ErrTaken) {
 		t.Errorf("case-insensitive duplicate: %v", err)
 	}
 	if got, err := s.UserByName(ctx, "ADA"); err != nil || got.ID != u.ID {
@@ -351,11 +351,11 @@ func TestSetPasswordRevokesWriteTokensOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	u, err := s.CreateUser(ctx, "ada", "hash")
+	u, err := s.CreateUser(ctx, "ada", "hash", RoleAdmin)
 	if err != nil {
 		t.Fatal(err)
 	}
-	other, err := s.CreateUser(ctx, "other", "hash")
+	other, err := s.CreateUser(ctx, "other", "hash", RoleAdmin)
 	if err != nil {
 		t.Fatal(err)
 	}

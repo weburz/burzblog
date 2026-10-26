@@ -1,6 +1,16 @@
 <script setup lang="ts">
-import { computed } from "vue";
-import type { PostDraft, PostStatus } from "../types";
+import { computed, ref } from "vue";
+import type { MediaItem, PostDraft, PostStatus } from "../types";
+import {
+  canonicalOk,
+  counterLabel,
+  maxAuthor,
+  maxTags,
+  normalizeTags,
+  overAdvice,
+  seoDescriptionLimits,
+  seoTitleLimits,
+} from "../utils/metadata";
 import { slugify } from "../utils/slug";
 import { fromLocalInput, toLocalInput } from "../utils/time";
 
@@ -10,8 +20,11 @@ const props = defineProps<{
   status: PostStatus;
   savedSlug: string;
   readonly?: boolean;
+  // Old slugs of this post that redirect to it.
+  redirects?: string[];
   closeFocus?: (event: Event) => void;
 }>();
+const emit = defineEmits<{ removeRedirect: [from: string] }>();
 
 const published = computed({
   get: () => toLocalInput(draft.value.publishedOn),
@@ -21,8 +34,19 @@ const updated = computed({
   get: () => toLocalInput(draft.value.updatedOn),
   set: (v: string) => (draft.value.updatedOn = fromLocalInput(v)),
 });
+const pickerOpen = ref(false);
+// An uploaded image becomes the cover; its alt text fills an empty description.
+const coverPicked = (item: MediaItem) => {
+  draft.value.coverUrl = item.url;
+  if (!draft.value.coverAlt.trim()) draft.value.coverAlt = item.alt;
+};
 const coverOk = computed(() => /^https?:\/\/\S+$/.test(draft.value.coverUrl));
 const slugChanged = computed(() => draft.value.slug !== props.savedSlug);
+const canonicalValid = computed(() => canonicalOk(draft.value.canonicalUrl));
+// The SEO section opens by itself when the post already has SEO settings.
+const seoOpen = ref(
+  Boolean(draft.value.seoTitle || draft.value.seoDescription || draft.value.canonicalUrl),
+);
 const setUpdatedNow = () => {
   draft.value.updatedOn = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
 };
@@ -54,13 +78,64 @@ const setUpdatedNow = () => {
           />
           <p id="detail-slug-hint" class="field-hint">
             <template v-if="slugChanged && status === 'published'">
-              This post is live. A new slug gives it a new address, and links to
-              <span class="mono">{{ savedSlug }}</span> will stop working.
+              This post is live. A new slug gives it a new address. The old address
+              <span class="mono">{{ savedSlug }}</span> will redirect here.
             </template>
             <template v-else
               >Lowercase words joined by hyphens. Also the file name readers' sites
               use.</template
             >
+          </p>
+          <div v-if="redirects?.length" class="redirects">
+            <p id="detail-redirects-label" class="field-hint">
+              These old addresses redirect to this post:
+            </p>
+            <ul aria-labelledby="detail-redirects-label">
+              <li v-for="from in redirects" :key="from">
+                <span class="mono">{{ from }}</span>
+                <UButton
+                  color="neutral"
+                  variant="ghost"
+                  size="xs"
+                  icon="i-lucide-x"
+                  :aria-label="`Remove the redirect from ${from}`"
+                  @click="emit('removeRedirect', from)"
+                />
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="detail-tags">Tags</label>
+          <UInputTags
+            id="detail-tags"
+            :model-value="draft.tags"
+            :max="maxTags"
+            add-on-blur
+            placeholder="Add a tag, then press Enter"
+            class="w-full"
+            aria-describedby="detail-tags-hint"
+            @update:model-value="(v: string[]) => (draft.tags = normalizeTags(v))"
+          />
+          <p id="detail-tags-hint" class="field-hint">
+            Topics and categories in one list. Lowercase words joined by hyphens, up to
+            {{ maxTags }} tags.
+          </p>
+        </div>
+
+        <div class="field">
+          <label for="detail-author">Author</label>
+          <UInput
+            id="detail-author"
+            v-model="draft.author"
+            class="w-full"
+            :maxlength="maxAuthor"
+            autocomplete="off"
+            aria-describedby="detail-author-hint"
+          />
+          <p id="detail-author-hint" class="field-hint">
+            The name readers see. New posts start with the account that created them.
           </p>
         </div>
 
@@ -74,6 +149,16 @@ const setUpdatedNow = () => {
             placeholder="https://…"
             class="w-full"
           />
+          <div>
+            <UButton
+              size="sm"
+              color="neutral"
+              variant="outline"
+              icon="i-lucide-images"
+              @click="pickerOpen = true"
+              >Upload or choose</UButton
+            >
+          </div>
           <img
             v-if="coverOk"
             :src="draft.coverUrl"
@@ -124,6 +209,93 @@ const setUpdatedNow = () => {
           </p>
         </div>
 
+        <UCollapsible v-model:open="seoOpen" class="seo-section">
+          <UButton
+            color="neutral"
+            variant="ghost"
+            class="seo-toggle"
+            trailing-icon="i-lucide-chevron-down"
+            :aria-expanded="seoOpen"
+            aria-controls="seo-fields"
+            >SEO</UButton
+          >
+          <template #content>
+            <div id="seo-fields" class="details seo-fields">
+              <div class="field">
+                <label for="detail-seo-title">SEO title</label>
+                <UInput
+                  id="detail-seo-title"
+                  v-model="draft.seoTitle"
+                  class="w-full"
+                  :maxlength="seoTitleLimits.max"
+                  aria-describedby="detail-seo-title-hint"
+                />
+                <p
+                  id="detail-seo-title-hint"
+                  class="field-hint counter"
+                  :class="{
+                    'counter-over': overAdvice(draft.seoTitle, seoTitleLimits.advised),
+                  }"
+                >
+                  <span aria-hidden="true">{{
+                    counterLabel(draft.seoTitle, seoTitleLimits.advised)
+                  }}</span>
+                  Shown in search results instead of the title. Search engines usually cut
+                  it off after about {{ seoTitleLimits.advised }} characters.
+                </p>
+              </div>
+              <div class="field">
+                <label for="detail-seo-description">SEO description</label>
+                <textarea
+                  id="detail-seo-description"
+                  v-model="draft.seoDescription"
+                  class="extra-source"
+                  rows="3"
+                  :maxlength="seoDescriptionLimits.max"
+                  aria-describedby="detail-seo-description-hint"
+                  @keydown.enter.prevent
+                />
+                <p
+                  id="detail-seo-description-hint"
+                  class="field-hint counter"
+                  :class="{
+                    'counter-over': overAdvice(
+                      draft.seoDescription,
+                      seoDescriptionLimits.advised,
+                    ),
+                  }"
+                >
+                  <span aria-hidden="true">{{
+                    counterLabel(draft.seoDescription, seoDescriptionLimits.advised)
+                  }}</span>
+                  Shown under the title in search results. Aim for about
+                  {{ seoDescriptionLimits.advised }} characters.
+                </p>
+              </div>
+              <div class="field">
+                <label for="detail-canonical">Canonical URL</label>
+                <UInput
+                  id="detail-canonical"
+                  v-model="draft.canonicalUrl"
+                  type="url"
+                  inputmode="url"
+                  placeholder="https://…"
+                  class="w-full"
+                  :aria-invalid="!canonicalValid"
+                  aria-describedby="detail-canonical-hint"
+                />
+                <p v-if="!canonicalValid" id="detail-canonical-hint" class="field-error">
+                  Use a full https address, such as https://example.com/my-post.
+                </p>
+                <p v-else id="detail-canonical-hint" class="field-hint">
+                  Only when the post also lives at another address that search engines
+                  should prefer.
+                </p>
+              </div>
+            </div>
+          </template>
+        </UCollapsible>
+
         <div class="field">
           <label for="detail-extra">Extra frontmatter</label>
           <textarea
@@ -137,11 +309,11 @@ const setUpdatedNow = () => {
           />
           <p id="detail-extra-hint" class="field-hint">
             YAML for anything else your site reads, such as
-            <span class="mono">sitemap</span> or <span class="mono">seo</span>. Kept
-            exactly as written.
+            <span class="mono">sitemap</span>. Kept exactly as written.
           </p>
         </div>
       </fieldset>
     </template>
   </USlideover>
+  <MediaPicker v-model:open="pickerOpen" @pick="coverPicked" />
 </template>

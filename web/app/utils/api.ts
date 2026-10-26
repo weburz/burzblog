@@ -21,6 +21,9 @@ export const rememberSession = (session: Session) => {
   csrf = session.authenticated ? (session.csrf ?? "") : "";
 };
 
+// 401 answers that mean "try again", not "you were signed out".
+const notExpiry = new Set(["credentials", "code", "challenge"]);
+
 const sessionExpired = () => {
   csrf = "";
   if (typeof window !== "undefined")
@@ -29,7 +32,9 @@ const sessionExpired = () => {
 
 const send = async (path: string, method: string, body: unknown): Promise<Response> => {
   const headers: Record<string, string> = {};
-  if (body !== undefined) headers["Content-Type"] = "application/json";
+  // A form (an upload) sets its own Content-Type, with the multipart boundary.
+  const form = body instanceof FormData;
+  if (body !== undefined && !form) headers["Content-Type"] = "application/json";
   if (method !== "GET" && csrf) headers["X-CSRF-Token"] = csrf;
   try {
     return await fetch(path, {
@@ -37,13 +42,15 @@ const send = async (path: string, method: string, body: unknown): Promise<Respon
       headers,
       credentials: "same-origin",
       cache: "no-store",
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? undefined : form ? body : JSON.stringify(body),
     });
   } catch {
     throw new ApiError(
       0,
       "network",
-      "Cannot reach BurzBlog. Nothing was saved. Check your connection and try again.",
+      method === "GET"
+        ? "Cannot reach BurzBlog. Check your connection and try again."
+        : "Cannot reach BurzBlog. Nothing was saved. Check your connection and try again.",
     );
   }
 };
@@ -61,7 +68,13 @@ export const request = async <T>(
   method = "GET",
   body?: unknown,
 ): Promise<T> => {
-  if (method !== "GET" && !csrf && path !== "/api/login") await refreshCsrf();
+  if (
+    method !== "GET" &&
+    !csrf &&
+    !path.startsWith("/api/login") &&
+    path !== "/api/setup"
+  )
+    await refreshCsrf();
   let response = await send(path, method, body);
   if (response.status === 403 && method !== "GET") {
     // A token rotated by another tab: fetch the current one and retry once.
@@ -80,8 +93,8 @@ export const request = async <T>(
       current?: Post;
     } | null;
     const code = value?.error?.code ?? "request";
-    // A wrong password is a 401 too, but not an expired session.
-    if (response.status === 401 && code !== "credentials") sessionExpired();
+    // A wrong password or code is a 401 too, but not an expired session.
+    if (response.status === 401 && !notExpiry.has(code)) sessionExpired();
     throw new ApiError(
       response.status,
       code,

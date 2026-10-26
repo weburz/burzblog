@@ -64,7 +64,7 @@ func (s *Server) resolve(r *http.Request) (*identity, error) {
 }
 
 // withIdentity attaches the caller if there is one, without requiring it.
-// Export tokens may only call the export, so here they stay anonymous.
+// Export tokens may only read published content, so here they stay anonymous.
 func (s *Server) withIdentity(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := s.resolve(r)
@@ -96,12 +96,12 @@ func (s *Server) write(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		if id.token != nil && id.token.Scope != store.ScopeWrite {
-			fail(w, http.StatusForbidden, "scope", "This token can only download published posts.", "")
+			fail(w, http.StatusForbidden, "scope", "This token can only read published posts.", "")
 			return
 		}
 		if id.session != nil && r.Method != http.MethodGet && r.Method != http.MethodHead {
 			if !s.sameOrigin(r) {
-				fail(w, http.StatusForbidden, "origin", "This request did not come from the BurzBlog page.", "")
+				s.failOrigin(w)
 				return
 			}
 			if !auth.CheckCSRF(id.session, r.Header.Get("X-CSRF-Token")) {
@@ -113,8 +113,9 @@ func (s *Server) write(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// exporter allows any valid token or session; used for reader builds.
-func (s *Server) exporter(next http.HandlerFunc) http.HandlerFunc {
+// reader allows any valid token or session, export tokens included; used for
+// the export and the read-only content API that website builds call.
+func (s *Server) reader(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := s.resolve(r)
 		if errors.Is(err, auth.ErrNoSession) {
@@ -134,6 +135,14 @@ func (s *Server) exporter(next http.HandlerFunc) http.HandlerFunc {
 // non-GET fetch, to match the configured public origin.
 func (s *Server) sameOrigin(r *http.Request) bool {
 	return r.Header.Get("Origin") == s.origin.Scheme+"://"+s.origin.Host
+}
+
+// failOrigin rejects a request from the wrong origin. The configured origin is
+// public, so the message names it: the usual cause is opening the panel as
+// localhost when the server expects 127.0.0.1.
+func (s *Server) failOrigin(w http.ResponseWriter) {
+	fail(w, http.StatusForbidden, "origin",
+		"This request did not come from the BurzBlog page. Open BurzBlog at "+s.origin.Scheme+"://"+s.origin.Host+" and try again.", "")
 }
 
 // Request bodies are small: the largest is one post.

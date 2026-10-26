@@ -2,6 +2,8 @@
 import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
 import type { Settings, Token } from "../types";
 import { errorMessage, request } from "../utils/api";
+import { MIN_PASSWORD, passwordStrength } from "../utils/password-strength";
+import { examplePostUrl, fetchCommand, siteFiles } from "../utils/site";
 import { themeOptions } from "../utils/theme";
 import { editedLabel, exactTime } from "../utils/time";
 
@@ -10,6 +12,9 @@ const toast = useToast();
 const theme = usePreferredTheme();
 const { enabled: shortcutsEnabled } = useEnabledShortcuts();
 
+// The website, backup and deploy sections are for admins; the server refuses
+// authors there, so they are not shown (nor their data fetched).
+const { state: session, isAdmin } = useCurrentSession();
 const settings = ref<Settings | null>(null);
 const tokens = ref<Token[] | null>(null);
 const error = ref("");
@@ -17,7 +22,7 @@ const error = ref("");
 const load = async () => {
   try {
     const [s, t] = await Promise.all([
-      request<Settings>("/api/settings"),
+      isAdmin.value ? request<Settings>("/api/settings") : null,
       request<{ items: Token[] }>("/api/tokens"),
     ]);
     settings.value = s;
@@ -34,6 +39,7 @@ const next = ref("");
 const repeat = ref("");
 const passwordBusy = ref(false);
 const passwordError = ref("");
+const strength = computed(() => passwordStrength(next.value));
 const mismatch = computed(() => repeat.value !== "" && next.value !== repeat.value);
 const changePassword = async () => {
   if (mismatch.value) return;
@@ -151,6 +157,8 @@ const exportCommand = computed(
   () =>
     `curl -fsSL -H "Authorization: Bearer $BURZBLOG_TOKEN" \\\n  ${origin.value}/api/export.tar.gz | tar -xz -C content/blogs`,
 );
+const site = computed(() => settings.value?.site);
+const feedFiles = computed(() => (site.value ? siteFiles(site.value) : []));
 const scopeUse = (t: Token) =>
   t.lastUsedAt ? `Last used ${editedLabel(t.lastUsedAt).toLowerCase()}` : "Never used";
 </script>
@@ -160,8 +168,8 @@ const scopeUse = (t: Token) =>
     <div class="page-head">
       <div>
         <h1 class="page-title">Settings</h1>
-        <p v-if="settings" class="muted">
-          Signed in as {{ settings.username }} on {{ settings.origin }}
+        <p class="muted">
+          Signed in as {{ session.username }} ({{ session.role }}) on {{ origin }}
         </p>
       </div>
     </div>
@@ -220,7 +228,7 @@ const scopeUse = (t: Token) =>
       </div>
     </section>
 
-    <section class="settings-section" aria-labelledby="site-heading">
+    <section v-if="isAdmin" class="settings-section" aria-labelledby="site-heading">
       <div class="settings-aside">
         <h2 id="site-heading" class="section-title">Your website</h2>
         <p class="muted">
@@ -349,10 +357,54 @@ const scopeUse = (t: Token) =>
             </p>
           </div>
         </div>
+
+        <h3 class="sub-title">3. Feeds and sitemap</h3>
+        <div
+          v-if="settings"
+          class="deploy-card"
+          :data-state="site?.configured ? 'ok' : 'none'"
+        >
+          <div v-if="site?.configured">
+            <p class="deploy-title">
+              <UIcon name="i-lucide-rss" class="size-4" />Feeds are ready for
+              {{ site.url }}
+            </p>
+            <p class="muted">
+              Posts link to <span class="mono">{{ examplePostUrl(site) }}</span
+              >. Your site's build can fetch these files with a build token, and the
+              download from step 1 contains them too:
+            </p>
+            <ul class="feed-list">
+              <li v-for="file in feedFiles" :key="file.path">
+                <CopyField
+                  :label="file.name"
+                  multiline
+                  :value="fetchCommand(origin, file)"
+                />
+              </li>
+            </ul>
+          </div>
+          <div v-else>
+            <p class="deploy-title">
+              <UIcon name="i-lucide-circle-pause" class="size-4" />Not set up yet
+            </p>
+            <p class="muted">
+              An RSS, Atom and JSON feed and a sitemap are made for your website to
+              publish, but they need its public address for absolute links. Have whoever
+              runs this BurzBlog server set
+              <span class="mono">BURZBLOG_SITE_URL</span> (for example
+              <span class="mono">https://example.com</span>), and optionally
+              <span class="mono">BURZBLOG_SITE_TITLE</span>,
+              <span class="mono">BURZBLOG_POST_PATH</span> and
+              <span class="mono">BURZBLOG_TAG_PATH</span>, then restart BurzBlog. It is
+              read-only here.
+            </p>
+          </div>
+        </div>
       </div>
     </section>
 
-    <section class="settings-section" aria-labelledby="backup-heading">
+    <section v-if="isAdmin" class="settings-section" aria-labelledby="backup-heading">
       <div class="settings-aside">
         <h2 id="backup-heading" class="section-title">Backup</h2>
         <p class="muted">
@@ -429,48 +481,52 @@ const scopeUse = (t: Token) =>
         <input
           type="text"
           autocomplete="username"
-          :value="settings?.username"
+          :value="session.username"
           hidden
           readonly
         />
         <div class="field">
           <label for="pw-current">Current password</label>
-          <UInput
+          <PasswordInput
             id="pw-current"
             v-model="current"
-            type="password"
             autocomplete="current-password"
             required
-            class="w-full"
           />
         </div>
         <div class="field">
           <label for="pw-next">New password</label>
-          <UInput
+          <PasswordInput
             id="pw-next"
             v-model="next"
-            type="password"
             autocomplete="new-password"
             required
-            minlength="12"
-            class="w-full"
-            aria-describedby="pw-next-hint"
+            :minlength="MIN_PASSWORD"
+            describedby="pw-next-hint"
           />
           <p id="pw-next-hint" class="field-hint">
-            At least 12 characters. A few unrelated words work well.
+            At least {{ MIN_PASSWORD }} characters. A few unrelated words work well.
+          </p>
+          <p
+            class="field-hint strength"
+            :class="`strength-${strength.level}`"
+            role="status"
+            aria-live="polite"
+          >
+            <template v-if="strength.level !== 'empty'"
+              >{{ strength.length }} characters. {{ strength.hint }}</template
+            >
           </p>
         </div>
         <div class="field">
           <label for="pw-repeat">Repeat new password</label>
-          <UInput
+          <PasswordInput
             id="pw-repeat"
             v-model="repeat"
-            type="password"
             autocomplete="new-password"
             required
-            class="w-full"
-            :color="mismatch ? 'error' : undefined"
-            :aria-describedby="mismatch ? 'pw-repeat-error' : undefined"
+            :invalid="mismatch"
+            :describedby="mismatch ? 'pw-repeat-error' : undefined"
           />
           <p v-if="mismatch" id="pw-repeat-error" class="field-error">
             The two new passwords are different.
@@ -484,6 +540,8 @@ const scopeUse = (t: Token) =>
         </div>
       </form>
     </section>
+
+    <TwoFactorSection />
 
     <p v-if="settings" class="list-foot muted">BurzBlog {{ settings.version }}</p>
 

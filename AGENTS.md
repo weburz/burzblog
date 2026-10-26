@@ -23,7 +23,8 @@ never commit or hand-edit it.
 - Every change to a post goes through `store.UpdatePost` with the version the
   caller started from: no silent overwrites, previous content kept as a revision.
 - Never add an unauthenticated content route. Browser changes need Origin + CSRF;
-  export tokens may only call the export.
+  export tokens may only read published content (the export and
+  `GET /api/content/*`).
 - Frontmatter keys BurzBlog does not model must round-trip unchanged (`extra`).
 - The deploy hook URL is secret: never return or log it.
 - Go: Google style, explicit errors with actionable messages, standard `testing`

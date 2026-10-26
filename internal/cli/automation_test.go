@@ -12,7 +12,7 @@ import (
 // signedIn creates an account and signs the CLI in.
 func (e *env) signedIn() {
 	e.t.Helper()
-	e.must("correct horse battery\n", "user", "add", "ada")
+	e.must("correct horse battery\n", "user", "add", "ada", "--role", "admin")
 	e.must("correct horse battery\n", "login", e.url, "-u", "ada")
 }
 

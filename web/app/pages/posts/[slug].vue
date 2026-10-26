@@ -4,6 +4,7 @@ import type { Post, PostDraft } from "../../types";
 import { ApiError, errorMessage, request } from "../../utils/api";
 import { returnFocusTo } from "../../utils/focus";
 import { countWords, lengthLabel } from "../../utils/markdown";
+import { sameDraft } from "../../utils/metadata";
 import { diffTooLong, lineDiff } from "../../utils/diff";
 import type { PaletteCommand } from "../../utils/palette";
 import {
@@ -64,9 +65,11 @@ onUnmounted(() => undoToast !== undefined && toast.remove(undoToast));
 const shortcutsOpen = useState("shortcuts-open", () => false);
 const { focused, toggle: toggleFocus } = useFocusedWriting();
 const titleField = ref<HTMLTextAreaElement | null>(null);
-const editor = ref<{ focus: () => void; element: HTMLTextAreaElement | null } | null>(
-  null,
-);
+const editor = ref<{
+  focus: () => void;
+  focusStart: () => void;
+  element: HTMLTextAreaElement | null;
+} | null>(null);
 
 const editable = (p: Post): PostDraft => ({
   slug: p.slug,
@@ -76,11 +79,15 @@ const editable = (p: Post): PostDraft => ({
   coverUrl: p.coverUrl,
   coverAlt: p.coverAlt,
   extra: p.extra,
+  tags: [...p.tags],
+  author: p.author,
+  seoTitle: p.seoTitle,
+  seoDescription: p.seoDescription,
+  canonicalUrl: p.canonicalUrl,
   publishedOn: p.publishedOn,
   updatedOn: p.updatedOn,
 });
-const same = (a: PostDraft, b: PostDraft) =>
-  (Object.keys(a) as (keyof PostDraft)[]).every((k) => (a[k] ?? "") === (b[k] ?? ""));
+const same = sameDraft;
 
 const dirty = computed(() =>
   Boolean(post.value && draft.value && !same(draft.value, editable(post.value))),
@@ -157,12 +164,48 @@ const load = async () => {
   }
 };
 onMounted(load);
+
+// The old slugs that redirect to this post, shown in its settings.
+const redirects = ref<string[]>([]);
+watch(
+  () => post.value?.slug,
+  async (slug) => {
+    if (!slug) return;
+    try {
+      const found = await request<{ items: string[] }>(
+        `/api/posts/${encodeURIComponent(slug)}/redirects`,
+      );
+      if (post.value?.slug === slug) redirects.value = found.items;
+    } catch {
+      redirects.value = [];
+    }
+  },
+  { immediate: true },
+);
+const removeRedirect = async (from: string) => {
+  if (!post.value) return;
+  try {
+    await request(
+      `/api/posts/${encodeURIComponent(post.value.slug)}/redirects/${encodeURIComponent(from)}`,
+      "DELETE",
+    );
+    redirects.value = redirects.value.filter((old) => old !== from);
+    toast.add({ title: "Redirect removed", color: "success" });
+  } catch (cause) {
+    toast.add({
+      title: "Could not remove the redirect",
+      description: errorMessage(cause),
+      color: "error",
+    });
+  }
+};
 watch(loadError, (message) => (editorFailed.value = Boolean(message)));
 onUnmounted(() => (editorFailed.value = false));
 
 const restoreBackup = () => {
   if (!recovered.value || !post.value) return;
-  draft.value = { ...recovered.value.draft };
+  // A backup from before tags and SEO existed lacks those fields.
+  draft.value = { ...editable(post.value), ...recovered.value.draft };
   // Saving checks this version, so newer work on the server shows as a conflict.
   if (recovered.value.version !== post.value.version)
     post.value = { ...post.value, version: recovered.value.version };
@@ -308,6 +351,8 @@ const schedule = async (at: string) => {
   if (await action("schedule", false, { at })) scheduleOpen.value = false;
 };
 
+const { isAdmin } = useCurrentSession();
+
 const remove = () =>
   ask({
     title: "Delete this post for good?",
@@ -434,12 +479,14 @@ const menu = computed(() => {
       icon: "i-lucide-archive-restore",
       onSelect: () => action("restore"),
     });
-    status.push({
-      label: "Delete post…",
-      icon: "i-lucide-trash-2",
-      color: "error" as const,
-      onSelect: fromMenu(remove),
-    });
+    // Only admins may delete; the server refuses authors anyway.
+    if (isAdmin.value)
+      status.push({
+        label: "Delete post…",
+        icon: "i-lucide-trash-2",
+        color: "error" as const,
+        onSelect: fromMenu(remove),
+      });
   }
   return [
     [
@@ -680,8 +727,22 @@ const grow = (event: Event) => {
 const titleKey = (event: KeyboardEvent) => {
   if (event.key === "Enter") {
     event.preventDefault();
-    editor.value?.focus();
+    editor.value?.focusStart();
   }
+};
+// The description is one line: Enter moves on to the body, and pasted line
+// breaks become spaces.
+const descriptionKey = (event: KeyboardEvent) => {
+  if (event.key === "Enter" && !event.isComposing) {
+    event.preventDefault();
+    editor.value?.focusStart();
+  }
+};
+const descriptionInput = (event: Event) => {
+  const el = event.target as HTMLTextAreaElement;
+  if (/[\r\n]/.test(el.value) && draft.value)
+    draft.value.description = el.value.replace(/\s*[\r\n]+\s*/g, " ");
+  grow(event);
 };
 
 // Ctrl/Cmd+S saves from anywhere on the page, Ctrl/Cmd+Shift+F toggles focus
@@ -923,7 +984,7 @@ const primary = computed(() => {
 
     <div v-if="conflict" class="editor-notice editor-notice-warn" role="alert">
       <UIcon name="i-lucide-git-compare" class="size-5 shrink-0" />
-      <div class="flex-1">
+      <div class="min-w-0 flex-1">
         <p>
           <strong
             >{{ conflict.updatedBy || "Someone" }} saved a newer version
@@ -1025,6 +1086,7 @@ const primary = computed(() => {
       >
         <div class="write-column">
           <textarea
+            id="post-title"
             ref="titleField"
             v-model="draft.title"
             class="title-field"
@@ -1037,6 +1099,7 @@ const primary = computed(() => {
             @keydown="titleKey"
           />
           <textarea
+            id="post-description"
             v-model="draft.description"
             class="description-field"
             rows="1"
@@ -1044,7 +1107,8 @@ const primary = computed(() => {
             aria-label="Description"
             maxlength="2000"
             :readonly="archived"
-            @input="grow"
+            @input="descriptionInput"
+            @keydown="descriptionKey"
           />
           <MarkdownEditor ref="editor" v-model="draft.body" :readonly="archived" />
         </div>
@@ -1094,7 +1158,9 @@ const primary = computed(() => {
       :status="post.status"
       :saved-slug="post.slug"
       :readonly="archived"
+      :redirects="redirects"
       :close-focus="closeFocus"
+      @remove-redirect="removeRedirect"
     />
     <HistoryPanel
       v-model:open="historyOpen"

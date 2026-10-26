@@ -108,7 +108,7 @@ test("writing in the browser and the terminal never loses work", async ({
   await page.getByRole("button", { name: "Save", exact: true }).click();
   const reauth = page.getByRole("dialog", { name: "Your session ended" });
   await expect(reauth).toBeVisible();
-  await reauth.getByLabel("Password").fill(password);
+  await reauth.getByLabel("Password", { exact: true }).fill(password);
   await reauth.getByRole("button", { name: "Sign in" }).click();
   await expect(reauth).toBeHidden();
   await expect(body).toHaveValue("# Hello\n\nUnsaved thought.\n");

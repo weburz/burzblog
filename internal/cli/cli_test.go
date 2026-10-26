@@ -85,7 +85,7 @@ func (e *env) editor(script string) {
 
 func TestTerminalWorkflow(t *testing.T) {
 	e := newEnv(t)
-	e.must("correct horse battery\n", "user", "add", "ada")
+	e.must("correct horse battery\n", "user", "add", "ada", "--role", "admin")
 	if out := e.must("", "user", "list"); !strings.Contains(out, "ada") {
 		t.Errorf("user list = %q", out)
 	}
@@ -225,7 +225,7 @@ func TestCount(t *testing.T) {
 
 func TestListFooterPluralizes(t *testing.T) {
 	e := newEnv(t)
-	e.must("correct horse battery\n", "user", "add", "ada")
+	e.must("correct horse battery\n", "user", "add", "ada", "--role", "admin")
 	e.must("correct horse battery\n", "login", e.url, "-u", "ada")
 	e.must("", "new", "First draft", "--no-edit")
 	if out := e.must("", "list"); !strings.Contains(out, "1 draft (0 scheduled)") || strings.Contains(out, "1 drafts") {
@@ -239,7 +239,7 @@ func TestListFooterPluralizes(t *testing.T) {
 
 func TestBackup(t *testing.T) {
 	e := newEnv(t)
-	e.must("correct horse battery\n", "user", "add", "ada")
+	e.must("correct horse battery\n", "user", "add", "ada", "--role", "admin")
 	e.must("correct horse battery\n", "login", e.url, "-u", "ada")
 	e.must("", "new", "Only a draft", "--no-edit")
 	e.must("", "new", "Live one", "--no-edit")
@@ -248,7 +248,7 @@ func TestBackup(t *testing.T) {
 	e.must("", "archive", "gone")
 
 	dir := filepath.Join(t.TempDir(), "backup")
-	if out := e.must("", "backup", dir); !strings.Contains(out, "Backed up 3 posts") {
+	if out := e.must("", "backup", dir); !strings.Contains(out, "Backed up 3 posts and 0 uploads") {
 		t.Errorf("backup = %q", out)
 	}
 	for name, status := range map[string]string{
@@ -290,7 +290,7 @@ func TestReadBackup(t *testing.T) {
 	}
 	readme := tar.Header{Name: "README.txt"}
 
-	files, err := readBackup(archive(readme, tar.Header{Name: "draft/a.md"}, tar.Header{Name: "archived/b-2.md"}))
+	files, err := readBackup(archive(readme, tar.Header{Name: "draft/a.md"}, tar.Header{Name: "archived/b-2.md"}), nil)
 	if err != nil || len(files) != 3 {
 		t.Fatalf("valid backup = %v %v", files, err)
 	}
@@ -310,18 +310,40 @@ func TestReadBackup(t *testing.T) {
 		"no readme":      {{Name: "draft/a.md"}},
 	}
 	for name, entries := range bad {
-		if _, err := readBackup(archive(entries...)); err == nil {
+		if _, err := readBackup(archive(entries...), nil); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
 	}
-	if _, err := readBackup(strings.NewReader("not gzip")); err == nil {
+	// Uploads are handed to the callback, only with a valid name, only when asked for.
+	upload := tar.Header{Name: "media/" + strings.Repeat("ab", 16) + ".png"}
+	var saved []string
+	files, err = readBackup(archive(readme, tar.Header{Name: "draft/a.md"}, upload), func(name string, data []byte) error {
+		saved = append(saved, name+"="+string(data))
+		return nil
+	})
+	if err != nil || len(files) != 2 || len(saved) != 1 || saved[0] != strings.Repeat("ab", 16)+".png=x\n" {
+		t.Fatalf("backup with an upload = %v %v %v", files, saved, err)
+	}
+	if _, err := readBackup(archive(readme, upload), nil); err == nil {
+		t.Error("accepted an upload nobody asked for")
+	}
+	for name, h := range map[string]tar.Header{
+		"traversal": {Name: "media/../evil.png"}, "bad name": {Name: "media/a.png"}, "svg": {Name: "media/" + strings.Repeat("ab", 16) + ".svg"},
+		"nested":  {Name: "media/x/" + strings.Repeat("ab", 16) + ".png"},
+		"symlink": {Name: upload.Name, Typeflag: tar.TypeSymlink, Linkname: "/etc/passwd"},
+	} {
+		if _, err := readBackup(archive(readme, h), func(string, []byte) error { return nil }); err == nil {
+			t.Errorf("media %s: accepted", name)
+		}
+	}
+	if _, err := readBackup(strings.NewReader("not gzip"), nil); err == nil {
 		t.Error("accepted a file that is not gzip")
 	}
 }
 
 func TestExportWithEnvironmentToken(t *testing.T) {
 	e := newEnv(t)
-	e.must("correct horse battery\n", "user", "add", "ci")
+	e.must("correct horse battery\n", "user", "add", "ci", "--role", "admin")
 	e.must("correct horse battery\n", "login", e.url, "-u", "ci")
 	e.must("", "new", "Published thing", "--no-edit")
 	e.must("", "publish", "published-thing")
@@ -339,7 +361,7 @@ func TestExportWithEnvironmentToken(t *testing.T) {
 	if !strings.Contains(out, "Exported 1") {
 		t.Errorf("export with env token = %q", out)
 	}
-	if _, errOut, code := e.run("", "list"); code == 0 || !strings.Contains(errOut, "only download published posts") {
+	if _, errOut, code := e.run("", "list"); code == 0 || !strings.Contains(errOut, "only read published posts") {
 		t.Errorf("export token listing: %d %q", code, errOut)
 	}
 }
@@ -368,7 +390,7 @@ func touch(p *post.Post) error {
 
 func TestPasswdRevokesTerminalLogins(t *testing.T) {
 	e := newEnv(t)
-	e.must("correct horse battery\n", "user", "add", "ada")
+	e.must("correct horse battery\n", "user", "add", "ada", "--role", "admin")
 	e.must("correct horse battery\n", "login", e.url, "-u", "ada")
 	u, _ := e.store.UserByName(context.Background(), "ada")
 	svc, _ := auth.New(e.store)

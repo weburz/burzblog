@@ -12,9 +12,11 @@ import (
 	"net/url"
 	"runtime/debug"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/weburz/burzblog/internal/auth"
+	"github.com/weburz/burzblog/internal/media"
 	"github.com/weburz/burzblog/internal/store"
 )
 
@@ -25,6 +27,22 @@ type Config struct {
 	Origin string
 	// DeployHook is POSTed after published content changes (optional).
 	DeployHook string
+	// SiteURL is the public address of the website that serves the posts,
+	// e.g. https://example.com. Feeds and the sitemap need it for absolute
+	// links; without it they answer 409 and the export leaves them out.
+	SiteURL string
+	// SiteTitle, SiteDescription and SiteLanguage describe the website in
+	// feeds. They default to the site's host, the title and "en".
+	SiteTitle, SiteDescription, SiteLanguage string
+	// PostPath is where a post lives on the website, with {slug} in it
+	// (default /blog/{slug}). TagPath, with {tag}, adds tag pages to the
+	// sitemap when set.
+	PostPath, TagPath string
+	// Media keeps uploaded files. Nil turns uploads off.
+	Media media.Storage
+	// MaxUpload is the largest accepted upload in bytes (default
+	// DefaultMaxUpload).
+	MaxUpload int64
 	// Panel is the built browser panel (index.html and _nuxt/). Nil serves
 	// a short notice instead.
 	Panel fs.FS
@@ -37,6 +55,7 @@ type Config struct {
 type Server struct {
 	cfg       Config
 	origin    *url.URL
+	site      *site
 	store     *store.Store
 	auth      *auth.Service
 	panel     *panel
@@ -44,6 +63,9 @@ type Server struct {
 	scheduler *scheduler
 	log       *slog.Logger
 	mux       *http.ServeMux
+	// mediaMu keeps an upload and a delete of the same bytes from
+	// interleaving, which could leave a record whose file was just removed.
+	mediaMu sync.Mutex
 }
 
 // New builds a Server.
@@ -64,6 +86,9 @@ func New(cfg Config, s *store.Store, a *auth.Service) (*Server, error) {
 		if err != nil || (hook.Scheme != "https" && hook.Scheme != "http") || hook.Host == "" {
 			return nil, errors.New("deploy hook must be a full http(s) URL")
 		}
+	}
+	if srv.site, err = newSite(cfg); err != nil {
+		return nil, err
 	}
 	srv.deploy = newDeployer(cfg.DeployHook, cfg.Logger)
 	srv.scheduler = newScheduler()
@@ -104,7 +129,10 @@ func (s *Server) routes() {
 	m.HandleFunc("GET /healthz", s.healthz)
 
 	m.HandleFunc("GET /api/session", s.withIdentity(s.session))
+	m.HandleFunc("GET /api/setup", s.setupStatus)
+	m.HandleFunc("POST /api/setup", s.setup)
 	m.HandleFunc("POST /api/login", s.login)
+	m.HandleFunc("POST /api/login/totp", s.loginTOTP)
 	m.HandleFunc("POST /api/logout", s.logout)
 	m.HandleFunc("POST /api/auth/token", s.issueCLIToken)
 
@@ -112,23 +140,45 @@ func (s *Server) routes() {
 	m.HandleFunc("POST /api/tokens", s.write(s.createToken))
 	m.HandleFunc("DELETE /api/tokens/{id}", s.write(s.deleteToken))
 	m.HandleFunc("POST /api/account/password", s.write(s.changePassword))
-	m.HandleFunc("GET /api/settings", s.write(s.settings))
-	m.HandleFunc("POST /api/deploy", s.write(s.triggerDeploy))
+	m.HandleFunc("GET /api/account/2fa", s.write(s.twoFactorStatus))
+	m.HandleFunc("POST /api/account/2fa/start", s.write(s.twoFactorStart))
+	m.HandleFunc("POST /api/account/2fa/confirm", s.write(s.twoFactorConfirm))
+	m.HandleFunc("POST /api/account/2fa/disable", s.write(s.twoFactorDisable))
+	m.HandleFunc("GET /api/settings", s.admin(s.settings))
+	m.HandleFunc("POST /api/deploy", s.admin(s.triggerDeploy))
+	m.HandleFunc("GET /api/audit", s.admin(s.listAudit))
 
 	m.HandleFunc("GET /api/posts", s.write(s.listPosts))
+	m.HandleFunc("GET /api/tags", s.write(s.listTags))
 	m.HandleFunc("POST /api/posts", s.write(s.createPost))
 	m.HandleFunc("GET /api/posts/{slug}", s.write(s.getPost))
 	m.HandleFunc("PUT /api/posts/{slug}", s.write(s.savePost))
-	m.HandleFunc("DELETE /api/posts/{slug}", s.write(s.deletePost))
+	m.HandleFunc("DELETE /api/posts/{slug}", s.admin(s.deletePost))
 	m.HandleFunc("POST /api/posts/{slug}/{action}", s.write(s.postAction))
 	m.HandleFunc("GET /api/posts/{slug}/markdown", s.write(s.getMarkdown))
 	m.HandleFunc("PUT /api/posts/{slug}/markdown", s.write(s.putMarkdown))
 	m.HandleFunc("GET /api/posts/{slug}/revisions", s.write(s.listRevisions))
 	m.HandleFunc("GET /api/posts/{slug}/revisions/{version}", s.write(s.getRevision))
 	m.HandleFunc("POST /api/posts/{slug}/revisions/{version}/restore", s.write(s.restoreRevision))
+	m.HandleFunc("GET /api/posts/{slug}/redirects", s.write(s.listPostRedirects))
+	m.HandleFunc("DELETE /api/posts/{slug}/redirects/{from}", s.write(s.deleteRedirect))
 	m.HandleFunc("POST /api/preview", s.write(s.preview))
-	m.HandleFunc("GET /api/export.tar.gz", s.exporter(s.export))
-	m.HandleFunc("GET /api/backup.tar.gz", s.write(s.backup))
+	m.HandleFunc("GET /api/media", s.write(s.listMedia))
+	m.HandleFunc("POST /api/media", s.write(s.uploadMedia))
+	m.HandleFunc("DELETE /api/media/{id}", s.write(adminOnly(s.deleteMedia)))
+	m.HandleFunc("GET /api/export.tar.gz", s.reader(adminOnly(s.export)))
+	m.HandleFunc("GET /api/content/posts", s.reader(s.contentList))
+	m.HandleFunc("GET /api/content/posts/{slug}", s.reader(s.contentPost))
+	m.HandleFunc("GET /api/content/posts/{slug}/html", s.reader(s.contentHTML))
+	m.HandleFunc("GET /api/content/tags", s.reader(s.contentTags))
+	for _, f := range feedFormats {
+		m.HandleFunc("GET /api/content/"+f.file, s.reader(s.contentFeed(f)))
+	}
+	m.HandleFunc("GET /api/content/"+sitemapFile, s.reader(s.contentSitemap))
+	m.HandleFunc("GET /api/content/redirects", s.reader(s.contentRedirects))
+	m.HandleFunc("GET /api/backup.tar.gz", s.admin(s.backup))
+
+	m.HandleFunc("GET "+mediaPrefix+"{name}", s.serveMedia)
 
 	m.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusNotFound, "not_found", "There is no such API endpoint.", "")

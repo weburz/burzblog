@@ -59,6 +59,13 @@ burzblog login https://blog.example.com      # asks for username and password
 burzblog whoami
 ```
 
+If the account uses two-factor sign-in, `login` asks for the code after the
+password (a recovery code works too). Without a terminal, pass it with
+`--code 123456` or the `BURZBLOG_TOTP` environment variable, or put it on the
+line after the password when reading from standard input. Tokens that already
+exist keep working when two-factor sign-in is turned on: the token is the
+second factor. Only a new `login` needs the code.
+
 `login` creates an API token named after your computer and stores it in
 `~/.config/burzblog/config.json` (mode `0600`). It appears in the panel under
 **Settings → Connected computers**, where it can be revoked. `burzblog logout`
@@ -70,8 +77,8 @@ tells you the address to use, for example `burzblog login https://blog.example.c
 ## Everyday commands
 
 ```sh
-burzblog list                          # newest first; --status draft|scheduled|published|archived, --search text,
-                                       # --sort updated|published|title|created (`ls` works too)
+burzblog list                          # newest first; --status draft|scheduled|published|archived, --search text (also in post bodies),
+                                       # --sort updated|published|title|created, --tag name (`ls` works too)
 burzblog new "Understanding Go interfaces"   # creates a draft and opens it in your editor
                                        # (only in a terminal; --no-edit skips it, --slug sets the URL name)
 burzblog edit understanding-go-interfaces
@@ -102,6 +109,14 @@ The file looks like this:
 title: Understanding Go interfaces
 description: Small interfaces, accepted where they are used.
 status: draft
+tags:
+  - go
+  - api-design
+author: Ada Lovelace
+seo:
+  title: Go interfaces explained
+  description: Why small interfaces make Go code easier to change.
+canonical: https://example.com/blog/go-interfaces
 timestamps:
   publishedOn: 2026-10-24T09:30:00Z
 coverImage:
@@ -118,8 +133,16 @@ The post body in Markdown.
   `published` publishes the post when you save.
 - The slug is the post's name on the server and the file name, so BurzBlog
   does not write it into the frontmatter. A `slug` key you add must match.
-- Any other keys (`sitemap`, `seo`, ...) are kept exactly as written and passed
-  through to your website.
+- `tags` is a list of lowercase words with hyphens (`Machine Learning` is saved
+  as `machine-learning`), at most 20 tags of 40 characters each, in your order;
+  it is also where categories go. `tags: go, web` (one comma-separated line)
+  is accepted too. `author` is a display name; `burzblog new` fills it with
+  your account name. `seo.title` and `seo.description` are for search engines
+  and social cards, and `canonical` is an absolute `https://` address. All of
+  them are optional and left out of the file when empty. A file that leaves
+  out `author` clears the post's author when you push it.
+- Any other keys (`sitemap`, ...) are kept exactly as written and passed
+  through to your website, and so are other keys under `seo` (`robots`, ...).
 
 ## Your own tools: pull and push
 
@@ -221,8 +244,8 @@ burzblog import content/blog --dry-run
 The inverse of `export`: bring posts from a static site repository, for example
 a Nuxt Content `content/blog/` folder of `<slug>.md` files, into BurzBlog. The
 slug is the frontmatter `slug`, or the file name without `.md`. The title,
-description, `timestamps`, `coverImage` and any other frontmatter keys are
-kept. A file with `status: published` is imported as published; a file without
+description, `tags`, `author`, `seo`, `canonical`, `timestamps`, `coverImage`
+and any other frontmatter keys are kept. A file with `status: published` is imported as published; a file without
 a status becomes a draft. `--draft` imports everything as a draft.
 If the frontmatter `slug` differs from the file name, a warning is printed (and
 included as `"warning"` in `--json`), and with `--update` the file is refused so
@@ -254,7 +277,22 @@ Writes every post, drafts and archived ones too, to
 `<dir>/<status>/<slug>.md` with a `README.txt`. Restore a file with
 `burzblog push <file>.md`. History is not included; the database file is the
 complete backup (see [self-hosting](self-hosting.md#backups)). The panel offers
-the same download under **Settings → Backup**.
+the same download under **Settings → Backup**. Backups and `burzblog export`
+need an admin account: an author gets a "needs an admin" error (exit code `1`,
+JSON `error.code` `role`).
+
+## Renamed posts: redirects
+
+```sh
+burzblog redirects            # FROM and TO, one line per old slug
+burzblog redirects --json     # {"items":[{"from":"old-slug","to":"new-slug"}]}
+```
+
+Lists the old slugs of renamed published posts and the slug each has now, the
+same list a website gets from `GET /api/content/redirects`. `burzblog export`
+also writes it to `redirects.json` in the output folder. Rename a post by
+changing its slug in the panel's post settings; that is also where a redirect is
+removed.
 
 ## Build machines
 
@@ -265,7 +303,7 @@ instead of logging in:
 BURZBLOG_SERVER=https://blog.example.com BURZBLOG_TOKEN=bzb_... burzblog export --out content/blogs --clean
 ```
 
-Build tokens can only download published posts. See [publishing](publishing.md).
+Build tokens can only read published posts. See [publishing](publishing.md).
 
 ## Scripts and AI agents
 
@@ -287,32 +325,36 @@ burzblog login https://blog.example.com -u agent      # once, asks for the passw
 python3 -c 'import json,os; print(json.load(open(os.path.expanduser("~/.config/burzblog/config.json")))["token"])'
 
 export BURZBLOG_SERVER=https://blog.example.com
-export BURZBLOG_TOKEN=bzb_...        # a write token; build tokens only work for `export`
+export BURZBLOG_TOKEN=bzb_...        # a write token; build tokens only work for `export` and the content API
 burzblog whoami --json
 ```
 
 The environment wins over the stored login. `burzblog login` itself can also
-run unattended: `echo "$PASSWORD" | burzblog login https://blog.example.com -u ada --password-stdin`.
+run unattended: `echo "$PASSWORD" | burzblog login https://blog.example.com -u ada --password-stdin`
+(add `--code "$CODE"` or `BURZBLOG_TOTP` for an account with two-factor sign-in; a
+code is valid once, so unattended logins for such accounts need a recovery code
+or a human).
 
 ### JSON output
 
 `--json` is a global flag, so it works the same on every command and always
 means one JSON document on standard output (one line). It is supported by
 `list`, `whoami`, `new`, `pull`, `push`, `diff`, `status`, `publish`,
-`unpublish`, `archive`, `restore`, `schedule`, `unschedule`, `backup` and
-`import`. Other commands ignore it and print their usual text, but their
+`unpublish`, `archive`, `restore`, `schedule`, `unschedule`, `backup`,
+`import` and `redirects`. Other commands ignore it and print their usual text, but their
 failures are still JSON. `new` never opens an editor with `--json`.
 
 | Command | Output |
 |---|---|
-| `list` | `{"items":[{"slug","title","description","status","words","publishedOn","publishAt","updatedAt","updatedBy","version"}],"counts":{"draft","published","archived","scheduled"}}`; `items` is `[]` when nothing matches |
+| `list` | `{"items":[{"slug","title","description","status","words","tags","author","publishedOn","publishAt","updatedAt","updatedBy","version"}],"counts":{"draft","published","archived","scheduled"}}`; `items` is `[]` when nothing matches |
 | `whoami` | `{"username","server"}` |
-| `new`, `publish`, `unpublish`, `archive`, `restore`, `schedule`, `unschedule` | the post: `{"slug","title","description","status","publishedOn","publishAt","updatedAt","updatedBy","version"}` |
+| `new`, `publish`, `unpublish`, `archive`, `restore`, `schedule`, `unschedule` | the post: `{"slug","title","description","status","tags","author","publishedOn","publishAt","updatedAt","updatedBy","version"}` |
 | `push` | the same, plus `"created"` (`true` if the post did not exist) |
 | `pull` | `{"slug","version","path"}`; with `-o -` it is `{"slug","version","markdown"}` instead of the raw file |
 | `diff` | `{"slug","baseVersion","serverVersion","stale","identical","diff"}`; exit `1` when different |
 | `status` | `{"dir","files":[{"file","slug","state","baseVersion","serverVersion"}]}` |
 | `backup` | `{"dir","posts"}` |
+| `redirects` | `{"items":[{"from","to"}]}`; `items` is `[]` when there are none |
 
 The field names are the HTTP API's (see [api.md](api.md#posts)); bodies are
 never included. `publishedOn` is `null` until a post is published, and
@@ -320,10 +362,10 @@ never included. `publishedOn` is `null` until a post is published, and
 
 ```sh
 $ burzblog list --status draft --json
-{"items":[{"slug":"release-notes","title":"Release notes","description":"","status":"draft","words":212,"publishedOn":null,"publishAt":null,"updatedAt":"2026-10-25T09:12:00Z","updatedBy":"agent","version":3}],"counts":{"archived":0,"draft":1,"published":4,"scheduled":0}}
+{"items":[{"slug":"release-notes","title":"Release notes","description":"","status":"draft","words":212,"tags":["release"],"author":"agent","publishedOn":null,"publishAt":null,"updatedAt":"2026-10-25T09:12:00Z","updatedBy":"agent","version":3}],"counts":{"archived":0,"draft":1,"published":4,"scheduled":0}}
 
 $ burzblog new "Release notes" --body-file notes.md --json
-{"slug":"release-notes","title":"Release notes","description":"","status":"draft","publishedOn":null,"publishAt":null,"updatedAt":"2026-10-25T09:12:00Z","updatedBy":"agent","version":2}
+{"slug":"release-notes","title":"Release notes","description":"","status":"draft","tags":[],"author":"agent","publishedOn":null,"publishAt":null,"updatedAt":"2026-10-25T09:12:00Z","updatedBy":"agent","version":2}
 ```
 
 With `--json`, errors go to standard error as one line, with a non-zero exit

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -34,6 +35,11 @@ const (
 	MaxAlt         = 500
 	MaxBody        = 2 << 20
 	MaxExtra       = 64 << 10
+	MaxTags        = 20
+	MaxTag         = 40
+	MaxAuthor      = 100
+	MaxSEOTitle    = 120
+	MaxSEODesc     = 320
 )
 
 var (
@@ -49,18 +55,26 @@ func CountWords(text string) int {
 
 // Post is one article. Body is Markdown. Extra holds frontmatter keys that
 // BurzBlog does not model, as a YAML mapping, so they survive round trips.
+// Tags are the post's topics and categories in one list: lowercase words with
+// hyphens, in the author's order. SEOTitle, SEODescription and CanonicalURL
+// are for search engines and social cards; empty means the site's default.
 type Post struct {
-	ID          int64
-	Slug        string
-	Title       string
-	Description string
-	Status      Status
-	Body        string
-	CoverURL    string
-	CoverAlt    string
-	Extra       string
-	PublishedOn *time.Time
-	UpdatedOn   *time.Time
+	ID             int64
+	Slug           string
+	Title          string
+	Description    string
+	Status         Status
+	Body           string
+	CoverURL       string
+	CoverAlt       string
+	Extra          string
+	Tags           []string
+	Author         string
+	SEOTitle       string
+	SEODescription string
+	CanonicalURL   string
+	PublishedOn    *time.Time
+	UpdatedOn      *time.Time
 	// PublishAt is when a draft publishes itself; nil when not scheduled.
 	// Only drafts carry it. PublishBy is the account that scheduled it.
 	PublishAt *time.Time
@@ -161,28 +175,13 @@ func Validate(p *Post) error {
 	if p.PublishAt != nil && p.Status != Draft {
 		return &FieldError{"publish time", "can only be set on a draft."}
 	}
-	checks := []struct {
-		field, value string
-		max          int
-	}{
+	if err := checkLines([]lineCheck{
 		{"title", p.Title, MaxTitle},
 		{"description", p.Description, MaxDescription},
 		{"cover URL", p.CoverURL, MaxURL},
 		{"cover alt text", p.CoverAlt, MaxAlt},
-	}
-	for _, c := range checks {
-		if !utf8.ValidString(c.value) {
-			return &FieldError{c.field, "is not valid UTF-8."}
-		}
-		if strings.ContainsAny(c.value, "\x00\r\n") {
-			return &FieldError{c.field, "must be a single line."}
-		}
-		if HasControl(c.value) {
-			return &FieldError{c.field, "must not contain control characters such as tabs or escape sequences. Remove them and save again."}
-		}
-		if utf8.RuneCountInString(c.value) > c.max {
-			return &FieldError{c.field, fmt.Sprintf("must be at most %d characters.", c.max)}
-		}
+	}); err != nil {
+		return err
 	}
 	if strings.TrimSpace(p.Title) == "" {
 		return &FieldError{"title", "must not be empty."}
@@ -193,6 +192,9 @@ func Validate(p *Post) error {
 		}
 	} else if p.CoverAlt != "" {
 		return &FieldError{"cover alt text", "needs a cover URL."}
+	}
+	if err := validateMetadata(p); err != nil {
+		return err
 	}
 	if !utf8.ValidString(p.Body) || strings.ContainsRune(p.Body, 0) {
 		return &FieldError{"body", "contains bytes that are not text."}
@@ -209,6 +211,49 @@ func Validate(p *Post) error {
 	return nil
 }
 
+type lineCheck struct {
+	field, value string
+	max          int
+}
+
+// checkLines holds single-line text to its length cap and rejects control
+// characters.
+func checkLines(checks []lineCheck) error {
+	for _, c := range checks {
+		if !utf8.ValidString(c.value) {
+			return &FieldError{c.field, "is not valid UTF-8."}
+		}
+		if strings.ContainsAny(c.value, "\x00\r\n") {
+			return &FieldError{c.field, "must be a single line."}
+		}
+		if HasControl(c.value) {
+			return &FieldError{c.field, "must not contain control characters such as tabs or escape sequences. Remove them and save again."}
+		}
+		if utf8.RuneCountInString(c.value) > c.max {
+			return &FieldError{c.field, fmt.Sprintf("must be at most %d characters.", c.max)}
+		}
+	}
+	return nil
+}
+
+// validateMetadata checks the blog metadata: author, SEO fields and tags.
+func validateMetadata(p *Post) error {
+	if err := checkLines([]lineCheck{
+		{"author", p.Author, MaxAuthor},
+		{"SEO title", p.SEOTitle, MaxSEOTitle},
+		{"SEO description", p.SEODescription, MaxSEODesc},
+		{"canonical URL", p.CanonicalURL, MaxURL},
+	}); err != nil {
+		return err
+	}
+	if p.CanonicalURL != "" {
+		if u, err := url.Parse(p.CanonicalURL); err != nil || u.Scheme != "https" || u.Host == "" {
+			return &FieldError{"canonical URL", "must be a full https address such as https://example.com/post."}
+		}
+	}
+	return validateTags(p.Tags)
+}
+
 func validateURL(raw string) error {
 	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
@@ -217,13 +262,72 @@ func validateURL(raw string) error {
 	return nil
 }
 
-// Normalize trims incidental whitespace from single-line fields and uses LF
-// line endings in the body.
+// NormalizeTag turns text into a tag: lowercase letters, digits and marks,
+// with single hyphens between words. "Machine Learning" becomes
+// "machine-learning". The result is empty when nothing usable is left.
+func NormalizeTag(raw string) string {
+	var b strings.Builder
+	hyphen := false
+	for _, r := range strings.ToLower(raw) {
+		switch {
+		case unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.IsMark(r):
+			b.WriteRune(r)
+			hyphen = false
+		case b.Len() > 0 && !hyphen:
+			b.WriteByte('-')
+			hyphen = true
+		}
+	}
+	return strings.Trim(b.String(), "-")
+}
+
+// normalizeTags normalizes each tag, drops empty ones and repeats, and keeps
+// the author's order.
+func normalizeTags(tags []string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, raw := range tags {
+		tag := NormalizeTag(raw)
+		if tag == "" || seen[tag] {
+			continue
+		}
+		seen[tag] = true
+		out = append(out, tag)
+	}
+	return out
+}
+
+func validateTags(tags []string) error {
+	if len(tags) > MaxTags {
+		return &FieldError{"tags", fmt.Sprintf("allow at most %d tags. Remove some and save again.", MaxTags)}
+	}
+	seen := map[string]bool{}
+	for _, tag := range tags {
+		switch {
+		case utf8.RuneCountInString(tag) > MaxTag:
+			return &FieldError{"tags", fmt.Sprintf("must be at most %d characters each; shorten %q.", MaxTag, tag)}
+		case tag == "" || NormalizeTag(tag) != tag:
+			return &FieldError{"tags", fmt.Sprintf("may only use lowercase letters, digits and single hyphens between words; fix %q.", tag)}
+		case seen[tag]:
+			return &FieldError{"tags", fmt.Sprintf("lists %q twice.", tag)}
+		}
+		seen[tag] = true
+	}
+	return nil
+}
+
+// Normalize trims incidental whitespace from single-line fields, cleans the
+// tags and uses LF line endings in the body.
 func Normalize(p *Post) {
 	p.Title = strings.TrimSpace(p.Title)
 	p.Description = strings.TrimSpace(p.Description)
 	p.CoverURL = strings.TrimSpace(p.CoverURL)
 	p.CoverAlt = strings.TrimSpace(p.CoverAlt)
+	p.Author = strings.TrimSpace(p.Author)
+	p.SEOTitle = strings.TrimSpace(p.SEOTitle)
+	p.SEODescription = strings.TrimSpace(p.SEODescription)
+	p.CanonicalURL = strings.TrimSpace(p.CanonicalURL)
+	p.Tags = normalizeTags(p.Tags)
 	p.Body = strings.ReplaceAll(p.Body, "\r\n", "\n")
 	p.Extra = strings.ReplaceAll(p.Extra, "\r\n", "\n")
 	if strings.TrimSpace(p.Extra) == "" {
@@ -236,7 +340,9 @@ func Normalize(p *Post) {
 func SameContent(a, b *Post) bool {
 	return a.Slug == b.Slug && a.Title == b.Title && a.Description == b.Description &&
 		a.Status == b.Status && sameBody(a.Body, b.Body) && a.CoverURL == b.CoverURL &&
-		a.CoverAlt == b.CoverAlt && a.Extra == b.Extra &&
+		a.CoverAlt == b.CoverAlt && a.Extra == b.Extra && slices.Equal(a.Tags, b.Tags) &&
+		a.Author == b.Author && a.SEOTitle == b.SEOTitle && a.SEODescription == b.SEODescription &&
+		a.CanonicalURL == b.CanonicalURL &&
 		sameTime(a.PublishedOn, b.PublishedOn) && sameTime(a.UpdatedOn, b.UpdatedOn) &&
 		sameTime(a.PublishAt, b.PublishAt)
 }

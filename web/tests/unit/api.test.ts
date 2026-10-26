@@ -23,6 +23,19 @@ describe("authenticated requests", () => {
       headers: { "X-CSRF-Token": "session-bound" },
     });
   });
+  it("sends a form as multipart, with the CSRF token and no JSON Content-Type", async () => {
+    rememberSession({ authenticated: true, csrf: "token" });
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValue(Response.json({ id: 1 }, { status: 201 }));
+    vi.stubGlobal("fetch", fetch);
+    const form = new FormData();
+    form.append("file", new File(["x"], "a.png"));
+    await request("/api/media", "POST", form);
+    const init = fetch.mock.calls[0]?.[1];
+    expect(init?.body).toBe(form);
+    expect(init?.headers).toEqual({ "X-CSRF-Token": "token" });
+  });
   it("retries once with a fresh token when the server rejects a stale one", async () => {
     rememberSession({ authenticated: true, csrf: "stale" });
     const fetch = vi
@@ -122,6 +135,43 @@ describe("authenticated requests", () => {
       "fetch",
       vi.fn<typeof globalThis.fetch>().mockRejectedValue(new Error("offline")),
     );
-    await expect(request("/api/posts")).rejects.toThrow("Nothing was saved");
+    await expect(request("/api/login", "POST", {})).rejects.toThrow("Nothing was saved");
+    // A read has nothing to lose, so it does not claim anything was unsaved.
+    await expect(request("/api/posts")).rejects.toThrow(
+      "Cannot reach BurzBlog. Check your connection and try again.",
+    );
+  });
+});
+
+describe("two-factor answers", () => {
+  it("does not treat a wrong code as an ended session", async () => {
+    const expired = vi.fn<() => void>();
+    window.addEventListener("burzblog:session-expired", expired);
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn<typeof globalThis.fetch>()
+        .mockResolvedValue(
+          Response.json(
+            { error: { code: "code", message: "That code is not right." } },
+            { status: 401 },
+          ),
+        ),
+    );
+    rememberSession({ authenticated: false });
+    await expect(
+      request("/api/login/totp", "POST", { challenge: "c", code: "1" }),
+    ).rejects.toMatchObject({ code: "code" });
+    expect(expired).not.toHaveBeenCalled();
+    window.removeEventListener("burzblog:session-expired", expired);
+  });
+  it("does not look up a CSRF token before the second sign-in step", async () => {
+    rememberSession({ authenticated: false });
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValue(Response.json({ authenticated: true, csrf: "x" }));
+    vi.stubGlobal("fetch", fetch);
+    await request("/api/login/totp", "POST", { challenge: "c", code: "123456" });
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 });

@@ -8,6 +8,103 @@ All notable changes are recorded here, following
 
 ### Added
 
+- Roles and an audit log. Every account is an `admin` or an `author`. Authors
+  write, edit, publish, unpublish and archive posts and manage their own
+  password, two-factor sign-in and write tokens; admins also delete posts,
+  manage other accounts' tokens and export tokens, see settings, rebuild the
+  website, download the backup and the export, and read the audit log. The server
+  answers an author's request for an admin route 403 with the error code
+  `role`; a token has the role of its owner, and `GET /api/tokens` lists only
+  an author's own. The matrix is in `docs/security.md`. Existing accounts and
+  the account made by first-run setup become admins (migration 8);
+  `burzblog user add` makes the first account an admin and later ones authors
+  unless given `--role admin`, and
+  `burzblog user role <name> admin|author` changes a role on the host and
+  refuses to demote the last admin. `GET /api/session` reports the `role`, and
+  the panel hides what an author cannot do and gives admins an Audit log page.
+- An append-only audit log (migration 9): sign-ins and failed sign-ins for
+  existing accounts, account creation, two-factor changes and recovery-code use,
+  token create and revoke, password and role changes, publish, unpublish,
+  archive, restore, schedule and delete, slug redirect removal, manual
+  rebuilds and backup downloads, each with the time, the account (and token),
+  the target and the connecting address. Database triggers refuse any change or
+  removal of a row, and no secret is ever stored in it. Admins read it with
+  `GET /api/audit` (paged), in the panel, and with `burzblog audit` on the host.
+- Image and PDF uploads. `POST /api/media` (session with CSRF, or a write
+  token; export tokens get 403) takes a multipart `file` and optional `alt`,
+  decides the type from the file's bytes (JPEG, PNG, GIF, WebP, AVIF, PDF; SVG
+  and anything else is refused), caps the size (10 MiB, `--max-upload-mb` or
+  `BURZBLOG_MAX_UPLOAD_MB`), and stores it under a content-derived name in
+  `<data>/media/`, deduplicating identical uploads. `GET /api/media` lists,
+  `DELETE /api/media/{id}` (admins only) removes (409 `in_use` while a post mentions the file,
+  unless `?force=true`). Files are served publicly, and only they, at
+  `/media/{name}` with `nosniff`, a sandboxing CSP, immutable caching and PDFs
+  as downloads; see the security notes. The panel has a Media page (drag and
+  drop, copy address or Markdown, delete) and an upload-or-choose picker in the
+  image dialog and for the cover. `backup.tar.gz` and `burzblog backup` include
+  the files as `media/<name>`. Migration 10 adds the `media` table; uploads and deletes are audited. The example
+  nginx and Caddy configs now allow 12 MiB request bodies.
+- Search finds words in post bodies, not only titles, slugs and descriptions.
+  `?q=` on `GET /api/posts` and `GET /api/content/posts`, the panel's posts
+  search box and `burzblog list --search` use an FTS5 index over title,
+  description, body, tags, author and slug that ignores case and accents. The
+  words you type are plain words, never search syntax: all must appear and
+  the last matches as a prefix. Without `sort`, the best match comes first and
+  titles weigh most. Content API search results carry a plain-text `snippet`.
+  Migration 5 builds the index for existing posts.
+- Two-factor sign-in (TOTP, RFC 6238) for panel accounts, off by default. Turn
+  it on in Settings (password, then a code from an authenticator app; setup shows
+  the key and an `otpauth://` link, no QR code yet) to get ten one-time recovery
+  codes. Sign-in then asks for a code after the password
+  (`POST /api/login/totp`), codes share the per-username failure limit, a used
+  code cannot be replayed, and turning it off needs the password and a code.
+  `burzblog login` asks for the code (`--code`, `BURZBLOG_TOTP`), existing
+  tokens keep working, and `burzblog user 2fa-reset <name>` recovers a locked-out
+  account. A migration adds the `user_totp`, `recovery_codes` and
+  `login_challenges` tables.
+- Posts have blog metadata: `tags` (one list for topics and categories, at most
+  20 lowercase hyphenated tags), an `author` (new posts start with the creating
+  account), and SEO fields `seoTitle`, `seoDescription` and `canonicalUrl`.
+  They are in the API (`GET /api/posts?tag=`, `GET /api/tags`), the panel's
+  post settings (a tag input, an author field and a collapsible SEO section with
+  character counters), the posts list (tags on each row and a tag filter, kept
+  in the address), history, and the Markdown files as `tags:`, `author:`,
+  `seo: {title, description}` and `canonical:`. `burzblog list --tag` filters
+  by tag. Migration 4 moves `tags`, `author`, `canonical` and `seo.title` and
+  `seo.description` out of a post's extra frontmatter into the new fields, and
+  leaves other `seo` keys there.
+- A read-only content API for websites: `GET /api/content/posts` (paged,
+  `?q=`), `GET /api/content/posts/{slug}` (JSON with the Markdown body, or the
+  export's exact frontmatter document with `?format=markdown`) and
+  `GET /api/content/posts/{slug}/html`, with the post's tags, author and SEO
+  fields, a `?tag=` filter, and `GET /api/content/tags` listing the tags of
+  published posts. Published posts only; drafts, scheduled
+  and archived posts answer 404 like a missing slug. Responses have an `ETag`,
+  answer `If-None-Match` with 304 and are `Cache-Control: private,
+  max-age=60`. Build (export) tokens, write tokens and sessions can call it.
+- Password fields in the panel (sign-in and Settings) have a Show/Hide toggle and
+  warn when Caps Lock is on. Sign-in has a "Forgot your password?" note pointing
+  to `burzblog user passwd <name>`, and the new-password field in Settings shows
+  a live character count and a simple strength hint; the server still enforces
+  the 12-character minimum.
+- First-run setup in the browser. While the server has no accounts,
+  `burzblog serve` logs a one-time setup link (`<origin>/setup#token=...`,
+  valid for an hour, restart for a new one) next to the existing
+  `burzblog user add` alternative. Opening it shows "Create the first account"
+  and signs the new account in. The sign-in page now says when there are no
+  accounts yet. New endpoints `GET /api/setup` and `POST /api/setup`; see the
+  [API](docs/api.md) and [security model](docs/security.md#what-is-protected-and-how).
+
+- Renaming a post's slug keeps the old one as a redirect (migration 5, table
+  `slug_redirects`). Chains collapse, so every earlier slug points at the post's
+  newest one; a live slug wins over a redirect; deleting a post deletes its
+  redirects. `GET /api/content/redirects` lists `{from, to}` for published posts
+  only, an old slug on `GET /api/content/posts/{slug}` answers `308` with the
+  current address, and the export holds the same list as `redirects.json`.
+  The panel's post settings note that the old address will redirect and list a
+  post's redirects with a remove button (`GET /api/posts/{slug}/redirects`,
+  `DELETE /api/posts/{slug}/redirects/{from}`); `burzblog redirects [--json]`
+  lists them, and `burzblog export` writes `redirects.json` next to the posts.
 - `burzblog diff <file.md|slug> [file.md]` shows a unified, colored diff from
   the server's current post to a local file and says whether the file is based
   on the server's current version or an older one. It exits 0 when identical
@@ -29,8 +126,24 @@ All notable changes are recorded here, following
 - Public-repository files: `SECURITY.md`, `CODE_OF_CONDUCT.md`, issue and pull
   request templates, and a fuller `CONTRIBUTING.md`.
 
+- Feeds and a sitemap for the website to serve: `GET /api/content/feed.xml`
+  (RSS 2.0), `feed.atom` (Atom 1.0), `feed.json` (JSON Feed 1.1) and
+  `sitemap.xml`, behind the same credentials as the rest of the content API,
+  with `?limit=` (up to 100) and `?tag=` on the feeds, full sanitized HTML
+  bodies (a post the renderer refuses keeps its description), `ETag` and 304.
+  They need the new `serve` settings `--site-url`, `--site-title`,
+  `--site-description`, `--site-language`, `--post-path` (default
+  `/blog/{slug}`) and `--tag-path` (or `BURZBLOG_SITE_URL` and friends) and
+  answer 409 `site_url_missing` without a site URL. With a site URL the export
+  archive also holds the four files, and `burzblog export` writes them next to
+  the posts. `GET /api/settings` reports the `site`, and Settings → Your website
+  shows the feed status.
+
 ### Changed
 
+- Build (export) tokens may now read published content through
+  `GET /api/content/*` as well as the export; they are still refused on every
+  other route.
 - The first-run posts page hides the filters and search box until there is
   something to filter, and the panel's phone layout, row dates, dialog headers,
   and the wording for schedule, delete and the command palette were tidied.

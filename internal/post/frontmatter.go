@@ -10,9 +10,12 @@ import (
 )
 
 // Frontmatter keys BurzBlog models. Everything else is kept in Post.Extra.
+// "seo" is modelled too, but only its title and description: other keys under
+// it stay in Extra, as a seo mapping without those two.
 var reserved = map[string]bool{
 	"title": true, "description": true, "status": true,
 	"timestamps": true, "coverImage": true, "slug": true,
+	"tags": true, "author": true, "canonical": true,
 }
 
 const fence = "---"
@@ -51,8 +54,47 @@ func Encode(p *Post) string {
 		}
 		add("coverImage", cover)
 	}
-	if extra, err := parseExtra(p.Extra); err == nil && extra != nil {
-		root.Content = append(root.Content, extra.Content...)
+	if len(p.Tags) > 0 {
+		tags := &yaml.Node{Kind: yaml.SequenceNode}
+		for _, tag := range p.Tags {
+			tags.Content = append(tags.Content, scalar(tag))
+		}
+		add("tags", tags)
+	}
+	if p.Author != "" {
+		add("author", scalar(p.Author))
+	}
+	extra, err := parseExtra(p.Extra)
+	if err != nil {
+		extra = nil
+	}
+	// Keys under seo that BurzBlog does not model are written back inside it.
+	seo := &yaml.Node{Kind: yaml.MappingNode}
+	if p.SEOTitle != "" {
+		seo.Content = append(seo.Content, scalar("title"), scalar(p.SEOTitle))
+	}
+	if p.SEODescription != "" {
+		seo.Content = append(seo.Content, scalar("description"), scalar(p.SEODescription))
+	}
+	if extra != nil {
+		for i := 0; i+1 < len(extra.Content); i += 2 {
+			if extra.Content[i].Value == "seo" {
+				seo.Content = append(seo.Content, extra.Content[i+1].Content...)
+			}
+		}
+	}
+	if len(seo.Content) > 0 {
+		add("seo", seo)
+	}
+	if p.CanonicalURL != "" {
+		add("canonical", scalar(p.CanonicalURL))
+	}
+	if extra != nil {
+		for i := 0; i+1 < len(extra.Content); i += 2 {
+			if extra.Content[i].Value != "seo" {
+				root.Content = append(root.Content, extra.Content[i], extra.Content[i+1])
+			}
+		}
 	}
 
 	var out bytes.Buffer
@@ -118,8 +160,15 @@ type Document struct {
 	CoverAlt    string
 	PublishedOn *time.Time
 	UpdatedOn   *time.Time
-	Extra       string
-	Body        string
+	Tags        []string
+	Author      string
+	// SEOTitle and SEODescription come from the seo mapping; its other keys
+	// stay in Extra.
+	SEOTitle       string
+	SEODescription string
+	CanonicalURL   string
+	Extra          string
+	Body           string
 }
 
 // Apply copies the document's fields onto p.
@@ -131,6 +180,8 @@ func (d *Document) Apply(p *Post) {
 	p.CoverAlt = d.CoverAlt
 	p.PublishedOn = d.PublishedOn
 	p.UpdatedOn = d.UpdatedOn
+	p.Tags, p.Author = d.Tags, d.Author
+	p.SEOTitle, p.SEODescription, p.CanonicalURL = d.SEOTitle, d.SEODescription, d.CanonicalURL
 	p.Extra = d.Extra
 	p.Body = d.Body
 }
@@ -181,6 +232,15 @@ func Decode(doc string) (*Document, error) {
 		// Only comments: there is no title.
 		return nil, &FieldError{"title", "must not be empty."}
 	}
+	if err := d.readMapping(root); err != nil {
+		return nil, err
+	}
+	return d, nil
+}
+
+// readMapping reads the modelled keys of a frontmatter mapping into d and
+// collects the rest as d.Extra.
+func (d *Document) readMapping(root *yaml.Node) error {
 	extra := &yaml.Node{Kind: yaml.MappingNode}
 	for i := 0; i+1 < len(root.Content); i += 2 {
 		key, value := root.Content[i], root.Content[i+1]
@@ -205,11 +265,22 @@ func Decode(doc string) (*Document, error) {
 			err = d.readTimestamps(value)
 		case "coverImage":
 			err = d.readCover(value)
+		case "tags":
+			d.Tags, err = readTags(value)
+		case "author":
+			d.Author, err = text(key.Value, value)
+		case "canonical":
+			d.CanonicalURL, err = text(key.Value, value)
+		case "seo":
+			var rest *yaml.Node
+			if rest, err = d.readSEO(value); err == nil && len(rest.Content) > 0 {
+				extra.Content = append(extra.Content, key, rest)
+			}
 		default:
 			extra.Content = append(extra.Content, key, value)
 		}
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
 	if len(extra.Content) > 0 {
@@ -217,12 +288,99 @@ func Decode(doc string) (*Document, error) {
 		enc := yaml.NewEncoder(&buf)
 		enc.SetIndent(2)
 		if err := enc.Encode(extra); err != nil {
-			return nil, &FieldError{"frontmatter", "has values BurzBlog cannot keep."}
+			return &FieldError{"frontmatter", "has values BurzBlog cannot keep."}
 		}
 		_ = enc.Close()
 		d.Extra = buf.String()
 	}
-	return d, nil
+	return nil
+}
+
+// readTags reads a YAML list of tags, or one text of comma-separated tags.
+func readTags(n *yaml.Node) ([]string, error) {
+	switch n.Kind {
+	case yaml.ScalarNode:
+		if n.Tag == "!!null" {
+			return nil, nil
+		}
+		return strings.Split(n.Value, ","), nil
+	case yaml.SequenceNode:
+		var tags []string
+		for _, item := range n.Content {
+			if item.Kind != yaml.ScalarNode {
+				return nil, &FieldError{"tags", fmt.Sprintf("(line %d) must be a list of words, such as [go, web].", item.Line)}
+			}
+			if item.Tag != "!!null" {
+				tags = append(tags, item.Value)
+			}
+		}
+		return tags, nil
+	}
+	return nil, &FieldError{"tags", fmt.Sprintf("(line %d) must be a list of words, such as [go, web].", n.Line)}
+}
+
+// readSEO reads seo.title and seo.description and returns a mapping of the
+// other keys, which stay in the extra frontmatter.
+func (d *Document) readSEO(n *yaml.Node) (*yaml.Node, error) {
+	rest := &yaml.Node{Kind: yaml.MappingNode}
+	if n.Kind == yaml.ScalarNode && n.Tag == "!!null" {
+		return rest, nil
+	}
+	if n.Kind != yaml.MappingNode {
+		return nil, &FieldError{"seo", fmt.Sprintf("(line %d) must be a mapping with title and description.", n.Line)}
+	}
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		key, value := n.Content[i], n.Content[i+1]
+		switch key.Value {
+		case "title", "description":
+			v, err := text("seo."+key.Value, value)
+			if err != nil {
+				return nil, err
+			}
+			if key.Value == "title" {
+				d.SEOTitle = v
+			} else {
+				d.SEODescription = v
+			}
+		default:
+			rest.Content = append(rest.Content, key, value)
+		}
+	}
+	return rest, nil
+}
+
+// MoveMetadataFromExtra parses the modelled metadata keys (tags, author,
+// seo.title, seo.description, canonical) out of extra, for posts saved before
+// BurzBlog modelled them. It returns the fields in a Post and the extra
+// without them. ok is false when extra holds none of those keys or they
+// cannot be used as they are (a tag list that is too long, say); the post is
+// then left as it is.
+func MoveMetadataFromExtra(extra string) (moved *Post, rest string, ok bool) {
+	root, err := parseMapping(extra, "extra frontmatter")
+	if err != nil || root == nil {
+		return nil, extra, false
+	}
+	var d Document
+	if d.readMapping(root) != nil {
+		return nil, extra, false
+	}
+	found := false
+	for i := 0; i+1 < len(root.Content); i += 2 {
+		switch root.Content[i].Value {
+		case "tags", "author", "canonical", "seo":
+			found = true
+		}
+	}
+	if !found {
+		return nil, extra, false
+	}
+	p := &Post{}
+	d.Apply(p)
+	Normalize(p)
+	if validateMetadata(p) != nil {
+		return nil, extra, false
+	}
+	return p, d.Extra, true
 }
 
 func (d *Document) readTimestamps(n *yaml.Node) error {
@@ -369,8 +527,20 @@ func parseExtra(src string) (*yaml.Node, error) {
 		return root, err
 	}
 	for i := 0; i+1 < len(root.Content); i += 2 {
-		if k := root.Content[i]; reserved[k.Value] {
+		k, v := root.Content[i], root.Content[i+1]
+		if reserved[k.Value] {
 			return nil, &FieldError{"extra frontmatter", fmt.Sprintf("(line %d) must not set %q; use the field for it.", k.Line, k.Value)}
+		}
+		if k.Value != "seo" {
+			continue
+		}
+		if v.Kind != yaml.MappingNode {
+			return nil, &FieldError{"extra frontmatter", fmt.Sprintf("(line %d) seo must be a mapping.", k.Line)}
+		}
+		for j := 0; j+1 < len(v.Content); j += 2 {
+			if sub := v.Content[j]; sub.Value == "title" || sub.Value == "description" {
+				return nil, &FieldError{"extra frontmatter", fmt.Sprintf("(line %d) must not set seo.%s; use the SEO field for it.", sub.Line, sub.Value)}
+			}
 		}
 	}
 	return root, nil

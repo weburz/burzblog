@@ -22,11 +22,12 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/weburz/burzblog/internal/client"
+	"github.com/weburz/burzblog/internal/media"
 	"github.com/weburz/burzblog/internal/post"
 )
 
 func (a *App) listCmd() *cobra.Command {
-	var status, search, sort string
+	var status, search, sort, tag string
 	cmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls"},
@@ -36,6 +37,7 @@ func (a *App) listCmd() *cobra.Command {
   burzblog list --status scheduled
   burzblog list --search golang
   burzblog list --sort title
+  burzblog list --tag golang
   burzblog list --status draft --json     # {"items":[{"slug","title","status","version",...}],"counts":{...}}`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -45,7 +47,7 @@ func (a *App) listCmd() *cobra.Command {
 			}
 			c, cancel := ctx()
 			defer cancel()
-			l, err := cl.Posts(c, status, search, sort)
+			l, err := cl.Posts(c, status, search, sort, tag)
 			if err != nil {
 				return err
 			}
@@ -59,7 +61,7 @@ func (a *App) listCmd() *cobra.Command {
 				return a.emit(l)
 			}
 			if len(l.Items) == 0 {
-				if search != "" || status != "" {
+				if search != "" || status != "" || tag != "" {
 					fmt.Fprintln(a.Out, "No posts match.")
 				} else {
 					fmt.Fprintln(a.Out, "No posts yet. Start one with: burzblog new \"My first post\"")
@@ -67,13 +69,14 @@ func (a *App) listCmd() *cobra.Command {
 				return nil
 			}
 			w := tabwriter.NewWriter(a.Out, 0, 0, 2, ' ', 0)
-			fmt.Fprintln(w, a.paint(dim, "STATUS\tSLUG\tTITLE\tWORDS\tCHANGED"))
+			fmt.Fprintln(w, a.paint(dim, "STATUS\tSLUG\tTITLE\tTAGS\tWORDS\tCHANGED"))
 			for _, p := range l.Items {
 				label := a.status(p.Status)
 				if p.PublishAt != nil && p.Status == "draft" {
 					label = a.paint(yellow, "scheduled "+p.PublishAt.Local().Format("2 Jan 15:04"))
 				}
-				fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\n", label, clean(p.Slug), truncate(clean(p.Title), 48), p.Words,
+				fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%d\t%s\n", label, clean(p.Slug), truncate(clean(p.Title), 48),
+					truncate(clean(strings.Join(p.Tags, ",")), 30), p.Words,
 					ago(p.UpdatedAt)+" by "+clean(p.UpdatedBy))
 			}
 			w.Flush()
@@ -83,8 +86,9 @@ func (a *App) listCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVarP(&status, "status", "s", "", "only draft, published, scheduled or archived posts")
-	cmd.Flags().StringVarP(&search, "search", "q", "", "match title, slug or description")
+	cmd.Flags().StringVarP(&search, "search", "q", "", "search titles, descriptions, text, tags and authors")
 	cmd.Flags().StringVar(&sort, "sort", "", "order by updated (default), published, title or created")
+	cmd.Flags().StringVarP(&tag, "tag", "t", "", "only posts with this tag")
 	return cmd
 }
 
@@ -119,10 +123,17 @@ type postResult struct {
 	UpdatedAt   time.Time  `json:"updatedAt"`
 	UpdatedBy   string     `json:"updatedBy"`
 	Version     int64      `json:"version"`
+	Tags        []string   `json:"tags"`
+	Author      string     `json:"author"`
 }
 
 func summary(p *client.Post) postResult {
-	return postResult{p.Slug, p.Title, p.Description, p.Status, p.PublishedOn, p.PublishAt, p.UpdatedAt, p.UpdatedBy, p.Version}
+	tags := p.Tags
+	if tags == nil {
+		tags = []string{}
+	}
+	return postResult{p.Slug, p.Title, p.Description, p.Status, p.PublishedOn, p.PublishAt, p.UpdatedAt, p.UpdatedBy, p.Version,
+		tags, p.Author}
 }
 
 // readInput reads a file, or standard input for "-", up to the largest
@@ -182,7 +193,7 @@ or, with -, from standard input.`,
 				return err
 			}
 			if body != "" {
-				doc := post.Encode(&post.Post{Title: p.Title, Status: post.Draft, Body: body})
+				doc := post.Encode(&post.Post{Title: p.Title, Status: post.Draft, Body: body, Author: p.Author})
 				saved, err := cl.SaveMarkdown(c, p.Slug, doc, p.Version)
 				if err != nil {
 					return reword(err, fmt.Sprintf("%v\n       The draft %s was created, but the body was not saved. Save it with `burzblog push - --slug %s --base-version %d`.",
@@ -746,7 +757,9 @@ func (a *App) exportCmd() *cobra.Command {
 		Use:   "export --out <dir>",
 		Short: "Download every published post as <slug>.md files (for reader site builds)",
 		Long: `Writes each published post to <dir>/<slug>.md with frontmatter, ready for
-Nuxt Content or another static site generator.
+Nuxt Content or another static site generator. When the server knows your
+website address (--site-url), feed.xml, feed.atom, feed.json and sitemap.xml
+are written there too.
 
 In CI, set BURZBLOG_SERVER and BURZBLOG_TOKEN (a build token from
 Settings) instead of running burzblog login.`,
@@ -768,7 +781,7 @@ Settings) instead of running burzblog login.`,
 				return err
 			}
 			defer body.Close()
-			files, err := readExport(body)
+			files, site, err := readExport(body)
 			if err != nil {
 				return err
 			}
@@ -787,9 +800,11 @@ Settings) instead of running burzblog login.`,
 					}
 				}
 			}
-			for name, data := range files {
-				if err := writeFileAtomic(filepath.Join(out, name), data, 0o644); err != nil {
-					return err
+			for _, set := range []map[string][]byte{files, site} {
+				for name, data := range set {
+					if err := writeFileAtomic(filepath.Join(out, name), data, 0o644); err != nil {
+						return err
+					}
 				}
 			}
 			fmt.Fprintf(a.Out, "%s Exported %s to %s", a.paint(green, "✓"), count(len(files), "published post", "published posts"), out)
@@ -805,15 +820,24 @@ Settings) instead of running burzblog login.`,
 	return cmd
 }
 
+// siteFiles are the files an export holds besides posts: redirects.json, and
+// the feeds and sitemap when the server knows the website's address. They are
+// written next to the posts.
+var siteFiles = map[string]bool{"redirects.json": true, "feed.xml": true, "feed.atom": true, "feed.json": true, "sitemap.xml": true}
+
+// maxSiteFile bounds one site file in an export.
+const maxSiteFile = 64 << 20
+
 // readExport reads the export archive fully before anything is written, and
-// accepts only flat <slug>.md regular files.
-func readExport(r io.Reader) (map[string][]byte, error) {
+// accepts only flat <slug>.md regular files and the site files. Posts are
+// returned by file name, site files separately.
+func readExport(r io.Reader) (posts, site map[string][]byte, err error) {
 	gz, err := gzip.NewReader(r)
 	if err != nil {
-		return nil, fmt.Errorf("the export is not a gzip archive: %w", err)
+		return nil, nil, fmt.Errorf("the export is not a gzip archive: %w", err)
 	}
 	tr := tar.NewReader(gz)
-	files := map[string][]byte{}
+	posts, site = map[string][]byte{}, map[string][]byte{}
 	total := 0
 	for {
 		hdr, err := tr.Next()
@@ -821,24 +845,33 @@ func readExport(r io.Reader) (map[string][]byte, error) {
 			break
 		}
 		if err != nil {
-			return nil, fmt.Errorf("read export: %w", err)
+			return nil, nil, fmt.Errorf("read export: %w", err)
 		}
 		slug := strings.TrimSuffix(hdr.Name, ".md")
-		if hdr.Typeflag != tar.TypeReg || !strings.HasSuffix(hdr.Name, ".md") || post.ValidateSlug(slug) != nil {
-			return nil, fmt.Errorf("the export contains an unexpected entry %q", hdr.Name)
+		isSite := siteFiles[hdr.Name]
+		if hdr.Typeflag != tar.TypeReg || (!isSite && (!strings.HasSuffix(hdr.Name, ".md") || post.ValidateSlug(slug) != nil)) {
+			return nil, nil, fmt.Errorf("the export contains an unexpected entry %q", hdr.Name)
+		}
+		limit := int64(post.MaxBody + post.MaxExtra)
+		if isSite {
+			limit = maxSiteFile
 		}
 		var buf bytes.Buffer
-		n, err := io.Copy(&buf, io.LimitReader(tr, post.MaxBody+post.MaxExtra+1))
+		n, err := io.Copy(&buf, io.LimitReader(tr, limit+1))
 		if err != nil {
-			return nil, fmt.Errorf("read export: %w", err)
+			return nil, nil, fmt.Errorf("read export: %w", err)
 		}
 		total += int(n)
-		if n > post.MaxBody+post.MaxExtra || total > 512<<20 {
-			return nil, errors.New("the export is larger than expected")
+		if n > limit || total > 512<<20 {
+			return nil, nil, errors.New("the export is larger than expected")
 		}
-		files[hdr.Name] = buf.Bytes()
+		if isSite {
+			site[hdr.Name] = buf.Bytes()
+		} else {
+			posts[hdr.Name] = buf.Bytes()
+		}
 	}
-	return files, nil
+	return posts, site, nil
 }
 
 func (a *App) backupCmd() *cobra.Command {
@@ -846,11 +879,12 @@ func (a *App) backupCmd() *cobra.Command {
 		Use:   "backup [dir]",
 		Short: "Download every post, drafts and archived included, as Markdown files",
 		Long: `Writes every post to <dir>/<status>/<slug>.md, plus a README.txt, where status
-is draft, published or archived. The directory defaults to
-burzblog-backup-<date> in the current folder.
+is draft, published or archived, and every uploaded file to <dir>/media/. The
+directory defaults to burzblog-backup-<date> in the current folder.
 
-The backup holds current posts only. The database file is the complete backup,
-including history; see docs/self-hosting.md. Restore a file with burzblog push.`,
+The backup holds current posts only. The database file with the media folder
+beside it is the complete backup, including history; see docs/self-hosting.md.
+Restore a post with burzblog push.`,
 		Example: `  burzblog backup
   burzblog backup ~/backups/blog
   burzblog backup ~/backups/blog --json     # {"dir":"~/backups/blog","posts":12}`,
@@ -871,7 +905,15 @@ including history; see docs/self-hosting.md. Restore a file with burzblog push.`
 				return err
 			}
 			defer body.Close()
-			files, err := readBackup(body)
+			uploads := 0
+			files, err := readBackup(body, func(name string, data []byte) error {
+				uploads++
+				path := filepath.Join(dir, "media", name)
+				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+					return err
+				}
+				return writeFileAtomic(path, data, 0o644)
+			})
 			if err != nil {
 				return err
 			}
@@ -888,18 +930,25 @@ including history; see docs/self-hosting.md. Restore a file with burzblog push.`
 				return a.emit(struct {
 					Dir   string `json:"dir"`
 					Posts int    `json:"posts"`
-				}{dir, len(files) - 1})
+					Media int    `json:"media"`
+				}{dir, len(files) - 1, uploads})
 			}
-			fmt.Fprintf(a.Out, "%s Backed up %s to %s.\n", a.paint(green, "✓"), count(len(files)-1, "post", "posts"), dir)
+			fmt.Fprintf(a.Out, "%s Backed up %s and %s to %s.\n", a.paint(green, "✓"),
+				count(len(files)-1, "post", "posts"), count(uploads, "upload", "uploads"), dir)
 			return nil
 		},
 	}
 	return cmd
 }
 
-// readBackup reads the backup archive fully before anything is written, and
-// accepts only README.txt and regular <status>/<slug>.md files.
-func readBackup(r io.Reader) (map[string][]byte, error) {
+// maxBackupUpload caps one uploaded file read from a backup.
+const maxBackupUpload = 256 << 20
+
+// readBackup reads the posts of the backup archive fully before anything is
+// written, and accepts only README.txt, regular <status>/<slug>.md files and
+// media/<name> uploads. Each upload is passed to saveMedia as it is read; with
+// a nil saveMedia, uploads are refused.
+func readBackup(r io.Reader, saveMedia func(name string, data []byte) error) (map[string][]byte, error) {
 	gz, err := gzip.NewReader(r)
 	if err != nil {
 		return nil, fmt.Errorf("the backup is not a gzip archive: %w", err)
@@ -914,6 +963,20 @@ func readBackup(r io.Reader) (map[string][]byte, error) {
 		}
 		if err != nil {
 			return nil, fmt.Errorf("read backup: %w", err)
+		}
+		if mediaName, ok := strings.CutPrefix(hdr.Name, "media/"); ok && hdr.Typeflag == tar.TypeReg &&
+			media.ValidName(mediaName) && saveMedia != nil {
+			data, err := io.ReadAll(io.LimitReader(tr, maxBackupUpload+1))
+			if err != nil {
+				return nil, fmt.Errorf("read backup: %w", err)
+			}
+			if len(data) > maxBackupUpload {
+				return nil, errors.New("the backup is larger than expected")
+			}
+			if err := saveMedia(mediaName, data); err != nil {
+				return nil, err
+			}
+			continue
 		}
 		if hdr.Typeflag != tar.TypeReg || !validBackupName(hdr.Name) {
 			return nil, fmt.Errorf("the backup contains an unexpected entry %q", hdr.Name)

@@ -43,7 +43,7 @@ func newHarness(t *testing.T, mutate func(*Config)) *harness {
 	}
 	t.Cleanup(func() { s.Close() })
 	hash, _ := auth.HashPassword(password)
-	if _, err := s.CreateUser(ctx, "ada", hash); err != nil {
+	if _, err := s.CreateUser(ctx, "ada", hash, store.RoleAdmin); err != nil {
 		t.Fatal(err)
 	}
 	a, err := auth.New(s)
@@ -385,12 +385,15 @@ func TestExportAndScopes(t *testing.T) {
 		}
 		names = append(names, hdr.Name)
 		body, _ := io.ReadAll(tr)
+		if hdr.Name == "redirects.json" {
+			continue
+		}
 		if !strings.Contains(string(body), "status: published") {
 			t.Errorf("%s is not published: %s", hdr.Name, body)
 		}
 	}
 	resp.Body.Close()
-	if len(names) != 1 || names[0] != "live.md" {
+	if len(names) != 2 || names[0] != "live.md" || names[1] != "redirects.json" {
 		t.Errorf("export files = %v", names)
 	}
 
@@ -702,7 +705,7 @@ func (h *harness) secondBrowser() *harness {
 	return &harness{t: h.t, ts: h.ts, store: h.store, client: &http.Client{Jar: jar}}
 }
 
-func TestExportTokenOnlyCallsExport(t *testing.T) {
+func TestExportTokenOnlyReadsPublishedContent(t *testing.T) {
 	h := newHarness(t, nil)
 	h.login()
 	exportSecret := h.issueToken(store.ScopeExport)
@@ -716,6 +719,8 @@ func TestExportTokenOnlyCallsExport(t *testing.T) {
 		export       int // status for an export token
 	}{
 		{"GET", "/api/export.tar.gz", 200},
+		{"GET", "/api/content/posts", 200},
+		{"GET", "/api/content/redirects", 200},
 		{"GET", "/api/session", 200}, // anonymous, see TestExportTokenIsAnonymousOnSession
 		{"GET", "/api/tokens", 403},
 		{"POST", "/api/tokens", 403},
@@ -734,8 +739,13 @@ func TestExportTokenOnlyCallsExport(t *testing.T) {
 		{"GET", "/api/posts/x/revisions", 403},
 		{"GET", "/api/posts/x/revisions/1", 403},
 		{"POST", "/api/posts/x/revisions/1/restore", 403},
+		{"GET", "/api/posts/x/redirects", 403},
+		{"DELETE", "/api/posts/x/redirects/y", 403},
 		{"POST", "/api/preview", 403},
 		{"GET", "/api/backup.tar.gz", 403},
+		{"GET", "/api/media", 403},
+		{"POST", "/api/media", 403},
+		{"DELETE", "/api/media/1", 403},
 	}
 	for _, rt := range routes {
 		t.Run(rt.method+" "+rt.path, func(t *testing.T) {

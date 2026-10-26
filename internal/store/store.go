@@ -5,6 +5,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -24,6 +25,10 @@ var (
 	ErrConflict = errors.New("changed since it was loaded")
 	ErrTaken    = errors.New("already exists")
 	ErrState    = errors.New("not allowed in the current state")
+	// ErrHasUsers means an account already exists, so there is no first one.
+	ErrHasUsers = errors.New("accounts already exist")
+	// ErrLastAdmin means a change would leave BurzBlog without an admin.
+	ErrLastAdmin = errors.New("it is the last admin")
 )
 
 // Store is a handle on the database.
@@ -166,12 +171,109 @@ var migrations = []string{
 	// instead of reading every body to count it (backfillWords fills it in).
 	`ALTER TABLE posts ADD COLUMN words INTEGER NOT NULL DEFAULT 0;
 	ALTER TABLE revisions ADD COLUMN words INTEGER NOT NULL DEFAULT 0;`,
+	// Blog metadata. Tags get a table of their own so a list can be filtered
+	// by tag through an index; position keeps the author's order. Revisions
+	// keep tags as a JSON array because they are only ever read back whole.
+	// backfillMetadata moves tags, author, seo and canonical out of extra.
+	`ALTER TABLE posts ADD COLUMN author TEXT NOT NULL DEFAULT '';
+	ALTER TABLE posts ADD COLUMN seo_title TEXT NOT NULL DEFAULT '';
+	ALTER TABLE posts ADD COLUMN seo_description TEXT NOT NULL DEFAULT '';
+	ALTER TABLE posts ADD COLUMN canonical_url TEXT NOT NULL DEFAULT '';
+	CREATE TABLE post_tags (
+		post_id INTEGER NOT NULL REFERENCES posts (id) ON DELETE CASCADE,
+		position INTEGER NOT NULL,
+		tag TEXT NOT NULL,
+		PRIMARY KEY (post_id, position),
+		UNIQUE (post_id, tag)
+	);
+	CREATE INDEX post_tags_tag ON post_tags (tag, post_id);
+	ALTER TABLE revisions ADD COLUMN tags TEXT NOT NULL DEFAULT '[]';
+	ALTER TABLE revisions ADD COLUMN author TEXT NOT NULL DEFAULT '';
+	ALTER TABLE revisions ADD COLUMN seo_title TEXT NOT NULL DEFAULT '';
+	ALTER TABLE revisions ADD COLUMN seo_description TEXT NOT NULL DEFAULT '';
+	ALTER TABLE revisions ADD COLUMN canonical_url TEXT NOT NULL DEFAULT '';`,
+	// Full-text search over posts (see search.go). Revisions are not indexed.
+	// backfillSearch indexes the posts that exist.
+	`CREATE VIRTUAL TABLE posts_fts USING fts5 (
+		title, description, body, tags, author, slug,
+		tokenize = 'unicode61 remove_diacritics 2', prefix = '2 3 4'
+	);`,
+	// Old slugs of renamed posts, so a website can redirect old addresses.
+	// A redirect points at the post, not at a slug, so chains need no work.
+	`CREATE TABLE slug_redirects (
+		old_slug TEXT PRIMARY KEY CHECK (length(old_slug) BETWEEN 1 AND 120),
+		post_id INTEGER NOT NULL REFERENCES posts (id) ON DELETE CASCADE,
+		created_at TEXT NOT NULL
+	);
+	CREATE INDEX slug_redirects_post ON slug_redirects (post_id);`,
+	// Two-factor sign-in (TOTP). A user_totp row exists from the start of
+	// enrolment; enabled turns it on once a code was confirmed. last_step is
+	// the newest 30-second step accepted, so a code cannot be replayed.
+	// Recovery codes and sign-in challenges are stored as SHA-256 digests.
+	`CREATE TABLE user_totp (
+		user_id INTEGER PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
+		secret TEXT NOT NULL,
+		enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0, 1)),
+		last_step INTEGER NOT NULL DEFAULT 0,
+		created_at TEXT NOT NULL
+	);
+	CREATE TABLE recovery_codes (
+		code_hash TEXT PRIMARY KEY,
+		user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE
+	);
+	CREATE INDEX recovery_codes_user ON recovery_codes (user_id);
+	CREATE TABLE login_challenges (
+		token_hash TEXT PRIMARY KEY,
+		user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+		expires_at INTEGER NOT NULL
+	);
+	CREATE INDEX login_challenges_user ON login_challenges (user_id);`,
+	// Roles. Every account that exists when this runs becomes an admin, as
+	// every account could do everything before; accounts made later say their
+	// role explicitly.
+	`ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'admin' CHECK (role IN ('admin', 'author'));`,
+	// The audit log. Rows are only ever added: the triggers refuse to change or
+	// remove one, and AUTOINCREMENT keeps ids from being reused. Who did it is
+	// kept as text, not a foreign key, so the entry outlives the account.
+	`CREATE TABLE audit_log (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		at TEXT NOT NULL,
+		actor_user_id INTEGER,
+		actor_name TEXT NOT NULL,
+		token_id INTEGER,
+		action TEXT NOT NULL CHECK (length(action) BETWEEN 1 AND 64),
+		target TEXT NOT NULL DEFAULT '',
+		remote TEXT NOT NULL DEFAULT ''
+	);
+	CREATE TRIGGER audit_log_no_update BEFORE UPDATE ON audit_log
+	BEGIN SELECT RAISE(ABORT, 'audit log rows cannot be changed'); END;
+	CREATE TRIGGER audit_log_no_delete BEFORE DELETE ON audit_log
+	BEGIN SELECT RAISE(ABORT, 'audit log rows cannot be removed'); END;`,
+	// Uploaded images and PDFs. The bytes live in the data directory under
+	// file_name, which is derived from sha256, so identical uploads share one
+	// row. width and height are 0 when the format is not decoded.
+	`CREATE TABLE media (
+		id INTEGER PRIMARY KEY,
+		file_name TEXT NOT NULL UNIQUE CHECK (length(file_name) BETWEEN 1 AND 100),
+		original_name TEXT NOT NULL,
+		mime TEXT NOT NULL,
+		size INTEGER NOT NULL CHECK (size >= 0),
+		sha256 TEXT NOT NULL UNIQUE CHECK (length(sha256) = 64),
+		width INTEGER NOT NULL DEFAULT 0,
+		height INTEGER NOT NULL DEFAULT 0,
+		alt TEXT NOT NULL DEFAULT '',
+		uploaded_by TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL
+	);
+	CREATE INDEX media_created ON media (created_at DESC, id DESC);`,
 }
 
 // migrationSteps run in the migration's transaction after its SQL, for work
 // SQL cannot do. Keyed by the migration's number (its index + 1).
 var migrationSteps = map[int]func(context.Context, *sql.Tx) error{
 	3: backfillWords,
+	4: backfillMetadata,
+	5: backfillSearch,
 }
 
 // backfillWords counts the words of the posts and revisions that existed
@@ -198,6 +300,67 @@ func backfillWords(ctx context.Context, tx *sql.Tx) error {
 		}
 		for id, n := range counts {
 			if _, err := tx.ExecContext(ctx, "UPDATE "+table+" SET words = ? WHERE id = ?", n, id); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// backfillMetadata moves tags, author, seo and canonical that posts and
+// revisions carried inside extra into the new columns. Extras that cannot be
+// moved as they are (see post.MoveMetadataFromExtra) stay as they were.
+func backfillMetadata(ctx context.Context, tx *sql.Tx) error {
+	for _, table := range []string{"posts", "revisions"} {
+		rows, err := tx.QueryContext(ctx, "SELECT id, extra FROM "+table+" WHERE extra != ''")
+		if err != nil {
+			return err
+		}
+		type move struct {
+			id    int64
+			moved *post.Post
+			rest  string
+		}
+		var moves []move
+		for rows.Next() {
+			var id int64
+			var extra string
+			if err := rows.Scan(&id, &extra); err != nil {
+				rows.Close()
+				return err
+			}
+			if moved, rest, ok := post.MoveMetadataFromExtra(extra); ok {
+				moves = append(moves, move{id, moved, rest})
+			}
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		for _, m := range moves {
+			p := m.moved
+			if table == "revisions" {
+				tags, err := json.Marshal(p.Tags)
+				if err != nil {
+					return err
+				}
+				if p.Tags == nil {
+					tags = []byte("[]")
+				}
+				_, err = tx.ExecContext(ctx, `UPDATE revisions SET extra = ?, tags = ?, author = ?, seo_title = ?,
+					seo_description = ?, canonical_url = ? WHERE id = ?`,
+					m.rest, string(tags), p.Author, p.SEOTitle, p.SEODescription, p.CanonicalURL, m.id)
+				if err != nil {
+					return err
+				}
+				continue
+			}
+			if _, err := tx.ExecContext(ctx, `UPDATE posts SET extra = ?, author = ?, seo_title = ?,
+				seo_description = ?, canonical_url = ? WHERE id = ?`,
+				m.rest, p.Author, p.SEOTitle, p.SEODescription, p.CanonicalURL, m.id); err != nil {
+				return err
+			}
+			if err := insertTags(ctx, tx, m.id, p.Tags); err != nil {
 				return err
 			}
 		}

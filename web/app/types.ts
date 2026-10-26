@@ -10,6 +10,13 @@ export interface Post {
   coverAlt: string;
   // Frontmatter keys BurzBlog does not model, as YAML, kept on every round trip.
   extra: string;
+  // Topics and categories in one list: lowercase words with hyphens.
+  tags: string[];
+  author: string;
+  seoTitle: string;
+  seoDescription: string;
+  // An absolute https address, or empty.
+  canonicalUrl: string;
   publishedOn: string | null;
   updatedOn: string | null;
   // When a draft publishes itself; null unless it is scheduled.
@@ -30,6 +37,11 @@ export type PostDraft = Pick<
   | "coverUrl"
   | "coverAlt"
   | "extra"
+  | "tags"
+  | "author"
+  | "seoTitle"
+  | "seoDescription"
+  | "canonicalUrl"
   | "publishedOn"
   | "updatedOn"
 >;
@@ -40,11 +52,18 @@ export interface PostSummary {
   description: string;
   status: PostStatus;
   words: number;
+  tags: string[];
+  author: string;
   publishedOn: string | null;
   publishAt: string | null;
   updatedAt: string;
   updatedBy: string;
   version: number;
+}
+
+export interface TagCount {
+  tag: string;
+  count: number;
 }
 
 // Scheduled drafts are counted in draft as well.
@@ -55,10 +74,26 @@ export interface PostList {
   counts: Record<PostStatus | "scheduled", number>;
 }
 
+// What an account may do: admins manage the instance, authors write.
+export type Role = "admin" | "author";
+
 export interface Session {
   authenticated: boolean;
   username?: string;
+  role?: Role;
   csrf?: string;
+}
+
+// The answer to a correct password when the account also needs a code.
+export interface SecondFactorReply {
+  second_factor: true;
+  challenge: string;
+}
+
+export interface TwoFactorStatus {
+  enabled: boolean;
+  pending: boolean;
+  recoveryCodes: number;
 }
 
 export interface Revision {
@@ -103,6 +138,24 @@ export interface Token {
   secret?: string;
 }
 
+export interface AuditEntry {
+  id: number;
+  at: string;
+  // The account's id, absent for the host's command line and the scheduler.
+  actorId?: number;
+  actor: string;
+  // The API token the request came with, absent for a browser.
+  tokenId?: number;
+  action: string;
+  target: string;
+  remote: string;
+}
+
+export interface AuditList {
+  items: AuditEntry[];
+  total: number;
+}
+
 export interface DeployStatus {
   configured: boolean;
   pending: boolean;
@@ -111,9 +164,42 @@ export interface DeployStatus {
   lastError: string;
 }
 
+export interface SiteSettings {
+  configured: boolean;
+  feeds: string[];
+  url?: string;
+  title?: string;
+  description?: string;
+  language?: string;
+  postPath?: string;
+  tagPath?: string;
+}
+
 export interface Settings {
   username: string;
   origin: string;
   version: string;
   deploy: DeployStatus;
+  site: SiteSettings;
+}
+
+// An uploaded image or PDF, served publicly at url.
+export interface MediaItem {
+  id: number;
+  name: string;
+  url: string;
+  originalName: string;
+  mime: string;
+  size: number;
+  // Absent when the format is not decoded (WebP, AVIF, PDF).
+  width?: number;
+  height?: number;
+  alt: string;
+  uploadedBy: string;
+  createdAt: string;
+}
+
+export interface MediaList {
+  items: MediaItem[];
+  total: number;
 }

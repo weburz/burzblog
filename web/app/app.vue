@@ -4,7 +4,7 @@ import type { Post } from "./types";
 import { errorMessage } from "./utils/api";
 import { themeOptions } from "./utils/theme";
 
-const { state, load, signOut } = useCurrentSession();
+const { state, isAdmin, load, signOut } = useCurrentSession();
 const theme = usePreferredTheme();
 const { enabled: shortcutsEnabled } = useEnabledShortcuts();
 let stopTheme = () => {};
@@ -61,7 +61,12 @@ const requestSignOut = () => {
 };
 
 const accountItems = computed(() => [
-  [{ label: `Signed in as ${state.value.username}`, type: "label" as const }],
+  [
+    {
+      label: `Signed in as ${state.value.username} (${state.value.role})`,
+      type: "label" as const,
+    },
+  ],
   [
     { label: "Settings", icon: "i-lucide-settings", to: "/settings" },
     {
@@ -95,14 +100,22 @@ useHead({
       <header v-if="!editing || !state.authenticated" class="topbar">
         <div class="topbar-inner">
           <NuxtLink to="/" class="brand" aria-label="BurzBlog, all posts">
-            <span class="brand-mark" aria-hidden="true" />BurzBlog
+            <span class="brand-mark" aria-hidden="true" /><span class="brand-name"
+              >BurzBlog</span
+            >
           </NuxtLink>
           <nav v-if="state.authenticated" aria-label="Main" class="nav-tabs">
             <NuxtLink to="/" class="nav-tab" exact-active-class="is-active"
               >Posts</NuxtLink
             >
+            <NuxtLink to="/media" class="nav-tab" active-class="is-active"
+              >Media</NuxtLink
+            >
             <NuxtLink to="/settings" class="nav-tab" active-class="is-active"
               >Settings</NuxtLink
+            >
+            <NuxtLink v-if="isAdmin" to="/audit" class="nav-tab" active-class="is-active"
+              >Audit<span class="max-sm:hidden">&nbsp;log</span></NuxtLink
             >
           </nav>
           <UButton
@@ -143,7 +156,8 @@ useHead({
       <main id="main" tabindex="-1">
         <p v-if="error" class="alert content mt-6" role="alert">{{ error }}</p>
         <p v-if="!state.ready" class="loading" role="status">Opening BurzBlog…</p>
-        <div v-else-if="!state.authenticated" class="content">
+        <div v-else-if="!state.authenticated && route.name !== 'setup'" class="content">
+          <SetupNotice />
           <LoginForm />
         </div>
         <NuxtPage v-else @sign-out="requestSignOut" />

@@ -69,8 +69,11 @@ func TestImportDirectory(t *testing.T) {
 		live.PublishedOn == nil || live.PublishedOn.Year() != 2026 {
 		t.Errorf("live post = %+v", live)
 	}
-	if !strings.Contains(live.Extra, "tags:") || !strings.Contains(live.Extra, "noindex: true") {
-		t.Errorf("extra frontmatter lost: %q", live.Extra)
+	if strings.Join(live.Tags, ",") != "go,blog" {
+		t.Errorf("tags = %v, want go and blog", live.Tags)
+	}
+	if !strings.Contains(live.Extra, "seo:") || !strings.Contains(live.Extra, "noindex: true") || strings.Contains(live.Extra, "tags") {
+		t.Errorf("extra frontmatter = %q, want seo.noindex kept and tags moved out", live.Extra)
 	}
 	if p := e.getPost("a-draft"); p.Status != post.Draft {
 		t.Errorf("draft status = %s", p.Status)

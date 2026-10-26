@@ -5,7 +5,7 @@ export const password = "browser fixture password";
 export const signIn = async (page: Page) => {
   await page.goto("/");
   await page.getByLabel("Username").fill("e2e");
-  await page.getByLabel("Password").fill(password);
+  await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Posts", exact: true })).toBeVisible();
 };

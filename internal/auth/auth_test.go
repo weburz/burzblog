@@ -24,7 +24,7 @@ func setup(t *testing.T) (*Service, *store.Store, *store.User) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	u, err := s.CreateUser(ctx, "ada", hash)
+	u, err := s.CreateUser(ctx, "ada", hash, store.RoleAdmin)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +188,7 @@ func TestOtherAccountsUnaffectedByOneLockedAccount(t *testing.T) {
 	a, s, _ := setup(t)
 	ctx := context.Background()
 	hash, _ := HashPassword("another long password")
-	s.CreateUser(ctx, "grace", hash)
+	s.CreateUser(ctx, "grace", hash, store.RoleAdmin)
 	for i := 0; i < userLimit+5; i++ {
 		a.Authenticate(ctx, "ada", "wrong")
 	}

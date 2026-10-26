@@ -35,6 +35,8 @@ article table{border-collapse:collapse;display:block;overflow:auto;font-size:16p
 article th,article td{border:1px solid #e4e6e9;padding:8px 12px;text-align:left}
 article th{background:#fafaf8}
 article li{margin:.25em 0}
+article li>ul,article li>ol{margin:.25em 0 0}
+article li:has(>input[type=checkbox]){list-style:none;margin-left:-1.3em}
 article input[type=checkbox]{margin-right:.5em}
 .empty-body{color:#9aa5b1;font-style:italic}
 .dark{color-scheme:dark}

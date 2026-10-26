@@ -47,14 +47,50 @@ Start it and create the first account:
 
 ```sh
 sudo systemctl enable --now burzblog
-sudo -u burzblog burzblog user add ada --data /var/lib/burzblog
-journalctl -u burzblog -f
+journalctl -u burzblog -n 20
 ```
 
-Accounts are managed on the host only: `burzblog user add`, `user passwd` and
-`user list`, always with `--data /var/lib/burzblog` and as the `burzblog` user.
-Passwords need at least 12 characters.
+While the server has no accounts, it logs a one-time setup link on every start:
+
+```text
+msg="no accounts yet; open https://blog.example.com/setup#token=... to create the first one (valid for 60 minutes; restart to get a new link), or run: burzblog user add <name> --data /var/lib/burzblog"
+```
+
+Open that link in your browser, choose a username and a password of at least 12
+characters, and you are signed in. The link works once and for 60 minutes; after
+that, or once any account exists, it is dead and `sudo systemctl restart
+burzblog` prints a new one if it is still needed. The token sits after the `#`,
+so browsers never send it to your reverse proxy, and the panel removes it from
+the address bar as soon as the page opens. Anyone who can read the service log
+can use the link, so open it before you share the logs.
+
+Prefer the terminal? Create the account on the host instead; that also ends
+first-run setup:
+
+```sh
+sudo -u burzblog burzblog user add ada --data /var/lib/burzblog
+```
+
+Later accounts are managed on the host only: `burzblog user add`, `user passwd`,
+`user role` and `user list`, always with `--data /var/lib/burzblog` and as the
+`burzblog` user. Passwords need at least 12 characters.
 `user passwd` also signs that account out of every browser.
+
+An account is an admin or an author. The account first-run setup creates is an
+admin, and so is the first account `user add` makes; later ones are authors
+unless you add `--role admin`. An author
+writes and publishes posts and manages their own password, two-factor sign-in
+and tokens; an admin can also delete posts, manage everyone's tokens, change
+settings, deploy, download backups and read the audit log (see
+[security](security.md) for the full list). Change an account's role with
+`burzblog user role <name> admin|author --data /var/lib/burzblog`; the last
+admin cannot be demoted. `burzblog audit --data /var/lib/burzblog` prints the
+audit log on the host.
+
+If someone loses their authenticator app and recovery codes,
+`burzblog user 2fa-reset <name> --data /var/lib/burzblog` turns two-factor
+sign-in off for them and signs them out of every browser. Their terminal logins
+keep working; they can set two-factor up again in Settings.
 
 ## 3. HTTPS in front
 
@@ -80,9 +116,22 @@ address to download posts.
 | `--data` | `BURZBLOG_DATA`, then systemd's `STATE_DIRECTORY` | `./burzblog-data` |
 | `--origin` | `BURZBLOG_ORIGIN` | `http://<addr>` |
 | `--deploy-hook` | `BURZBLOG_DEPLOY_HOOK` | none |
+| `--site-url` | `BURZBLOG_SITE_URL` | none (feeds and sitemap answer 409) |
+| `--site-title` | `BURZBLOG_SITE_TITLE` | the site URL's host |
+| `--site-description` | `BURZBLOG_SITE_DESCRIPTION` | the title |
+| `--site-language` | `BURZBLOG_SITE_LANGUAGE` | `en` |
+| `--post-path` | `BURZBLOG_POST_PATH` | `/blog/{slug}` |
+| `--tag-path` | `BURZBLOG_TAG_PATH` | none (no tag pages in the sitemap) |
 
 Prefer the environment for the deploy hook so it does not show up in process
 listings.
+
+The `--site-*`, `--post-path` and `--tag-path` settings describe your public
+website (not BurzBlog's own address, `--origin`). They only build the links in
+the feeds and sitemap. `--site-url` is an address without a path, such as
+`https://example.com`; the paths must start with `/` and hold `{slug}` or
+`{tag}` once. They are not secret. BurzBlog refuses to start when one is
+invalid. See [publishing](publishing.md#feeds-and-sitemap).
 
 ## Backups
 
@@ -98,11 +147,21 @@ Or stop the service and copy `burzblog.db` (the `-wal` and `-shm` files are
 folded in on a clean stop). To restore, stop the service, put the file back as
 `burzblog.db` owned by `burzblog` with mode `0600`, and start it.
 
+Uploaded images and PDFs are files in the `media` folder of the data directory,
+not in the database, so copy that folder too (`cp -a` keeps the owner and modes
+`0700`/`0600`); the database and `media/` together are the complete backup. The
+files have content-derived names, so putting them back restores every address.
+Uploads default to 10 MiB each (`--max-upload-mb`, `BURZBLOG_MAX_UPLOAD_MB`);
+raise the request-size limit of your reverse proxy to match (the example
+configs allow 12 MiB).
+
 For a plain-text copy of every post, drafts and archived ones included, use
 **Settings → Backup** in the panel or `burzblog backup [dir]`. It writes
-`<status>/<slug>.md` files and a `README.txt`; restore each with
-`burzblog push`. It holds current posts only: revisions, accounts and tokens
-live only in the database, so the database file remains the complete backup.
+`<status>/<slug>.md` files, a `README.txt` and the uploaded files in `media/`;
+restore each post with `burzblog push`. It holds current posts only: revisions,
+accounts and tokens live only in the database, so the database file (with the
+`media` folder) remains the complete backup. To restore uploads, copy the files
+in `media/` back into the data directory's `media` folder.
 
 For a plain-text copy of your published writing, `burzblog export --out dir`
 writes every published post as a Markdown file.

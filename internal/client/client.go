@@ -70,6 +70,8 @@ type Post struct {
 	UpdatedBy   string     `json:"updatedBy"`
 	Version     int64      `json:"version"`
 	Words       int        `json:"words"`
+	Tags        []string   `json:"tags"`
+	Author      string     `json:"author"`
 }
 
 // List is a page of posts with counts per status.
@@ -175,10 +177,16 @@ func (c *Client) json(ctx context.Context, method, path string, in, out any) err
 	return nil
 }
 
-// IssueToken trades a username and password for a write token.
-func (c *Client) IssueToken(ctx context.Context, username, password, name string) (*Token, error) {
+// SecondFactorRequired is the error code of a correct password for an account
+// that also needs a two-factor code.
+const SecondFactorRequired = "second_factor_required"
+
+// IssueToken trades a username and password for a write token. Accounts with
+// two-factor sign-in also need code; without it the error has the code
+// SecondFactorRequired.
+func (c *Client) IssueToken(ctx context.Context, username, password, code, name string) (*Token, error) {
 	var t Token
-	err := c.json(ctx, http.MethodPost, "/api/auth/token", map[string]string{"username": username, "password": password, "name": name}, &t)
+	err := c.json(ctx, http.MethodPost, "/api/auth/token", map[string]string{"username": username, "password": password, "code": code, "name": name}, &t)
 	return &t, err
 }
 
@@ -203,7 +211,7 @@ func (c *Client) Whoami(ctx context.Context) (string, error) {
 }
 
 // Posts lists posts, optionally by status and search text.
-func (c *Client) Posts(ctx context.Context, status, query, sort string) (*List, error) {
+func (c *Client) Posts(ctx context.Context, status, query, sort, tag string) (*List, error) {
 	q := url.Values{}
 	if status != "" {
 		q.Set("status", status)
@@ -213,6 +221,9 @@ func (c *Client) Posts(ctx context.Context, status, query, sort string) (*List, 
 	}
 	if sort != "" {
 		q.Set("sort", sort)
+	}
+	if tag != "" {
+		q.Set("tag", tag)
 	}
 	var l List
 	err := c.json(ctx, http.MethodGet, "/api/posts?"+q.Encode(), nil, &l)
@@ -305,4 +316,19 @@ func (c *Client) Export(ctx context.Context) (io.ReadCloser, error) {
 		return nil, err
 	}
 	return resp.Body, nil
+}
+
+// Redirect sends an old slug of a renamed post to its current slug.
+type Redirect struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
+// Redirects lists the old slugs of renamed published posts.
+func (c *Client) Redirects(ctx context.Context) ([]Redirect, error) {
+	var l struct {
+		Items []Redirect `json:"items"`
+	}
+	err := c.json(ctx, http.MethodGet, "/api/content/redirects", nil, &l)
+	return l.Items, err
 }

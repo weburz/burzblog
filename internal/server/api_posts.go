@@ -3,12 +3,15 @@ package server
 import (
 	"archive/tar"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -19,30 +22,44 @@ import (
 )
 
 type postReply struct {
-	Slug        string      `json:"slug"`
-	Title       string      `json:"title"`
-	Description string      `json:"description"`
-	Status      post.Status `json:"status"`
-	Body        string      `json:"body"`
-	CoverURL    string      `json:"coverUrl"`
-	CoverAlt    string      `json:"coverAlt"`
-	Extra       string      `json:"extra"`
-	PublishedOn *time.Time  `json:"publishedOn"`
-	UpdatedOn   *time.Time  `json:"updatedOn"`
-	PublishAt   *time.Time  `json:"publishAt"`
-	CreatedAt   time.Time   `json:"createdAt"`
-	UpdatedAt   time.Time   `json:"updatedAt"`
-	UpdatedBy   string      `json:"updatedBy"`
-	Version     int64       `json:"version"`
+	Slug           string      `json:"slug"`
+	Title          string      `json:"title"`
+	Description    string      `json:"description"`
+	Status         post.Status `json:"status"`
+	Body           string      `json:"body"`
+	CoverURL       string      `json:"coverUrl"`
+	CoverAlt       string      `json:"coverAlt"`
+	Extra          string      `json:"extra"`
+	Tags           []string    `json:"tags"`
+	Author         string      `json:"author"`
+	SEOTitle       string      `json:"seoTitle"`
+	SEODescription string      `json:"seoDescription"`
+	CanonicalURL   string      `json:"canonicalUrl"`
+	PublishedOn    *time.Time  `json:"publishedOn"`
+	UpdatedOn      *time.Time  `json:"updatedOn"`
+	PublishAt      *time.Time  `json:"publishAt"`
+	CreatedAt      time.Time   `json:"createdAt"`
+	UpdatedAt      time.Time   `json:"updatedAt"`
+	UpdatedBy      string      `json:"updatedBy"`
+	Version        int64       `json:"version"`
 }
 
 func postJSON(p *post.Post) postReply {
 	return postReply{
 		Slug: p.Slug, Title: p.Title, Description: p.Description, Status: p.Status, Body: p.Body,
-		CoverURL: p.CoverURL, CoverAlt: p.CoverAlt, Extra: p.Extra, PublishedOn: p.PublishedOn,
+		CoverURL: p.CoverURL, CoverAlt: p.CoverAlt, Extra: p.Extra, Tags: tagsJSON(p.Tags), Author: p.Author,
+		SEOTitle: p.SEOTitle, SEODescription: p.SEODescription, CanonicalURL: p.CanonicalURL, PublishedOn: p.PublishedOn,
 		UpdatedOn: p.UpdatedOn, PublishAt: p.PublishAt, CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt, UpdatedBy: p.UpdatedBy,
 		Version: p.Version,
 	}
+}
+
+// tagsJSON makes sure a post without tags is [] and not null in JSON.
+func tagsJSON(tags []string) []string {
+	if tags == nil {
+		return []string{}
+	}
+	return tags
 }
 
 type summaryReply struct {
@@ -51,6 +68,8 @@ type summaryReply struct {
 	Description string      `json:"description"`
 	Status      post.Status `json:"status"`
 	Words       int         `json:"words"`
+	Tags        []string    `json:"tags"`
+	Author      string      `json:"author"`
 	PublishedOn *time.Time  `json:"publishedOn"`
 	PublishAt   *time.Time  `json:"publishAt"`
 	UpdatedAt   time.Time   `json:"updatedAt"`
@@ -88,6 +107,29 @@ func (s *Server) postError(w http.ResponseWriter, r *http.Request, err error, cu
 // maxPageSize caps ?limit= on the post list.
 const maxPageSize = 500
 
+// pageParams reads ?limit= and ?offset=, answering 422 itself when they are
+// out of range. A zero limit means the result is not paged.
+func pageParams(w http.ResponseWriter, r *http.Request) (limit, offset int, ok bool) {
+	for _, f := range []struct {
+		name string
+		dst  *int
+	}{{"limit", &limit}, {"offset", &offset}} {
+		name, dst := f.name, f.dst
+		raw := r.URL.Query().Get(name)
+		if raw == "" {
+			continue
+		}
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 0 || (name == "limit" && (n < 1 || n > maxPageSize)) {
+			fail(w, http.StatusUnprocessableEntity, "validation",
+				fmt.Sprintf("Limit must be 1 to %d and offset 0 or more.", maxPageSize), name)
+			return 0, 0, false
+		}
+		*dst = n
+	}
+	return limit, offset, true
+}
+
 // listPosts lists post summaries (never bodies). Without ?limit= it returns
 // every match, as the CLI expects; the panel pages with limit and offset.
 func (s *Server) listPosts(w http.ResponseWriter, r *http.Request) {
@@ -105,26 +147,12 @@ func (s *Server) listPosts(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusUnprocessableEntity, "validation", "Sort must be updated, published, title or created.", "sort")
 		return
 	}
-	limit, offset := 0, 0
-	for _, f := range []struct {
-		name string
-		dst  *int
-	}{{"limit", &limit}, {"offset", &offset}} {
-		name, dst := f.name, f.dst
-		raw := r.URL.Query().Get(name)
-		if raw == "" {
-			continue
-		}
-		n, err := strconv.Atoi(raw)
-		if err != nil || n < 0 || (name == "limit" && (n < 1 || n > maxPageSize)) {
-			fail(w, http.StatusUnprocessableEntity, "validation",
-				fmt.Sprintf("Limit must be 1 to %d and offset 0 or more.", maxPageSize), name)
-			return
-		}
-		*dst = n
+	limit, offset, ok := pageParams(w, r)
+	if !ok {
+		return
 	}
 	list, counts, err := s.store.ListPosts(r.Context(), store.Filter{Status: status, Scheduled: scheduled,
-		Query: r.URL.Query().Get("q"), Sort: sort, Limit: limit, Offset: offset})
+		Query: r.URL.Query().Get("q"), Tag: r.URL.Query().Get("tag"), Sort: sort, Limit: limit, Offset: offset})
 	if err != nil {
 		s.internal(w, r, err)
 		return
@@ -133,7 +161,7 @@ func (s *Server) listPosts(w http.ResponseWriter, r *http.Request) {
 	for _, p := range list {
 		items = append(items, summaryReply{
 			Slug: p.Slug, Title: p.Title, Description: p.Description, Status: p.Status, Words: p.Words,
-			PublishedOn: p.PublishedOn, PublishAt: p.PublishAt, UpdatedAt: p.UpdatedAt, UpdatedBy: p.UpdatedBy,
+			Tags: tagsJSON(p.Tags), Author: p.Author, PublishedOn: p.PublishedOn, PublishAt: p.PublishAt, UpdatedAt: p.UpdatedAt, UpdatedBy: p.UpdatedBy,
 			Version: p.Version,
 		})
 	}
@@ -145,17 +173,36 @@ func (s *Server) listPosts(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// listTags lists the tags in use and how many posts carry each.
+func (s *Server) listTags(w http.ResponseWriter, r *http.Request) {
+	tags, err := s.store.Tags(r.Context())
+	if err != nil {
+		s.internal(w, r, err)
+		return
+	}
+	items := make([]map[string]any, 0, len(tags))
+	for _, t := range tags {
+		items = append(items, map[string]any{"tag": t.Tag, "count": t.Count})
+	}
+	reply(w, http.StatusOK, map[string]any{"items": items})
+}
+
 type postInput struct {
-	Version     int64      `json:"version"`
-	Slug        string     `json:"slug"`
-	Title       string     `json:"title"`
-	Description string     `json:"description"`
-	Body        string     `json:"body"`
-	CoverURL    string     `json:"coverUrl"`
-	CoverAlt    string     `json:"coverAlt"`
-	Extra       string     `json:"extra"`
-	PublishedOn *time.Time `json:"publishedOn"`
-	UpdatedOn   *time.Time `json:"updatedOn"`
+	Version        int64      `json:"version"`
+	Slug           string     `json:"slug"`
+	Title          string     `json:"title"`
+	Description    string     `json:"description"`
+	Body           string     `json:"body"`
+	CoverURL       string     `json:"coverUrl"`
+	CoverAlt       string     `json:"coverAlt"`
+	Extra          string     `json:"extra"`
+	Tags           []string   `json:"tags"`
+	Author         string     `json:"author"`
+	SEOTitle       string     `json:"seoTitle"`
+	SEODescription string     `json:"seoDescription"`
+	CanonicalURL   string     `json:"canonicalUrl"`
+	PublishedOn    *time.Time `json:"publishedOn"`
+	UpdatedOn      *time.Time `json:"updatedOn"`
 }
 
 func (in *postInput) apply(p *post.Post) {
@@ -164,6 +211,8 @@ func (in *postInput) apply(p *post.Post) {
 	}
 	p.Title, p.Description, p.Body = in.Title, in.Description, in.Body
 	p.CoverURL, p.CoverAlt, p.Extra = in.CoverURL, in.CoverAlt, in.Extra
+	p.Tags, p.Author = in.Tags, in.Author
+	p.SEOTitle, p.SEODescription, p.CanonicalURL = in.SEOTitle, in.SEODescription, in.CanonicalURL
 	p.PublishedOn, p.UpdatedOn = in.PublishedOn, in.UpdatedOn
 }
 
@@ -216,6 +265,9 @@ func (s *Server) update(w http.ResponseWriter, r *http.Request, slug string, ver
 	if err != nil {
 		s.postError(w, r, err, updated)
 		return
+	}
+	if updated.Version != before.Version {
+		s.recordStatus(r, &before, updated)
 	}
 	if updated.Version != before.Version && (before.Status == post.Published || updated.Status == post.Published) {
 		s.deploy.schedule()
@@ -314,6 +366,7 @@ func (s *Server) deletePost(w http.ResponseWriter, r *http.Request) {
 		s.postError(w, r, err, nil)
 		return
 	}
+	s.record(r, "post.delete", r.PathValue("slug"))
 	reply(w, http.StatusOK, map[string]bool{"deleted": true})
 }
 
@@ -362,6 +415,7 @@ func (s *Server) putMarkdown(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if created.Status == post.Published {
+			s.record(r, "post.publish", created.Slug)
 			s.deploy.schedule()
 		}
 		w.Header().Set("ETag", etag(created.Version))
@@ -436,7 +490,8 @@ func stateOf(p *post.Post, words int) revisionState {
 		Slug: p.Slug, Title: p.Title, Status: p.Status, Words: words,
 		DescriptionDigest: digest(p.Description),
 		CoverDigest:       digest(p.CoverURL, p.CoverAlt),
-		SettingsDigest:    digest(p.Extra, stamp(p.PublishedOn), stamp(p.UpdatedOn)),
+		SettingsDigest: digest(p.Extra, stamp(p.PublishedOn), stamp(p.UpdatedOn), strings.Join(p.Tags, ","),
+			p.Author, p.SEOTitle, p.SEODescription, p.CanonicalURL),
 	}
 }
 
@@ -504,9 +559,28 @@ func (s *Server) restoreRevision(w http.ResponseWriter, r *http.Request) {
 		old := rev.Post
 		p.Title, p.Description, p.Body = old.Title, old.Description, old.Body
 		p.CoverURL, p.CoverAlt, p.Extra = old.CoverURL, old.CoverAlt, old.Extra
+		p.Tags, p.Author = old.Tags, old.Author
+		p.SEOTitle, p.SEODescription, p.CanonicalURL = old.SEOTitle, old.SEODescription, old.CanonicalURL
 		p.PublishedOn, p.UpdatedOn = old.PublishedOn, old.UpdatedOn
 		return nil
 	})
+}
+
+// renderError answers a failed render and reports whether there was none.
+func (s *Server) renderError(w http.ResponseWriter, r *http.Request, err error) bool {
+	var limit *render.LimitError
+	switch {
+	case err == nil:
+		return true
+	case errors.As(err, &limit):
+		fail(w, http.StatusUnprocessableEntity, "preview_limit", "This post cannot be previewed as written. Saving still works.", limit.Message)
+	case errors.Is(err, render.ErrBusy):
+		w.Header().Set("Retry-After", "5")
+		fail(w, http.StatusServiceUnavailable, "busy", "The server is busy rendering other previews. The preview will refresh on your next edit.", "")
+	default:
+		s.internal(w, r, err)
+	}
+	return false
 }
 
 func (s *Server) preview(w http.ResponseWriter, r *http.Request) {
@@ -517,24 +591,15 @@ func (s *Server) preview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	html, err := render.HTML(r.Context(), body.Markdown)
-	var limit *render.LimitError
-	switch {
-	case errors.As(err, &limit):
-		fail(w, http.StatusUnprocessableEntity, "preview_limit", "This post cannot be previewed as written. Saving still works.", limit.Message)
-		return
-	case errors.Is(err, render.ErrBusy):
-		w.Header().Set("Retry-After", "5")
-		fail(w, http.StatusServiceUnavailable, "busy", "The server is busy rendering other previews. The preview will refresh on your next edit.", "")
-		return
-	case err != nil:
-		s.internal(w, r, err)
+	if !s.renderError(w, r, err) {
 		return
 	}
 	reply(w, http.StatusOK, map[string]string{"html": html})
 }
 
 // export streams every published post as <slug>.md in a gzipped tar, for
-// reader builds. Posts are read and written one at a time, so memory use does
+// reader builds, followed by feed.xml, feed.atom, feed.json and sitemap.xml
+// when a site URL is set. Posts are read and written one at a time, so memory use does
 // not grow with the blog.
 func (s *Server) export(w http.ResponseWriter, r *http.Request) {
 	counts, err := s.store.StatusCounts(r.Context())
@@ -551,6 +616,12 @@ func (s *Server) export(w http.ResponseWriter, r *http.Request) {
 		return addToTar(tw, p.Slug+".md", post.Encode(p), p.UpdatedAt)
 	})
 	if err == nil {
+		err = s.addSiteFiles(r.Context(), tw)
+	}
+	if err == nil {
+		err = s.addRedirects(r.Context(), tw)
+	}
+	if err == nil {
 		err = tw.Close()
 	}
 	if err == nil {
@@ -559,6 +630,22 @@ func (s *Server) export(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.log.Error("export failed", "err", err)
 	}
+}
+
+// addSiteFiles adds the feeds and the sitemap to an export archive when a site
+// URL is set.
+func (s *Server) addSiteFiles(ctx context.Context, tw *tar.Writer) error {
+	files, err := s.siteFiles(ctx)
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	for _, name := range slices.Sorted(maps.Keys(files)) {
+		if err := addToTar(tw, name, string(files[name]), now); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func addToTar(tw *tar.Writer, name, doc string, modTime time.Time) error {
@@ -575,7 +662,8 @@ func addToTar(tw *tar.Writer, name, doc string, modTime time.Time) error {
 
 // backup streams every post, drafts and archived ones included, as
 // <status>/<slug>.md in a gzipped tar with a README.txt, for a full copy of
-// the writing. Revisions are not included.
+// the writing, followed by the uploaded files as media/<name>. Revisions are
+// not included.
 func (s *Server) backup(w http.ResponseWriter, r *http.Request) {
 	counts, err := s.store.StatusCounts(r.Context())
 	if err != nil {
@@ -583,6 +671,7 @@ func (s *Server) backup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	posts := counts.Draft + counts.Published + counts.Archived
+	s.record(r, "backup.download", "")
 	now := time.Now().UTC()
 	w.Header().Set("Content-Type", "application/gzip")
 	w.Header().Set("Content-Disposition", `attachment; filename="burzblog-backup-`+now.Format("2006-01-02")+`.tar.gz"`)
@@ -595,6 +684,9 @@ func (s *Server) backup(w http.ResponseWriter, r *http.Request) {
 		err = s.store.ForEachPost(r.Context(), func(p *post.Post) error {
 			return addToTar(tw, string(p.Status)+"/"+p.Slug+".md", post.Encode(p), p.UpdatedAt)
 		})
+	}
+	if err == nil {
+		err = s.addMediaToTar(r, tw)
 	}
 	if err == nil {
 		err = tw.Close()
@@ -615,13 +707,17 @@ Version: BurzBlog %s
 Posts:   %d
 
 This archive holds every post as it is now, as Markdown with frontmatter, in
-one folder per status: draft/, published/ and archived/. Earlier versions
-(history), accounts and tokens are not included; the database file is the
-complete backup (see docs/self-hosting.md).
+one folder per status: draft/, published/ and archived/. Uploaded images and
+PDFs are in media/. Earlier versions (history), accounts and tokens are not
+included; the database file with the media folder next to it is the complete
+backup (see docs/self-hosting.md).
 
 To restore, push each file to a running BurzBlog:
 
   burzblog push <folder>/<slug>.md
+
+Uploaded files keep their address when uploaded again, because their names
+come from their content.
 
 The file name is the post's slug. Archived posts are stored with status: draft
 in their frontmatter; run "burzblog archive <slug>" after pushing to archive

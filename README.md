@@ -40,9 +40,10 @@ Website: [burzblog.weburz.com](https://burzblog.weburz.com/). Downloads:
   Nuxt Content and other static site generators read. An optional deploy hook
   (for example a Vercel deploy hook) rebuilds the site after you publish.
 
-Not included yet: image and video uploads (use hosted image URLs), roles and
-permissions (every account can do everything), and serving the public blog
-itself.
+Accounts are admins or authors, and the admin-only actions are written to an
+audit log. Uploads cover images and PDFs (not video or SVG); for video use a
+hosted URL. Not included yet: per-post permissions (any author can edit any
+post) and serving the public blog itself.
 
 ![The post list in the dark theme, with drafts, a scheduled post and published posts](docs/images/posts-dark.png)
 
@@ -64,9 +65,12 @@ To build from source:
 
 ```sh
 task build                                   # bin/burzblog with the panel inside
-bin/burzblog user add ada                    # create an account (asks for a password)
 bin/burzblog serve                           # http://127.0.0.1:8080
 ```
+
+On a new data directory `serve` prints a one-time setup link,
+`http://127.0.0.1:8080/setup#token=...`. Open it to create the first account in
+the browser, or run `bin/burzblog user add ada` instead.
 
 Then, from any computer:
 

@@ -202,9 +202,13 @@ main:focus {
   gap: 22px;
   margin-right: auto;
   margin-left: 24px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 .nav-tab {
   position: relative;
+  white-space: nowrap;
   display: inline-flex;
   align-items: center;
   color: var(--bb-text-2);
@@ -222,6 +226,19 @@ main:focus {
   inset: auto 0 -1px;
   height: 2px;
   background: var(--bb-accent);
+}
+/* On a phone the brand mark alone leaves room for the four tabs. */
+@media (max-width: 480px) {
+  .brand-name {
+    display: none;
+  }
+  .brand-mark {
+    margin-right: 0;
+  }
+  .nav-tabs {
+    gap: 12px;
+    font-size: 14px;
+  }
 }
 .avatar {
   display: inline-grid;
@@ -292,6 +309,25 @@ code {
   font-size: 13px;
   color: var(--bb-text-2);
 }
+.password-input > .field-hint:not(:empty) {
+  margin-top: 6px;
+}
+.strength-weak,
+.strength-short {
+  color: var(--bb-danger);
+}
+.login-forgot {
+  font-size: 14px;
+}
+.login-forgot > summary {
+  cursor: pointer;
+  width: fit-content;
+  color: var(--bb-blue);
+}
+.login-forgot > p {
+  margin: 8px 0;
+  line-height: 1.6;
+}
 .field-error {
   font-size: 13px;
   color: var(--bb-danger);
@@ -303,6 +339,17 @@ code {
   border-radius: var(--bb-radius-m);
   background: var(--bb-danger-soft);
   color: var(--bb-danger);
+  font-size: 14px;
+}
+
+.notice {
+  margin: 24px auto 0;
+  max-width: 400px;
+  padding: 12px 16px;
+  border: 1px solid var(--bb-border-strong);
+  border-radius: var(--bb-radius-m);
+  background: var(--bb-surface-2);
+  color: var(--bb-text);
   font-size: 14px;
 }
 
@@ -432,7 +479,8 @@ code {
 .list-search {
   width: 280px;
 }
-.list-sort-select {
+.list-sort-select,
+.list-tag-select {
   width: 12.5rem;
 }
 @media (max-width: 640px) {
@@ -441,7 +489,8 @@ code {
     flex-wrap: wrap;
   }
   .list-search,
-  .list-sort-select {
+  .list-sort-select,
+  .list-tag-select {
     flex: 1 1 100%;
     width: auto;
   }
@@ -507,6 +556,12 @@ code {
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--bb-text-3);
+}
+.post-tags {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .post-description {
   flex: 1 1 0;
@@ -714,6 +769,12 @@ code {
   margin: 0 auto;
   padding: 40px 40px 40vh;
 }
+/* Split already narrows the pane; a capped column inside it leaves gutters
+   on both sides and a cramped writing area. */
+.editor-shell[data-mode="split"] .write-column {
+  max-width: none;
+  padding-inline: 32px;
+}
 .title-field,
 .description-field {
   display: block;
@@ -744,10 +805,14 @@ code {
   color: var(--bb-placeholder);
 }
 .title-field:focus-visible,
-.description-field:focus-visible,
-.md-source:focus-visible {
+.description-field:focus-visible {
   outline: none;
   background: var(--bb-blue-soft);
+  box-shadow: -14px 0 0 -12px var(--bb-blue);
+}
+/* The body is the page, not a box on it: no tint, only the caret bar. */
+.md-source:focus-visible {
+  outline: none;
   box-shadow: -14px 0 0 -12px var(--bb-blue);
 }
 .md-editor {
@@ -774,7 +839,7 @@ code {
 .md-source {
   display: block;
   width: 100%;
-  min-height: 50vh;
+  min-height: 65vh;
   padding: 20px 0 0;
   border: 0;
   resize: none;
@@ -906,6 +971,7 @@ code {
 }
 .palette-trigger {
   gap: var(--bb-space-2);
+  white-space: nowrap;
   color: var(--bb-text-2);
 }
 .palette-meta {
@@ -940,6 +1006,44 @@ code {
   border-radius: var(--bb-radius-m);
   background: var(--bb-surface-2);
   margin-top: 6px;
+}
+.redirects ul {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+.redirects li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.875rem;
+}
+.seo-section {
+  display: grid;
+  gap: 12px;
+}
+.seo-toggle {
+  width: 100%;
+  justify-content: space-between;
+  font-weight: 650;
+}
+.seo-fields {
+  padding-top: 4px;
+}
+.counter {
+  display: flex;
+  gap: 8px;
+}
+.counter > span {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+}
+.counter-over > span {
+  color: var(--bb-warn);
 }
 .extra-source {
   width: 100%;
@@ -1139,6 +1243,13 @@ code {
 .deploy-card[data-state="failed"] {
   border-color: var(--bb-danger);
 }
+.feed-list {
+  display: grid;
+  gap: 10px;
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+}
 .deploy-title {
   display: flex;
   align-items: center;
@@ -1217,7 +1328,7 @@ code {
   }
   .nav-tabs {
     margin-left: 8px;
-    gap: 16px;
+    gap: 14px;
   }
   .page-head {
     margin-top: 28px;
@@ -1307,4 +1418,85 @@ code {
     animation: none !important;
     transition: none !important;
   }
+}
+
+/* Media */
+.media {
+  display: grid;
+  gap: 20px;
+}
+.media-alt {
+  max-width: 520px;
+}
+.dropzone {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 28px 16px;
+  border: 2px dashed var(--bb-border-strong);
+  border-radius: var(--bb-radius-m);
+  text-align: center;
+}
+.dropzone.is-over {
+  border-color: var(--bb-blue);
+  background: var(--bb-surface-2);
+}
+.dropzone-icon {
+  width: 28px;
+  height: 28px;
+  color: var(--bb-text-2);
+}
+.media-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.media-card,
+.media-pick {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+  text-align: left;
+}
+.media-pick {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--bb-border);
+  border-radius: var(--bb-radius-m);
+  background: transparent;
+  cursor: pointer;
+}
+.media-pick:hover,
+.media-pick:focus-visible {
+  border-color: var(--bb-blue);
+}
+.media-pick img,
+.media-thumb {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: var(--bb-radius-m);
+  background: var(--bb-surface-2);
+}
+.media-file {
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  color: var(--bb-text-2);
+}
+.media-name {
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.media-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
