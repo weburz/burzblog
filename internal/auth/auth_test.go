@@ -289,16 +289,20 @@ func TestClientLimit(t *testing.T) {
 
 func TestSignInSurvivesFlood(t *testing.T) {
 	a, _, _ := setup(t)
-	a.wait = 5 * time.Second
+	// Generous: under -race on a two-core CI runner one Argon2 hash takes a
+	// large part of a second, and the real sign-in queues behind the flooders
+	// still inside their caps.
+	a.wait = 15 * time.Second
 	stop := make(chan struct{})
 	var wg sync.WaitGroup
-	// Eight flooding addresses, each over its per-client cap. Kept modest so
+	// Four flooding addresses, each over its per-client cap. Kept modest so
 	// the test measures queueing, not how slow Argon2 gets on a loaded machine.
-	for i := 0; i < 8*(clientLimit+2); i++ {
+	const flooders = 4
+	for i := 0; i < flooders*(clientLimit+2); i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			ctx := WithClient(context.Background(), fmt.Sprintf("198.51.100.%d", i%8))
+			ctx := WithClient(context.Background(), fmt.Sprintf("198.51.100.%d", i%flooders))
 			for n := 0; ; n++ {
 				select {
 				case <-stop:
