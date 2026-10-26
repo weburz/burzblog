@@ -1,5 +1,6 @@
+import { computed } from "vue";
 import { request, rememberSession } from "../utils/api";
-import type { SecondFactorReply, Session } from "../types";
+import type { Role, SecondFactorReply, Session } from "../types";
 
 // Who is signed in, shared by every page. `expired` opens the sign-in dialog
 // over the current page, so unsaved writing survives an ended session.
@@ -8,12 +9,18 @@ export const useCurrentSession = () => {
     ready: false,
     authenticated: false,
     username: "",
+    role: "author" as Role,
     expired: false,
   }));
+  // Only for showing or hiding controls; the server decides what is allowed.
+  const isAdmin = computed(
+    () => state.value.authenticated && state.value.role === "admin",
+  );
   const apply = (session: Session) => {
     rememberSession(session);
     state.value.authenticated = session.authenticated;
     state.value.username = session.username ?? "";
+    state.value.role = session.role ?? "author";
   };
   const load = async () => {
     apply(await request<Session>("/api/session"));
@@ -48,5 +55,5 @@ export const useCurrentSession = () => {
     await request("/api/logout", "POST", {}).catch(() => undefined);
     apply({ authenticated: false });
   };
-  return { state, load, signIn, completeSignIn, createFirstAccount, signOut };
+  return { state, isAdmin, load, signIn, completeSignIn, createFirstAccount, signOut };
 };

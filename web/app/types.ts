@@ -74,9 +74,13 @@ export interface PostList {
   counts: Record<PostStatus | "scheduled", number>;
 }
 
+// What an account may do: admins manage the instance, authors write.
+export type Role = "admin" | "author";
+
 export interface Session {
   authenticated: boolean;
   username?: string;
+  role?: Role;
   csrf?: string;
 }
 
@@ -132,6 +136,24 @@ export interface Token {
   lastUsedAt: string | null;
   // Only present in the response that creates the token.
   secret?: string;
+}
+
+export interface AuditEntry {
+  id: number;
+  at: string;
+  // The account's id, absent for the host's command line and the scheduler.
+  actorId?: number;
+  actor: string;
+  // The API token the request came with, absent for a browser.
+  tokenId?: number;
+  action: string;
+  target: string;
+  remote: string;
+}
+
+export interface AuditList {
+  items: AuditEntry[];
+  total: number;
 }
 
 export interface DeployStatus {

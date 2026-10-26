@@ -349,6 +349,8 @@ const schedule = async (at: string) => {
   if (await action("schedule", false, { at })) scheduleOpen.value = false;
 };
 
+const { isAdmin } = useCurrentSession();
+
 const remove = () =>
   ask({
     title: "Delete this post for good?",
@@ -475,12 +477,14 @@ const menu = computed(() => {
       icon: "i-lucide-archive-restore",
       onSelect: () => action("restore"),
     });
-    status.push({
-      label: "Delete post…",
-      icon: "i-lucide-trash-2",
-      color: "error" as const,
-      onSelect: fromMenu(remove),
-    });
+    // Only admins may delete; the server refuses authors anyway.
+    if (isAdmin.value)
+      status.push({
+        label: "Delete post…",
+        icon: "i-lucide-trash-2",
+        color: "error" as const,
+        onSelect: fromMenu(remove),
+      });
   }
   return [
     [

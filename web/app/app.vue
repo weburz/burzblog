@@ -4,7 +4,7 @@ import type { Post } from "./types";
 import { errorMessage } from "./utils/api";
 import { themeOptions } from "./utils/theme";
 
-const { state, load, signOut } = useCurrentSession();
+const { state, isAdmin, load, signOut } = useCurrentSession();
 const theme = usePreferredTheme();
 const { enabled: shortcutsEnabled } = useEnabledShortcuts();
 let stopTheme = () => {};
@@ -61,7 +61,12 @@ const requestSignOut = () => {
 };
 
 const accountItems = computed(() => [
-  [{ label: `Signed in as ${state.value.username}`, type: "label" as const }],
+  [
+    {
+      label: `Signed in as ${state.value.username} (${state.value.role})`,
+      type: "label" as const,
+    },
+  ],
   [
     { label: "Settings", icon: "i-lucide-settings", to: "/settings" },
     {
@@ -103,6 +108,9 @@ useHead({
             >
             <NuxtLink to="/settings" class="nav-tab" active-class="is-active"
               >Settings</NuxtLink
+            >
+            <NuxtLink v-if="isAdmin" to="/audit" class="nav-tab" active-class="is-active"
+              >Audit log</NuxtLink
             >
           </nav>
           <UButton

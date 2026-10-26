@@ -12,6 +12,9 @@ const toast = useToast();
 const theme = usePreferredTheme();
 const { enabled: shortcutsEnabled } = useEnabledShortcuts();
 
+// The website, backup and deploy sections are for admins; the server refuses
+// authors there, so they are not shown (nor their data fetched).
+const { state: session, isAdmin } = useCurrentSession();
 const settings = ref<Settings | null>(null);
 const tokens = ref<Token[] | null>(null);
 const error = ref("");
@@ -19,7 +22,7 @@ const error = ref("");
 const load = async () => {
   try {
     const [s, t] = await Promise.all([
-      request<Settings>("/api/settings"),
+      isAdmin.value ? request<Settings>("/api/settings") : null,
       request<{ items: Token[] }>("/api/tokens"),
     ]);
     settings.value = s;
@@ -165,8 +168,8 @@ const scopeUse = (t: Token) =>
     <div class="page-head">
       <div>
         <h1 class="page-title">Settings</h1>
-        <p v-if="settings" class="muted">
-          Signed in as {{ settings.username }} on {{ settings.origin }}
+        <p class="muted">
+          Signed in as {{ session.username }} ({{ session.role }}) on {{ origin }}
         </p>
       </div>
     </div>
@@ -225,7 +228,7 @@ const scopeUse = (t: Token) =>
       </div>
     </section>
 
-    <section class="settings-section" aria-labelledby="site-heading">
+    <section v-if="isAdmin" class="settings-section" aria-labelledby="site-heading">
       <div class="settings-aside">
         <h2 id="site-heading" class="section-title">Your website</h2>
         <p class="muted">
@@ -401,7 +404,7 @@ const scopeUse = (t: Token) =>
       </div>
     </section>
 
-    <section class="settings-section" aria-labelledby="backup-heading">
+    <section v-if="isAdmin" class="settings-section" aria-labelledby="backup-heading">
       <div class="settings-aside">
         <h2 id="backup-heading" class="section-title">Backup</h2>
         <p class="muted">
@@ -478,7 +481,7 @@ const scopeUse = (t: Token) =>
         <input
           type="text"
           autocomplete="username"
-          :value="settings?.username"
+          :value="session.username"
           hidden
           readonly
         />
