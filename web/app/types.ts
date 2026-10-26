@@ -198,6 +198,20 @@ export interface Settings {
   site: SiteSettings;
 }
 
+export interface UpdateInfo {
+  current: string;
+  latest: string;
+  available: boolean;
+  url: string;
+  checkedAt: string;
+}
+
+// GET /api/updates: update is null when checks are off or none has worked yet.
+export interface Updates {
+  enabled: boolean;
+  update: UpdateInfo | null;
+}
+
 // An uploaded image or PDF, served publicly at url.
 export interface MediaItem {
   id: number;

@@ -8,6 +8,36 @@ All notable changes are recorded here, following
 
 ### Added
 
+- Two-factor setup shows a QR code to scan with an authenticator app, drawn in
+  the browser so the secret never leaves it; the setup key stays as a fallback
+  and no longer wraps inside a group. Settings lists tag labels last, so
+  password and two-factor sign-in are easy to find.
+- Coolify deployment. `deploy/coolify.yaml` is a Compose file for Coolify's
+  Docker Compose Empty resource: Coolify generates the URL, `BURZBLOG_ORIGIN` is
+  set from it, and the database lives in a named volume. See
+  [docs/containers.md](docs/containers.md#coolify).
+- `task image:publish` publishes a multi-arch (`linux/amd64`, `linux/arm64`)
+  image to `ghcr.io/weburz/burzblog` as `X.Y.Z`, `X.Y`, `X` and `latest`, from a
+  clean `vX.Y.Z` tag; `--dry-run` builds without pushing. The dormant image
+  workflow does the same.
+- Opt-in update notice. With `--check-updates` (`BURZBLOG_CHECK_UPDATES=true`)
+  the server checks GitHub for a newer release shortly after start and every
+  24 hours; nothing is sent but a `GET` with the BurzBlog version in the
+  `User-Agent`, and without the flag it never connects. Admins get
+  `GET /api/updates` (authors 403 `role`), a dismissible notice in Settings and
+  a dot on the Settings tab; development builds never report an update.
+- `burzblog upgrade` replaces the running binary with the latest GitHub release
+  (or `--version vX.Y.Z`). It downloads over https only, checks the SHA-256 sum
+  from `SHA256SUMS-<version>`, swaps the file in atomically and prints the
+  restart command; it never restarts or runs the download. `--check` exits `7`
+  when an update exists (new exit code, documented in `docs/terminal.md`),
+  `--json` is supported, downgrades need `--force`, development builds need
+  `--version`, and containers are told to pull the new image.
+- The database backs itself up before a schema upgrade. When a start finds the
+  schema older than the binary, it writes a consistent copy
+  (`VACUUM INTO`) to `<data>/backups/burzblog-schema<N>-<UTC time>.db` first
+  and refuses to migrate if that fails. The newest five copies are kept.
+  Restore steps are in `docs/self-hosting.md#upgrades`.
 - Featured posts. A post has a `featured` flag (frontmatter `featured: true`, a
   Featured switch in the post details, a badge in the posts list). It is saved
   as a versioned change with history like any other field and survives
@@ -190,6 +220,10 @@ All notable changes are recorded here, following
 
 ### Fixed
 
+- The container image now ships `/data` owned by the runtime user, so a new
+  Docker named volume mounted there is writable. Before, such a volume was
+  root-owned and BurzBlog could not start on it. The image is also
+  cross-compiled instead of emulated when built for another architecture.
 - Saving a published post with no publish date, such as pushing a file without
   `timestamps.publishedOn`, keeps its first publish date instead of resetting it
   to the time of the save.
@@ -324,4 +358,4 @@ All notable changes are recorded here, following
 - SSH and proxy Git transports are deferred (#18).
 - No visual editor, file watcher, ARM image or automatic update.
 
-Releases are tagged `vX.Y.Z`. Each GitHub release carries the binaries from `task release` (Linux amd64/arm64/arm, macOS amd64/arm64, Windows amd64) and a `SHA256SUMS` file; see [docs/terminal.md](docs/terminal.md#install). Container images are built locally with `task docker:build` (see [docs/containers.md](docs/containers.md)).
+Releases are tagged `vX.Y.Z`. Each GitHub release carries the binaries from `task release` (Linux amd64/arm64/arm, macOS amd64/arm64, Windows amd64) and a `SHA256SUMS` file; see [docs/terminal.md](docs/terminal.md#install). Container images are published to `ghcr.io/weburz/burzblog` or can be built locally with `task docker:build`; see [docs/containers.md](docs/containers.md).

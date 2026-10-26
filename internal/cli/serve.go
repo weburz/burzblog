@@ -40,6 +40,7 @@ const maxUploadMBLimit = 256
 
 func (a *App) serveCmd() *cobra.Command {
 	var addr, data, origin, hook string
+	var checkUpdates bool
 	var maxUploadMB int
 	var cfg server.Config // holds the site settings until serving
 	cmd := &cobra.Command{
@@ -52,6 +53,10 @@ Put it behind a TLS proxy (Caddy, nginx) and set --origin to the public
 URL. Settings can also come from the environment:
 
   BURZBLOG_ADDR, BURZBLOG_DATA, BURZBLOG_ORIGIN, BURZBLOG_DEPLOY_HOOK
+
+BurzBlog contacts nobody unless you ask. --check-updates (or
+BURZBLOG_CHECK_UPDATES=true) lets it look for a newer release once a day with a
+GET to api.github.com; admins see the result in Settings.
 
 Uploaded images and PDFs are kept in the media folder of the data directory,
 at most --max-upload-mb each (BURZBLOG_MAX_UPLOAD_MB, default 10).
@@ -75,6 +80,17 @@ public address:
 			cfg.SiteLanguage = firstOf(cfg.SiteLanguage, a.Getenv("BURZBLOG_SITE_LANGUAGE"))
 			cfg.PostPath = firstOf(cfg.PostPath, a.Getenv("BURZBLOG_POST_PATH"))
 			cfg.TagPath = firstOf(cfg.TagPath, a.Getenv("BURZBLOG_TAG_PATH"))
+			if !cmd.Flags().Changed("check-updates") {
+				switch v := a.Getenv("BURZBLOG_CHECK_UPDATES"); v {
+				case "":
+				case "true", "1":
+					checkUpdates = true
+				case "false", "0":
+				default:
+					return fmt.Errorf("BURZBLOG_CHECK_UPDATES must be true or false, got %q", v)
+				}
+			}
+			cfg.CheckUpdates = checkUpdates
 			dir := a.dataDir(data)
 			if maxUploadMB == 0 {
 				if v := a.Getenv("BURZBLOG_MAX_UPLOAD_MB"); v != "" {
@@ -118,6 +134,7 @@ public address:
 			}
 
 			srv.StartScheduler(ctx)
+			srv.StartUpdateChecks(ctx)
 
 			ln, err := net.Listen("tcp", addr)
 			if err != nil {
@@ -158,6 +175,7 @@ public address:
 	cmd.Flags().IntVar(&maxUploadMB, "max-upload-mb", 0, "largest upload in MiB (default 10)")
 	cmd.Flags().StringVar(&origin, "origin", "", "public URL people open, e.g. https://blog.example.com (default http://<addr>)")
 	cmd.Flags().StringVar(&hook, "deploy-hook", "", "URL to POST after published posts change; prefer BURZBLOG_DEPLOY_HOOK, it is a secret")
+	cmd.Flags().BoolVar(&checkUpdates, "check-updates", false, "look for a newer release on GitHub once a day (default off; sends nothing but a GET with the version); or BURZBLOG_CHECK_UPDATES=true")
 	cmd.Flags().StringVar(&cfg.SiteURL, "site-url", "", "public address of your website, e.g. https://example.com; needed for feeds and the sitemap")
 	cmd.Flags().StringVar(&cfg.SiteTitle, "site-title", "", "website name in feeds (default the site's host)")
 	cmd.Flags().StringVar(&cfg.SiteDescription, "site-description", "", "website description in feeds (default the title)")

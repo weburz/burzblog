@@ -116,6 +116,7 @@ address to download posts.
 | `--data` | `BURZBLOG_DATA`, then systemd's `STATE_DIRECTORY` | `./burzblog-data` |
 | `--origin` | `BURZBLOG_ORIGIN` | `http://<addr>` |
 | `--deploy-hook` | `BURZBLOG_DEPLOY_HOOK` | none |
+| `--check-updates` | `BURZBLOG_CHECK_UPDATES` (`true` or `false`) | off |
 | `--site-url` | `BURZBLOG_SITE_URL` | none (feeds and sitemap answer 409) |
 | `--site-title` | `BURZBLOG_SITE_TITLE` | the site URL's host |
 | `--site-description` | `BURZBLOG_SITE_DESCRIPTION` | the title |
@@ -125,6 +126,29 @@ address to download posts.
 
 Prefer the environment for the deploy hook so it does not show up in process
 listings.
+
+### Update checks
+
+BurzBlog contacts nobody unless you ask. With `--check-updates` (or
+`BURZBLOG_CHECK_UPDATES=true`) it looks for a newer release about 30 seconds
+after it starts and then every 24 hours. Admins see the result in Settings and
+as a dot on the Settings tab; authors do not, and the content API never
+includes it.
+
+Each check is one `GET` to
+`https://api.github.com/repos/weburz/burzblog/releases/latest`. The only thing
+it carries is a `User-Agent` such as `burzblog/1.2.0`, which holds your BurzBlog
+version. Nothing about your posts, accounts or the instance's address is sent,
+though GitHub sees your server's IP address as it would for any request. The
+check has a 10 second timeout, reads at most 1 MiB, is not retried before the
+next day and keeps its answer in memory only. If it fails, BurzBlog logs one
+warning and carries on. A development build (a version that is not
+`MAJOR.MINOR.PATCH`) never reports an update. Remove the flag and restart to
+stop the checks.
+
+When a newer version exists, upgrade with `sudo burzblog upgrade` and restart
+the service on a systemd host, or pull the new image and recreate the
+container.
 
 The `--site-*`, `--post-path` and `--tag-path` settings describe your public
 website (not BurzBlog's own address, `--origin`). They only build the links in
@@ -168,13 +192,64 @@ writes every published post as a Markdown file.
 
 ## Upgrades
 
-Replace the binary and restart:
+On a binary or systemd install, `burzblog upgrade` replaces the binary with the
+latest release:
 
 ```sh
-sudo install -m 0755 burzblog /usr/local/bin/burzblog
+burzblog upgrade --check      # exit 0 up to date, 7 update available
+sudo burzblog upgrade         # download, verify, replace
 sudo systemctl restart burzblog
 ```
 
-The database schema upgrades itself on start. An older binary refuses to open
-a database written by a newer one, rather than damaging it. Take a backup
-before upgrading.
+It downloads `burzblog-<version>-<os>-<arch>` and `SHA256SUMS-<version>` from
+the GitHub release over https only (at most 200 MiB), refuses a file whose
+SHA-256 sum differs from the list, and swaps the binary in with a rename in the
+same directory, so a failure leaves the old binary in place. It writes to the
+directory of the running binary: if that is not writable it says so and
+suggests `sudo`. It never restarts the service and never runs what it
+downloaded. `--version vX.Y.Z` picks a release, `--force` allows a downgrade or
+a reinstall, and a development build (`dev`) only upgrades with `--version`.
+You can also replace the binary by hand (`sudo install -m 0755 burzblog
+/usr/local/bin/burzblog`).
+
+Containers are upgraded by pulling the new image
+(`docker compose pull && docker compose up -d`); `burzblog upgrade` refuses to
+run when it finds `/.dockerenv`, `/run/.containerenv`, or `BURZBLOG_DATA=/data`
+with BurzBlog as process 1.
+
+### The database upgrades itself, with a backup first
+
+The schema is upgraded when the new binary starts. If the database is older
+than the binary, BurzBlog first writes a consistent copy of it (SQLite
+`VACUUM INTO`, safe while the file is in use) to
+
+```text
+<data>/backups/burzblog-schema<N>-<UTC time>.db
+```
+
+where `<N>` is the schema it had, logs the path, and then migrates. If the copy
+cannot be made (disk full, permissions on the data directory) it stops with an
+error and does not touch the database. A new database and one already current
+get no copy. The newest five of these files are kept and older ones are
+deleted; nothing else in `backups/` is touched. The folder is `0700` and the
+files `0600`. `burzblog backup` and **Settings → Backup** do not include it;
+if you back up the data directory itself, it is included.
+
+An older binary refuses to open a database written by a newer one, rather than
+damaging it. To go back to the older version after an upgrade:
+
+1. Stop the service: `sudo systemctl stop burzblog`.
+2. Delete `burzblog.db-wal` and `burzblog.db-shm` next to the database.
+3. Copy the backup over the database:
+   `sudo -u burzblog cp /var/lib/burzblog/backups/burzblog-schema<N>-<time>.db /var/lib/burzblog/burzblog.db`
+   (mode `0600`, owned by `burzblog`). Anything written since the upgrade is
+   lost.
+4. Install the older binary and start the service.
+
+Uploads in `media/` are not touched by migrations, so they need no restoring.
+Take your own backup (see above) before an upgrade as well; the automatic copy
+sits on the same disk.
+
+`burzblog upgrade` calls the GitHub API and downloads release files without
+credentials, so it works only while the releases are publicly downloadable. Its
+tests run against local test servers.

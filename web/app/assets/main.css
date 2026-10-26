@@ -213,6 +213,13 @@ main:focus {
   align-items: center;
   color: var(--bb-text-2);
 }
+.nav-dot {
+  width: 7px;
+  height: 7px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--bb-accent);
+}
 .nav-tab:hover {
   color: var(--bb-text);
 }
@@ -342,6 +349,18 @@ code {
   font-size: 14px;
 }
 
+.update-notice {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--bb-border-strong);
+  border-radius: var(--bb-radius-m);
+  background: var(--bb-surface-2);
+  font-size: 14px;
+}
 .notice {
   margin: 24px auto 0;
   max-width: 400px;
@@ -1209,6 +1228,18 @@ code {
 }
 .copy-field .terminal {
   padding-right: 96px;
+}
+/* A setup key breaks between its groups of four, never inside one. */
+.setup-key .terminal-wrap {
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+/* Always dark on light, whatever the theme, so phone cameras can read it. */
+.totp-qr {
+  display: block;
+  width: 184px;
+  height: 184px;
+  border-radius: var(--bb-radius-m);
 }
 .copy-button {
   position: absolute;

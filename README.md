@@ -1,51 +1,49 @@
+<div align="center">
+
+<img src="site/assets/favicon.svg" width="64" height="64" alt="">
+
 # BurzBlog
 
-[![License: Apache-2.0](https://img.shields.io/github/license/weburz/burzblog)](LICENSE)
+**Write blog posts in the browser or in your own editor.<br>One small binary, one SQLite file, any website.**
+
+[![Checks](https://github.com/weburz/burzblog/actions/workflows/check.yml/badge.svg)](https://github.com/weburz/burzblog/actions/workflows/check.yml)
 [![Latest release](https://img.shields.io/github/v/release/weburz/burzblog)](https://github.com/weburz/burzblog/releases/latest)
+[![License: Apache-2.0](https://img.shields.io/github/license/weburz/burzblog)](LICENSE)
 
-A small, self-hosted place to write blog posts. Write in the browser, or in your
-own editor from the terminal. Posts are Markdown, stored in one SQLite file, and
-your website picks up the published ones when it builds.
+[Website](https://burzblog.weburz.com/) · [Install](#install) · [Docs](#docs) · [Releases](https://github.com/weburz/burzblog/releases)
 
-BurzBlog is one Go binary. It runs the server, serves the browser panel, and is
-also the command-line client. It is small enough for a Raspberry Pi under
-systemd.
+</div>
 
-Website: [burzblog.weburz.com](https://burzblog.weburz.com/). Downloads:
-[latest release](https://github.com/weburz/burzblog/releases/latest).
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="site/assets/editor-dark.webp">
+  <img src="site/assets/editor-light.webp" alt="The BurzBlog editor: Markdown on the left, a live preview of the post on the right">
+</picture>
 
-![The BurzBlog editor: Markdown on the left, a live preview of the published post on the right](docs/images/editor-light.png)
+## Why BurzBlog
 
-```text
- browser panel ─┐                         ┌─> your site's build downloads
-                ├─> burzblog serve ── SQLite        published posts as .md files
- burzblog edit ─┘    (one binary)         └─> deploy hook triggers a rebuild
- (your $EDITOR)
-```
+- **A writing tool, not a website builder.** BurzBlog is where posts are
+  written. Your site, whether Nuxt, Astro, Next or anything else, reads them
+  and stays fast, static and up even when BurzBlog is not.
+- **Tiny.** One Go binary with the panel built in, about 25 MB of memory at
+  rest, and no runtime to install. It runs happily on a Raspberry Pi, and
+  dozens of instances fit on one small server.
+- **Your editor or ours.** A split Markdown editor in the browser, or
+  `burzblog edit my-post` to open the post in `$EDITOR`. Both talk to the same
+  server.
+- **Nothing gets lost.** Every save is versioned and kept in history. A save
+  based on an old version is refused instead of overwriting someone's work.
 
-## What it does
+## Features
 
-- **Write in the browser:** a post list with search and filters, a split editor
-  with Markdown on the left and a live preview of the published post on the
-  right, a formatting toolbar, post settings (slug, cover image, dates, extra
-  frontmatter) and the full history of every save.
-- **Write from the terminal:** `burzblog edit my-post` opens the post in
-  `$EDITOR` as a normal Markdown file with frontmatter and saves it back when
-  you close the editor.
-- **Never overwrites silently:** every post has a version. A save based on an
-  old version is refused in the panel and the CLI, and you choose which
-  version to keep. Unsaved browser work is kept in the browser until you save.
-- **Feeds your website:** reader sites download published posts as
-  `<slug>.md` files with a read-only build token, in the frontmatter shape
-  Nuxt Content and other static site generators read. An optional deploy hook
-  (for example a Vercel deploy hook) rebuilds the site after you publish.
-
-Accounts are admins or authors, and the admin-only actions are written to an
-audit log. Uploads cover images and PDFs (not video or SVG); for video use a
-hosted URL. Not included yet: per-post permissions (any author can edit any
-post) and serving the public blog itself.
-
-![The post list in the dark theme, with drafts, a scheduled post and published posts](docs/images/posts-dark.png)
+| Writing | Publishing | Running it |
+|---|---|---|
+| Split editor with live preview | Read-only content API with ETags | Single binary, SQLite, no cgo |
+| Formatting toolbar and shortcuts | Build-time export as Markdown | Admin and author roles |
+| Tags, featured posts, SEO fields | RSS, Atom, JSON Feed, sitemap | Two-factor sign-in (TOTP) |
+| Image and PDF uploads | Scheduled publishing | Append-only audit log |
+| Full-text search | Redirects for renamed posts | Automatic upgrades of the database |
+| Revision history with restore | Deploy hook to rebuild your site | systemd, Docker or Coolify |
+| Light and dark themes, phone layout | Custom frontmatter kept as JSON | Backups as one download |
 
 ## Install
 
@@ -53,67 +51,69 @@ post) and serving the public blog itself.
 curl -fsSL https://burzblog.weburz.com/install.sh | sh
 ```
 
-The script picks the right binary for your computer from the
+The script picks the right binary from the
 [latest release](https://github.com/weburz/burzblog/releases/latest) and checks
-it against the release's `SHA256SUMS-vX.Y.Z` file before installing. To install
-by hand, download `burzblog-vX.Y.Z-<os>-<arch>` from the release page; see
-[Writing from the terminal](docs/terminal.md#install) for every platform.
+its SHA-256 before installing. Prefer containers? See
+[Containers](docs/containers.md).
 
 ## Quick start
 
-To build from source:
-
 ```sh
-task build                                   # bin/burzblog with the panel inside
-bin/burzblog serve                           # http://127.0.0.1:8080
+burzblog serve --origin https://blog.example.com
 ```
 
-On a new data directory `serve` prints a one-time setup link,
-`http://127.0.0.1:8080/setup#token=...`. Open it to create the first account in
-the browser, or run `bin/burzblog user add ada` instead.
-
-Then, from any computer:
+On a fresh data directory, `serve` prints a one-time setup link
+(`/setup#token=…`). Open it to create the first account. Then write from any
+computer:
 
 ```sh
 burzblog login https://blog.example.com
-burzblog new "My next post"                  # creates a draft and opens $EDITOR
-burzblog list
-burzblog edit my-next-post
+burzblog new "My next post"        # creates a draft and opens $EDITOR
 burzblog publish my-next-post
-burzblog import content/blog                 # bring in existing Markdown posts
-burzblog diff my-next-post.md                # compare a pulled file with the server
-burzblog status                              # which local .md files changed
 ```
 
-## Guides
+Your website reads published posts with a read-only token:
 
-- [Running BurzBlog](docs/self-hosting.md): systemd on a Raspberry Pi or any
-  Linux host, HTTPS with Caddy or nginx, backups and upgrades.
-- [Writing from the terminal](docs/terminal.md): every CLI command and what
-  happens on conflicts, plus JSON output, exit codes and a safe edit loop for
-  [scripts and AI agents](docs/terminal.md#scripts-and-ai-agents).
-- [Connecting your website](docs/publishing.md): the export format, a Nuxt
-  Content example and deploy hooks.
-- [Containers](docs/containers.md): the optional Docker image.
-- [HTTP API](docs/api.md) and [security model](docs/security.md).
-- [Architecture](docs/architecture.md): how the binary, storage and access
-  fit together.
+```sh
+curl -H "Authorization: Bearer $BURZBLOG_TOKEN" \
+  https://blog.example.com/api/content/posts
+```
+
+## How it fits together
+
+```text
+ browser panel ──┐                       ┌──> content API (JSON, HTML, feeds)
+                 ├──> burzblog serve ────┤
+ burzblog edit ──┘     + SQLite file     └──> export .md files ──> your site's build
+ (your $EDITOR)                                 deploy hook ─────> rebuild on publish
+```
+
+## Docs
+
+| Guide | What's inside |
+|---|---|
+| [Running BurzBlog](docs/self-hosting.md) | systemd, HTTPS with Caddy or nginx, backups, upgrades |
+| [Containers](docs/containers.md) | the Docker image, Compose and Coolify |
+| [Writing from the terminal](docs/terminal.md) | every command, conflicts, JSON output for scripts |
+| [Connecting your website](docs/publishing.md) | content API, export, feeds, deploy hooks |
+| [HTTP API](docs/api.md) | every route, plus the stability promise for the content API |
+| [Security](docs/security.md) | sign-in, roles, tokens, uploads, the audit log |
+| [Architecture](docs/architecture.md) | how the binary, storage and access fit together |
 
 ## Development
 
-Prerequisites: Go 1.27, [Task](https://taskfile.dev/), Node 24 LTS and pnpm 11.
-Docker is optional.
+You need Go 1.27, [Task](https://taskfile.dev/), Node 24 and pnpm 11. Docker
+is optional.
 
 ```sh
-task setup     # Go modules, pnpm dependencies, the Playwright browser
-task dev       # API on :8080 and the panel dev server on :3000
-task check     # Go fmt/vet/tests, panel lint/types/tests/build, browser E2E, hooks
+task setup    # Go modules, pnpm dependencies, the Playwright browser
+task dev      # API on :8080, panel dev server on :3000
+task check    # formatting, linting, Go and panel tests, browser E2E
 ```
 
-`task docker:check` lints, builds and smoke-tests the container image where a
-Docker daemon exists. GitHub Actions is intentionally disabled; `task check`
-is the merge gate. See [CONTRIBUTING.md](CONTRIBUTING.md).
+Pull requests run the same checks on GitHub Actions. See
+[CONTRIBUTING.md](CONTRIBUTING.md) to get started.
 
 ## License
 
-Apache-2.0. See [LICENSE](LICENSE).
+[Apache-2.0](LICENSE)

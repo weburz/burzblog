@@ -15,6 +15,12 @@ const { enabled: shortcutsEnabled } = useEnabledShortcuts();
 // The website, backup and deploy sections are for admins; the server refuses
 // authors there, so they are not shown (nor their data fetched).
 const { state: session, isAdmin } = useCurrentSession();
+const {
+  enabled: updatesEnabled,
+  update,
+  visible: updateVisible,
+  dismiss,
+} = useAvailableUpdate();
 const settings = ref<Settings | null>(null);
 const tokens = ref<Token[] | null>(null);
 const error = ref("");
@@ -174,6 +180,31 @@ const scopeUse = (t: Token) =>
       </div>
     </div>
     <p v-if="error" class="alert" role="alert">{{ error }}</p>
+    <div v-if="isAdmin && updateVisible" class="update-notice" role="status">
+      <div>
+        <p>
+          <strong>BurzBlog v{{ updateVisible.latest }} is available</strong> (you run v{{
+            updateVisible.current
+          }}) —
+          <a :href="updateVisible.url" target="_blank" rel="noopener noreferrer"
+            >release notes</a
+          >
+        </p>
+        <p class="muted">
+          On a server with systemd, run <code class="mono">sudo burzblog upgrade</code>
+          and restart the service. With containers, pull the new image and recreate the
+          container.
+        </p>
+      </div>
+      <UButton
+        color="neutral"
+        variant="ghost"
+        size="sm"
+        icon="i-lucide-x"
+        aria-label="Dismiss this notice"
+        @click="dismiss"
+      />
+    </div>
 
     <section class="settings-section" aria-labelledby="terminal-heading">
       <div class="settings-aside">
@@ -404,7 +435,33 @@ const scopeUse = (t: Token) =>
       </div>
     </section>
 
-    <TagLabelsSection v-if="isAdmin" />
+    <section v-if="isAdmin" class="settings-section" aria-labelledby="updates-heading">
+      <div class="settings-aside">
+        <h2 id="updates-heading" class="section-title">Updates</h2>
+        <p class="muted">
+          BurzBlog can look for a newer release once a day. Off by default.
+        </p>
+      </div>
+      <div class="settings-main">
+        <p v-if="!updatesEnabled" class="muted">
+          Update checks are off. To turn them on, start BurzBlog with
+          <span class="mono">--check-updates</span> or set
+          <span class="mono">BURZBLOG_CHECK_UPDATES=true</span>, then restart. It sends
+          one request to GitHub that carries only the BurzBlog version.
+        </p>
+        <p v-else-if="!update" class="muted">
+          Update checks are on. No answer yet; the first check runs shortly after BurzBlog
+          starts.
+        </p>
+        <p v-else-if="update.available" class="muted">
+          Version {{ update.latest }} is available; you run {{ update.current }}.
+        </p>
+        <p v-else class="muted">
+          You run the latest version ({{ update.current }}). Last checked
+          {{ editedLabel(update.checkedAt).toLowerCase() }}.
+        </p>
+      </div>
+    </section>
 
     <section v-if="isAdmin" class="settings-section" aria-labelledby="backup-heading">
       <div class="settings-aside">
@@ -544,6 +601,7 @@ const scopeUse = (t: Token) =>
     </section>
 
     <TwoFactorSection />
+    <TagLabelsSection v-if="isAdmin" />
 
     <p v-if="settings" class="list-foot muted">BurzBlog {{ settings.version }}</p>
 

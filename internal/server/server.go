@@ -46,9 +46,15 @@ type Config struct {
 	// Panel is the built browser panel (index.html and _nuxt/). Nil serves
 	// a short notice instead.
 	Panel fs.FS
+	// CheckUpdates turns on the daily look for a newer release on GitHub.
+	// Off, BurzBlog never contacts anyone.
+	CheckUpdates bool
 	// Version is reported by /healthz.
 	Version string
 	Logger  *slog.Logger
+
+	// updateURL replaces the release address in tests.
+	updateURL string
 }
 
 // Server handles HTTP requests.
@@ -61,6 +67,7 @@ type Server struct {
 	panel     *panel
 	deploy    *deployer
 	scheduler *scheduler
+	updates   *updateChecker
 	log       *slog.Logger
 	mux       *http.ServeMux
 	// mediaMu keeps an upload and a delete of the same bytes from
@@ -92,6 +99,7 @@ func New(cfg Config, s *store.Store, a *auth.Service) (*Server, error) {
 	}
 	srv.deploy = newDeployer(cfg.DeployHook, cfg.Logger)
 	srv.scheduler = newScheduler()
+	srv.updates = newUpdateChecker(cfg)
 	srv.routes()
 	return srv, nil
 }
@@ -145,6 +153,7 @@ func (s *Server) routes() {
 	m.HandleFunc("POST /api/account/2fa/confirm", s.write(s.twoFactorConfirm))
 	m.HandleFunc("POST /api/account/2fa/disable", s.write(s.twoFactorDisable))
 	m.HandleFunc("GET /api/settings", s.admin(s.settings))
+	m.HandleFunc("GET /api/updates", s.admin(s.listUpdates))
 	m.HandleFunc("POST /api/deploy", s.admin(s.triggerDeploy))
 	m.HandleFunc("GET /api/audit", s.admin(s.listAudit))
 
