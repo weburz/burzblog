@@ -1,127 +1,180 @@
-// Package release looks up the newest published BurzBlog release on GitHub and
-// compares versions.
+// Package release finds BurzBlog releases on GitHub and fetches and checks
+// their files. It never runs anything it downloads.
+//
+// The repository's releases follow the layout site/install.sh relies on:
+// burzblog-<version>-<os>-<arch> for each platform and SHA256SUMS-<version>
+// listing their SHA-256 sums, both under <DownloadBase>/<version>/.
 package release
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
+	"net/url"
 	"strings"
 	"time"
 )
 
-// LatestURL is the only address BurzBlog contacts to learn about releases.
-const LatestURL = "https://api.github.com/repos/weburz/burzblog/releases/latest"
+// Where releases live. Tests and mirrors can point the functions that take a
+// URL somewhere else.
+const (
+	LatestURL    = "https://api.github.com/repos/weburz/burzblog/releases/latest"
+	DownloadBase = "https://github.com/weburz/burzblog/releases/download"
+)
 
-// maxBody caps the answer that is read; a release description is a few KiB.
-const maxBody = 1 << 20
+// Size limits for what is read from the network.
+const (
+	MaxBinaryBytes = 200 << 20
+	MaxSumsBytes   = 1 << 20
+	maxAPIBytes    = 4 << 20
+)
 
-// Release is a published BurzBlog release.
-type Release struct {
-	Tag         string
-	URL         string
-	PublishedAt time.Time
+// NewClient returns an HTTP client for release downloads. It follows
+// redirects only to https URLs (or loopback http, see CheckURL).
+func NewClient(timeout time.Duration) *http.Client {
+	return &http.Client{
+		Timeout: timeout,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 5 {
+				return errors.New("too many redirects")
+			}
+			return CheckURL(req.URL.String())
+		},
+	}
 }
 
-// Latest returns the tag of the newest release, such as "v1.2.0".
+// CheckURL accepts https URLs without credentials. Plain http is accepted
+// only for 127.0.0.1, ::1 and localhost, so tests can use a local server.
+func CheckURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("invalid URL %q: %w", raw, err)
+	}
+	if u.User != nil {
+		return fmt.Errorf("URL %q must not contain credentials", raw)
+	}
+	switch u.Scheme {
+	case "https":
+		return nil
+	case "http":
+		switch u.Hostname() {
+		case "127.0.0.1", "::1", "localhost":
+			return nil
+		}
+	}
+	return fmt.Errorf("refusing to download from %q: only https is allowed", raw)
+}
+
+// Latest returns the tag of the newest release, such as "v1.4.0", from
+// LatestURL. A nil client means NewClient with a 30 second timeout.
 func Latest(ctx context.Context, client *http.Client) (string, error) {
-	rel, err := Fetch(ctx, client, LatestURL, "burzblog")
+	return LatestAt(ctx, client, LatestURL)
+}
+
+// LatestAt is Latest against an explicit "latest release" API URL.
+func LatestAt(ctx context.Context, client *http.Client, apiURL string) (string, error) {
+	if err := CheckURL(apiURL); err != nil {
+		return "", err
+	}
+	if client == nil {
+		client = NewClient(30 * time.Second)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
 	if err != nil {
 		return "", err
 	}
-	return rel.Tag, nil
-}
-
-// Fetch asks url for the latest release. The request carries only a GET and
-// the User-Agent; the answer is read up to a fixed size.
-func Fetch(ctx context.Context, client *http.Client, url, userAgent string) (Release, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return Release{}, fmt.Errorf("build the release request: %w", err)
-	}
 	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", userAgent)
 	resp, err := client.Do(req)
 	if err != nil {
-		return Release{}, fmt.Errorf("fetch the latest release: %w", err)
+		return "", fmt.Errorf("look up the latest release: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
-		return Release{}, fmt.Errorf("fetch the latest release: the server answered HTTP %d", resp.StatusCode)
+		return "", fmt.Errorf("look up the latest release: %s answered HTTP %d", apiURL, resp.StatusCode)
 	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBody+1))
+	var doc struct {
+		TagName string `json:"tag_name"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxAPIBytes)).Decode(&doc); err != nil {
+		return "", fmt.Errorf("read the latest release: %w", err)
+	}
+	if _, err := ParseVersion(doc.TagName); err != nil {
+		return "", fmt.Errorf("the latest release has an unusable tag: %w", err)
+	}
+	return doc.TagName, nil
+}
+
+// AssetName is the file name of the binary for a platform, such as
+// "burzblog-v1.4.0-linux-amd64".
+func AssetName(version, goos, goarch string) string {
+	name := "burzblog-" + version + "-" + goos + "-" + goarch
+	if goos == "windows" {
+		name += ".exe"
+	}
+	return name
+}
+
+// ChecksumName is the file name of a release's checksum list.
+func ChecksumName(version string) string {
+	return "SHA256SUMS-" + version
+}
+
+// AssetURL is where a release file is downloaded from.
+func AssetURL(base, version, name string) string {
+	return strings.TrimRight(base, "/") + "/" + version + "/" + name
+}
+
+// Checksum finds the SHA-256 sum of asset, as lowercase hex, in the text of
+// a SHA256SUMS file ("<hex>  <name>" or "<hex> *<name>" per line).
+func Checksum(sums []byte, asset string) (string, error) {
+	for _, line := range strings.Split(string(sums), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 2 || strings.TrimPrefix(fields[1], "*") != asset {
+			continue
+		}
+		sum := strings.ToLower(fields[0])
+		if raw, err := hex.DecodeString(sum); err != nil || len(raw) != sha256.Size {
+			return "", fmt.Errorf("the checksum listed for %s is not a SHA-256 sum", asset)
+		}
+		return sum, nil
+	}
+	return "", fmt.Errorf("%s is not listed in the checksum file; this release has no build for your platform", asset)
+}
+
+// Fetch downloads rawURL into w, which sees at most limit bytes, and returns
+// the SHA-256 sum of what was written as lowercase hex. A larger download is
+// an error.
+func Fetch(ctx context.Context, client *http.Client, rawURL string, limit int64, w io.Writer) (string, error) {
+	if err := CheckURL(rawURL); err != nil {
+		return "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
-		return Release{}, fmt.Errorf("read the latest release: %w", err)
+		return "", err
 	}
-	if len(body) > maxBody {
-		return Release{}, errors.New("read the latest release: the answer is larger than 1 MiB")
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("download %s: %w", rawURL, err)
 	}
-	var raw struct {
-		Tag         string    `json:"tag_name"`
-		URL         string    `json:"html_url"`
-		PublishedAt time.Time `json:"published_at"`
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("download %s: HTTP %d", rawURL, resp.StatusCode)
 	}
-	if err := json.Unmarshal(body, &raw); err != nil {
-		return Release{}, fmt.Errorf("decode the latest release: %w", err)
+	if resp.ContentLength > limit {
+		return "", fmt.Errorf("download %s: %d bytes is over the %d byte limit", rawURL, resp.ContentLength, limit)
 	}
-	if raw.Tag == "" {
-		return Release{}, errors.New("decode the latest release: it has no tag")
+	h := sha256.New()
+	n, err := io.Copy(io.MultiWriter(w, h), io.LimitReader(resp.Body, limit+1))
+	if err != nil {
+		return "", fmt.Errorf("download %s: %w", rawURL, err)
 	}
-	return Release{Tag: raw.Tag, URL: raw.URL, PublishedAt: raw.PublishedAt}, nil
-}
-
-// version is a parsed semantic version.
-type version struct {
-	core [3]int
-	pre  string
-}
-
-func parse(s string) (version, bool) {
-	s = strings.TrimPrefix(strings.TrimSpace(s), "v")
-	s, _, _ = strings.Cut(s, "+")
-	s, pre, _ := strings.Cut(s, "-")
-	parts := strings.Split(s, ".")
-	if len(parts) != 3 {
-		return version{}, false
+	if n > limit {
+		return "", fmt.Errorf("download %s: over the %d byte limit", rawURL, limit)
 	}
-	v := version{pre: pre}
-	for i, p := range parts {
-		n, err := strconv.Atoi(p)
-		if err != nil || n < 0 || p != strconv.Itoa(n) {
-			return version{}, false
-		}
-		v.core[i] = n
-	}
-	return v, true
-}
-
-// Newer reports whether latest is a newer semantic version than current.
-// Anything that is not MAJOR.MINOR.PATCH (a "dev" build, "test") is never
-// newer and never older, so such builds are not told to upgrade.
-func Newer(current, latest string) bool {
-	c, ok := parse(current)
-	if !ok {
-		return false
-	}
-	l, ok := parse(latest)
-	if !ok {
-		return false
-	}
-	for i := range c.core {
-		if l.core[i] != c.core[i] {
-			return l.core[i] > c.core[i]
-		}
-	}
-	// Same numbers: a pre-release is older than the release it leads to.
-	return c.pre != "" && l.pre == ""
-}
-
-// Trim drops a leading "v" so versions print the same however they were tagged.
-func Trim(v string) string {
-	return strings.TrimPrefix(v, "v")
+	return hex.EncodeToString(h.Sum(nil)), nil
 }

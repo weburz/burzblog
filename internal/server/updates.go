@@ -63,7 +63,7 @@ func newUpdateChecker(cfg Config) *updateChecker {
 func (u *updateChecker) check(ctx context.Context, warn func(msg string, args ...any)) {
 	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
 	defer cancel()
-	rel, err := release.Fetch(ctx, u.client, u.url, "burzblog/"+release.Trim(u.current))
+	rel, err := release.FetchLatest(ctx, u.client, u.url, "burzblog/"+release.Trim(u.current))
 	u.mu.Lock()
 	defer u.mu.Unlock()
 	if err != nil {

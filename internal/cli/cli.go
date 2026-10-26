@@ -34,7 +34,9 @@ type App struct {
 	Panel     fs.FS
 	Version   string
 
-	reader *bufio.Reader
+	// release replaces where `upgrade` looks for releases; tests use it.
+	release *releaseSource
+	reader  *bufio.Reader
 	// asJSON is set by the global --json flag.
 	asJSON bool
 }
@@ -69,6 +71,10 @@ func (a *App) Execute(args []string) int {
 		// diff reports "different" by exit code alone.
 		if err == errDiffers {
 			return ExitError
+		}
+		// upgrade --check reports "newer release exists" by exit code too.
+		if err == errUpdateAvailable {
+			return ExitUpdate
 		}
 		// Cobra validates flags and arguments before any hook runs, so an
 		// error before that point is a usage error.
@@ -120,7 +126,7 @@ opens an editor without a terminal. See docs/terminal.md.`,
   burzblog publish my-post --json || echo "failed with exit code $?"
 
 Exit codes: 0 ok, 1 error, 2 usage, 3 conflict, 4 not found, 5 not signed in,
-6 invalid content.`,
+6 invalid content, 7 update available (upgrade --check).`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Version:       a.Version,
@@ -129,7 +135,7 @@ Exit codes: 0 ok, 1 error, 2 usage, 3 conflict, 4 not found, 5 not signed in,
 		},
 	}
 	root.PersistentFlags().BoolVar(&a.asJSON, "json", false,
-		"print results (list, whoami, new, pull, push, diff, status, publish, unpublish, archive, restore, schedule, unschedule, backup, import, redirects) and errors as JSON")
+		"print results (list, whoami, new, pull, push, diff, status, publish, unpublish, archive, restore, schedule, unschedule, backup, import, redirects, upgrade) and errors as JSON")
 	root.AddGroup(
 		&cobra.Group{ID: "write", Title: "Writing:"},
 		&cobra.Group{ID: "account", Title: "Connecting:"},
@@ -151,7 +157,7 @@ Exit codes: 0 ok, 1 error, 2 usage, 3 conflict, 4 not found, 5 not signed in,
 		root.AddCommand(c)
 	}
 	root.AddCommand(a.healthCmd())
-	for _, c := range []*cobra.Command{a.serveCmd(), a.userCmd(), a.auditCmd()} {
+	for _, c := range []*cobra.Command{a.serveCmd(), a.userCmd(), a.auditCmd(), a.upgradeCmd()} {
 		c.GroupID = "host"
 		root.AddCommand(c)
 	}
