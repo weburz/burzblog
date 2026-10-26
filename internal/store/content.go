@@ -128,3 +128,27 @@ func (s *Store) PublishedTags(ctx context.Context) ([]TagCount, error) {
 	}
 	return list, nil
 }
+
+// PublishedExtras returns the extra frontmatter of every published post that
+// has any, by post ID, in one query. The content API asks for it only when a
+// caller wants extra on a list, because it can be far larger than the rest.
+func (s *Store) PublishedExtras(ctx context.Context) (map[int64]string, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, extra FROM posts WHERE status = 'published' AND extra != ''`)
+	if err != nil {
+		return nil, fmt.Errorf("read extra frontmatter: %w", err)
+	}
+	defer rows.Close()
+	extras := map[int64]string{}
+	for rows.Next() {
+		var id int64
+		var extra string
+		if err := rows.Scan(&id, &extra); err != nil {
+			return nil, fmt.Errorf("read extra frontmatter: %w", err)
+		}
+		extras[id] = extra
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read extra frontmatter: %w", err)
+	}
+	return extras, nil
+}

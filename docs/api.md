@@ -287,8 +287,8 @@ whether one exists. Without a credential every route answers 401.
 
 | | |
 |---|---|
-| `GET /api/content/posts?q=&tag=&featured=&limit=&offset=` | `{items, total}`: published posts, newest published first (posts without a `publishedOn` last); `limit` (1 to 500), `offset`, `total` and their errors work as in `GET /api/posts`; `q` searches as in `GET /api/posts` (see below) and returns the best match first, with a plain-text `snippet` on each item; `tag` keeps posts with that tag, normalized like `GET /api/posts?tag=`; `featured=true` keeps only featured posts and `featured=false` only the others (any other value is a 422 `validation`), in the same newest-first order, and combines with `q`, `tag` and paging |
-| `GET /api/content/posts/{slug}` | one published post as JSON, with `body` |
+| `GET /api/content/posts?q=&tag=&featured=&include=&limit=&offset=` | `{items, total}`: published posts, newest published first (posts without a `publishedOn` last); `limit` (1 to 500), `offset`, `total` and their errors work as in `GET /api/posts`; `q` searches as in `GET /api/posts` (see below) and returns the best match first, with a plain-text `snippet` on each item; `tag` keeps posts with that tag, normalized like `GET /api/posts?tag=`; `featured=true` keeps only featured posts and `featured=false` only the others (any other value is a 422 `validation`), in the same newest-first order, and combines with `q`, `tag` and paging; `include=extra` adds each item's `extra` (see below), any other value is a 422 |
+| `GET /api/content/posts/{slug}` | one published post as JSON, with `body` and `extra` |
 | `GET /api/content/posts/{slug}?format=markdown` | `text/markdown`: the post's frontmatter document, byte for byte what `export.tar.gz` holds as `<slug>.md`; `format` is `json` (default) or `markdown`, anything else is a 422 |
 | `GET /api/content/posts/{slug}/html` | `{slug, version, html}`: the body rendered and sanitized like `POST /api/preview`, with the same [limits](#preview-limits) (422 `preview_limit`, 503 `busy`) |
 | `GET /api/content/redirects` | `{items: [{from, to}]}`: old slugs of renamed published posts by `from`, with the post's current slug as `to`; redirects to drafts, scheduled and archived posts are left out |
@@ -307,24 +307,57 @@ a redirect, the answer is the same `404 not_found` as for any missing slug, so a
 redirect cannot be used to find unpublished posts. Redirects are not part of
 `GET /api/content/posts` or its items.
 
-An item is `{slug, title, description, coverUrl, coverAlt, tags, tagLabels,
-featured, author, seoTitle, seoDescription, canonicalUrl, publishedOn,
-updatedOn, updatedAt, words, readingMinutes, version}`; `tags` is always a list
-of slugs, `tagLabels` maps each of them to its display label
-(`{"constitutional-law": "Constitutional Law"}`, `{}` without tags) and
-`featured` is a boolean. `tagLabels` only ever holds the post's own tags. The single post adds
-`body` (Markdown, without frontmatter). `readingMinutes` is `words` at 200 a
-minute, rounded up. Status, the accounts that saved it and `extra` are not part
-of it; `extra` is in the `format=markdown` document.
+An item is `{slug, title, description, coverUrl, coverAlt, coverWidth,
+coverHeight, tags, tagLabels, featured, author, seoTitle, seoDescription,
+canonicalUrl, publishedOn, updatedOn, updatedAt, words, readingMinutes,
+version}`; `tags` is always a list of slugs, `tagLabels` maps each of them to
+its display label (`{"constitutional-law": "Constitutional Law"}`, `{}` without
+tags) and only ever holds the post's own tags, and `featured` is a boolean. The
+single post adds `body` (Markdown, without frontmatter) and `extra`.
+`readingMinutes` is `words` at 200 a minute, rounded up. Status and the
+accounts that saved it are not part of it.
+
+- `coverWidth` and `coverHeight` are the pixel size of the cover, set only when
+  `coverUrl` points to an image uploaded to this server (an address under
+  `/media/` on `--origin`) whose format BurzBlog decodes. For any other cover
+  they are left out, not `null`, so a client treats absence as "unknown". They
+  let a page reserve the image's space before it loads. Sizes come from the
+  upload record in one query for the whole page, not one per item.
+- `extra` holds the frontmatter keys BurzBlog does not model, the same keys the
+  `format=markdown` document carries, as a JSON object (`{}` when there are none).
+  It is on the single post always and on the list only with `?include=extra`,
+  because it can be large. Values keep their YAML type: nested maps, lists,
+  strings, numbers, booleans and `null`. Dates and timestamps are strings as
+  written in the frontmatter (`2013-08-29`, not RFC 3339 added to them); map
+  keys that are not strings are written as strings (`1` for `1:`); `.inf`,
+  `-.inf` and `.nan` are the strings `"+Inf"`, `"-Inf"` and `"NaN"`. Extra
+  that cannot be read, such as a file stored by an older release, is `{}` and
+  the server logs a warning with the slug, so one bad post never fails a list.
+  `extra` never holds anything but frontmatter.
 
 Responses carry `ETag` and `Cache-Control: private, max-age=60`, and
 `If-None-Match` (a tag, a list of tags or `*`) answers `304` without a body.
 The tag of a post is its `version` (`"3"`, `"3-md"` for Markdown, `"3-html"`
 for HTML), followed by a digest of the labels an admin set for its tags when
-there are any (`"3-9f2c41a7b0de"`), so changing or clearing a label changes it;
-the tag of the list and of the tags is a digest of the response. Publishing,
+there are any and by the cover size when it has one (`"3-9f2c41a7b0de"`,
+`"3-1200x630"`, `"3-9f2c41a7b0de-1200x630"`), so changing a label or the
+cover's upload changes it; the tag of the list and of the tags is a digest of
+the response. Publishing,
 unpublishing or editing a post changes them, so a cached copy is at most 60
 seconds old.
+
+### Stability and versioning
+
+The content API follows the semantic version of the BurzBlog release, so a
+website can pin to a major version. Covered are every `/api/content/*` route,
+its JSON shapes, its error shape (`{"error": {code, message, detail}}`) and its
+authentication, and the format of `GET /api/export.tar.gz`. Within a major
+version they change only additively: new fields, new optional query
+parameters, new routes. Clients must ignore fields they do not know. Removing
+or renaming a field, route or parameter, or changing what a field or status code
+means, needs a new major version and a `CHANGELOG.md` entry. The other `/api/*`
+routes belong to the browser panel and the terminal client shipped in the same
+binary; they are internal and may change in any release.
 
 ### Feeds and sitemap
 

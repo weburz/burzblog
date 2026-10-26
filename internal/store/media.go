@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -126,4 +127,45 @@ func (s *Store) MediaUsers(ctx context.Context, fileName string, limit int) ([]s
 		slugs = append(slugs, slug)
 	}
 	return slugs, rows.Err()
+}
+
+// MediaSize is the pixel size of an uploaded image.
+type MediaSize struct{ Width, Height int }
+
+// maxSizeNames is how many file names one MediaSizes query asks for, well
+// under SQLite's limit on bound variables.
+const maxSizeNames = 500
+
+// MediaSizes returns the pixel size of the uploads named in fileNames, by file
+// name. Names that are not uploads, and uploads whose format is not decoded
+// (width 0), are left out.
+func (s *Store) MediaSizes(ctx context.Context, fileNames []string) (map[string]MediaSize, error) {
+	sizes := map[string]MediaSize{}
+	for start := 0; start < len(fileNames); start += maxSizeNames {
+		chunk := fileNames[start:min(start+maxSizeNames, len(fileNames))]
+		args := make([]any, len(chunk))
+		for i, name := range chunk {
+			args[i] = name
+		}
+		rows, err := s.db.QueryContext(ctx, `SELECT file_name, width, height FROM media
+			WHERE width > 0 AND height > 0 AND file_name IN (?`+strings.Repeat(",?", len(chunk)-1)+`)`, args...)
+		if err != nil {
+			return nil, fmt.Errorf("read upload sizes: %w", err)
+		}
+		for rows.Next() {
+			var name string
+			var size MediaSize
+			if err := rows.Scan(&name, &size.Width, &size.Height); err != nil {
+				rows.Close()
+				return nil, fmt.Errorf("read upload sizes: %w", err)
+			}
+			sizes[name] = size
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return nil, fmt.Errorf("read upload sizes: %w", err)
+		}
+	}
+	return sizes, nil
 }

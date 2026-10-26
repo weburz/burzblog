@@ -31,6 +31,8 @@ type contentReply struct {
 	Description    string     `json:"description"`
 	CoverURL       string     `json:"coverUrl"`
 	CoverAlt       string     `json:"coverAlt"`
+	CoverWidth     int        `json:"coverWidth,omitempty"`
+	CoverHeight    int        `json:"coverHeight,omitempty"`
 	PublishedOn    *time.Time `json:"publishedOn"`
 	UpdatedOn      *time.Time `json:"updatedOn"`
 	UpdatedAt      time.Time  `json:"updatedAt"`
@@ -44,6 +46,9 @@ type contentReply struct {
 	Version        int64      `json:"version"`
 	Body           *string    `json:"body,omitempty"`
 	Snippet        string     `json:"snippet,omitempty"`
+	// Extra is a map[string]any, set on the single-post route and on a list
+	// with ?include=extra. It is an any so that an empty object is still sent.
+	Extra any `json:"extra,omitempty"`
 
 	// Featured marks a post the site should lead with. TagLabels maps each
 	// of Tags to its display label; the handlers set it, reading the labels
@@ -127,6 +132,10 @@ func (s *Server) contentList(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	withExtra, ok := includeExtra(w, r)
+	if !ok {
+		return
+	}
 	list, total, err := s.store.ListPublishedFeatured(r.Context(), r.URL.Query().Get("q"), r.URL.Query().Get("tag"), featured, limit, offset)
 	if err != nil {
 		s.internal(w, r, err)
@@ -137,11 +146,31 @@ func (s *Server) contentList(w http.ResponseWriter, r *http.Request) {
 		s.internal(w, r, err)
 		return
 	}
+	posts := make([]*post.Post, len(list))
+	for i, l := range list {
+		posts[i] = l.Post
+	}
+	sizes, err := s.coverSizes(r.Context(), posts)
+	if err != nil {
+		s.internal(w, r, err)
+		return
+	}
+	var extras map[int64]string
+	if withExtra {
+		if extras, err = s.store.PublishedExtras(r.Context()); err != nil {
+			s.internal(w, r, err)
+			return
+		}
+	}
 	items := make([]contentReply, 0, len(list))
 	for _, l := range list {
 		item := contentJSON(l.Post, l.Words, false)
 		item.TagLabels = tagLabelsFor(overrides, l.Post.Tags)
 		item.Snippet = l.Snippet
+		s.setCover(&item, l.Post, sizes)
+		if withExtra {
+			item.Extra = s.extraJSON(r, l.Post.Slug, extras[l.Post.ID])
+		}
 		items = append(items, item)
 	}
 	s.replyDigest(w, r, map[string]any{"items": items, "total": total})
@@ -174,14 +203,21 @@ func (s *Server) contentPost(w http.ResponseWriter, r *http.Request) {
 		s.internal(w, r, err)
 		return
 	}
+	sizes, err := s.coverSizes(r.Context(), []*post.Post{p})
+	if err != nil {
+		s.internal(w, r, err)
+		return
+	}
 	item := contentJSON(p, post.CountWords(p.Body), true)
 	item.TagLabels = tagLabelsFor(overrides, p.Tags)
-	// The reply shows tag labels, which change without a new version, so
-	// the tag also covers the labels an admin set for this post's tags.
-	tag := labelledETag(p.Version, overrides, p.Tags)
+	s.setCover(&item, p, sizes)
+	// Tag labels and the cover's size change without a new version, so the
+	// tag covers the labels an admin set for this post's tags and the size.
+	tag := tagWithCover(labelledETag(p.Version, overrides, p.Tags), item)
 	if notModified(w, r, tag) {
 		return
 	}
+	item.Extra = s.extraJSON(r, p.Slug, p.Extra)
 	cached(w, tag)
 	reply(w, http.StatusOK, item)
 }

@@ -22,6 +22,12 @@ All notable changes are recorded here, following
   (`constitutional-law` is `Constitutional Law`). `GET /api/content/tags` items
   gain `label` and content posts gain `tagLabels`, a map from each tag to its
   label; `tags` is unchanged. Post ETags change with the labels of their tags.
+- The content API returns a post's unmodelled frontmatter as `extra`, a JSON
+  object (`{}` when empty), on `GET /api/content/posts/{slug}` and, with
+  `?include=extra`, on the list. Dates stay strings as written. A cover that is
+  an upload on this server also gets `coverWidth` and `coverHeight`, left out
+  when unknown. `docs/api.md` now states that `/api/content/*` and the export
+  format change only additively within a major version.
 
 - Roles and an audit log. Every account is an `admin` or an `author`. Authors
   write, edit, publish, unpublish and archive posts and manage their own
