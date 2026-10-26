@@ -4,6 +4,7 @@ import type { PostDraft } from "../types";
 export const maxTags = 20;
 export const maxTagLength = 40;
 export const maxAuthor = 100;
+export const maxTagLabel = 60;
 export const seoTitleLimits = { advised: 60, max: 120 };
 export const seoDescriptionLimits = { advised: 160, max: 320 };
 
@@ -39,9 +40,12 @@ export const canonicalOk = (url: string): boolean =>
 const sameList = (a: readonly string[], b: readonly string[]): boolean =>
   a.length === b.length && a.every((v, i) => v === b[i]);
 
-// Whether two drafts would save the same post. Missing text counts as empty
-// and missing tags as none, so a backup from before these fields still compares.
+// Whether two drafts would save the same post. Missing text counts as empty,
+// missing tags as none and a missing featured flag as off, so a backup from
+// before these fields still compares.
 export const sameDraft = (a: PostDraft, b: PostDraft): boolean =>
-  (Object.keys(a) as (keyof PostDraft)[]).every((k) =>
-    k === "tags" ? sameList(a.tags ?? [], b.tags ?? []) : (a[k] ?? "") === (b[k] ?? ""),
-  );
+  (Object.keys(a) as (keyof PostDraft)[]).every((k) => {
+    if (k === "tags") return sameList(a.tags ?? [], b.tags ?? []);
+    if (k === "featured") return Boolean(a.featured) === Boolean(b.featured);
+    return (a[k] ?? "") === (b[k] ?? "");
+  });

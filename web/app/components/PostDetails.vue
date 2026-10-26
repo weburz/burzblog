@@ -63,6 +63,16 @@ const setUpdatedNow = () => {
     <template #body>
       <fieldset class="details" :disabled="readonly">
         <div class="field">
+          <USwitch
+            id="detail-featured"
+            :model-value="Boolean(draft.featured)"
+            label="Featured"
+            description="Your website can lead with featured posts, such as a homepage story."
+            @update:model-value="(v: boolean) => (draft.featured = v)"
+          />
+        </div>
+
+        <div class="field">
           <label for="detail-slug">Slug</label>
           <UInput
             id="detail-slug"

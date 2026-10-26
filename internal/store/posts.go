@@ -16,7 +16,7 @@ import (
 
 const postColumns = `id, slug, title, description, status, body, cover_url, cover_alt, extra,
 	published_on, updated_on, created_at, updated_at, updated_by, version, publish_at, publish_by,
-	author, seo_title, seo_description, canonical_url`
+	author, seo_title, seo_description, canonical_url, featured`
 
 type scanner interface {
 	Scan(dest ...any) error
@@ -28,7 +28,7 @@ func scanPost(row scanner) (*post.Post, error) {
 	var publishedOn, updatedOn, publishAt sql.NullString
 	err := row.Scan(&p.ID, &p.Slug, &p.Title, &p.Description, &status, &p.Body, &p.CoverURL,
 		&p.CoverAlt, &p.Extra, &publishedOn, &updatedOn, &created, &updated, &p.UpdatedBy, &p.Version, &publishAt, &p.PublishBy,
-		&p.Author, &p.SEOTitle, &p.SEODescription, &p.CanonicalURL)
+		&p.Author, &p.SEOTitle, &p.SEODescription, &p.CanonicalURL, &p.Featured)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -126,13 +126,13 @@ func (s *Store) CreatePost(ctx context.Context, p *post.Post, by string) (*post.
 	now := s.stamp()
 	row := tx.QueryRowContext(ctx, `INSERT INTO posts
 		(slug, title, description, status, body, cover_url, cover_alt, extra, published_on, updated_on,
-		 created_at, updated_at, updated_by, version, words, author, seo_title, seo_description, canonical_url)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
+		 created_at, updated_at, updated_by, version, words, author, seo_title, seo_description, canonical_url, featured)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (slug) DO NOTHING
 		RETURNING `+postColumns,
 		p.Slug, p.Title, p.Description, string(p.Status), p.Body, p.CoverURL, p.CoverAlt, p.Extra,
 		nullTime(p.PublishedOn), nullTime(p.UpdatedOn), now, now, by, post.CountWords(p.Body),
-		p.Author, p.SEOTitle, p.SEODescription, p.CanonicalURL)
+		p.Author, p.SEOTitle, p.SEODescription, p.CanonicalURL, p.Featured)
 	created, err := scanPost(row)
 	if errors.Is(err, ErrNotFound) {
 		return nil, ErrTaken
@@ -180,6 +180,9 @@ type Filter struct {
 	// Tag limits results to posts with this tag. It is normalized like a
 	// post's tags, so "Machine Learning" finds "machine-learning".
 	Tag string
+	// Featured limits results to featured (true) or not featured (false)
+	// posts; nil means both.
+	Featured *bool
 	// Sort orders the result; empty means SortUpdated, or best match first
 	// when there is a Query.
 	Sort Sort
@@ -223,6 +226,7 @@ type Summary struct {
 	Words       int
 	Tags        []string
 	Author      string
+	Featured    bool
 	PublishedOn *time.Time
 	PublishAt   *time.Time
 	UpdatedAt   time.Time
@@ -334,6 +338,10 @@ func (s *Store) ListPosts(ctx context.Context, f Filter) ([]Summary, Counts, err
 		where = append(where, "id IN (SELECT post_id FROM post_tags WHERE tag = ?)")
 		args = append(args, post.NormalizeTag(f.Tag))
 	}
+	if f.Featured != nil {
+		where = append(where, "featured = ?")
+		args = append(args, *f.Featured)
+	}
 	cond := strings.Join(where, " AND ")
 	page := " FROM " + from + " WHERE " + cond + " ORDER BY " + order
 	listArgs := args
@@ -342,7 +350,7 @@ func (s *Store) ListPosts(ctx context.Context, f Filter) ([]Summary, Counts, err
 		listArgs = append(append([]any{}, args...), f.Limit, max(f.Offset, 0))
 	}
 	query := `SELECT id, slug, title, description, status, words, published_on,
-		publish_at, updated_at, updated_by, version, author` + page
+		publish_at, updated_at, updated_by, version, author, featured` + page
 	rows, err := s.db.QueryContext(ctx, query, listArgs...)
 	if err != nil {
 		return nil, counts, fmt.Errorf("list posts: %w", err)
@@ -356,7 +364,7 @@ func (s *Store) ListPosts(ctx context.Context, f Filter) ([]Summary, Counts, err
 		var status, updated string
 		var publishedOn, publishAt sql.NullString
 		if err := rows.Scan(&id, &sm.Slug, &sm.Title, &sm.Description, &status, &sm.Words, &publishedOn, &publishAt,
-			&updated, &sm.UpdatedBy, &sm.Version, &sm.Author); err != nil {
+			&updated, &sm.UpdatedBy, &sm.Version, &sm.Author, &sm.Featured); err != nil {
 			return nil, counts, fmt.Errorf("list posts: %w", err)
 		}
 		ids = append(ids, id)
@@ -457,23 +465,25 @@ func (s *Store) UpdatePost(ctx context.Context, slug string, version int64, by s
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO revisions
 		(post_id, version, slug, title, description, status, body, cover_url, cover_alt, extra,
-		 published_on, updated_on, saved_at, saved_by, words, tags, author, seo_title, seo_description, canonical_url)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 published_on, updated_on, saved_at, saved_by, words, tags, author, seo_title, seo_description, canonical_url, featured)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		current.ID, current.Version, current.Slug, current.Title, current.Description, string(current.Status),
 		current.Body, current.CoverURL, current.CoverAlt, current.Extra, nullTime(current.PublishedOn),
 		nullTime(current.UpdatedOn), current.UpdatedAt.Format(time.RFC3339Nano), current.UpdatedBy, post.CountWords(current.Body),
-		string(oldTags), current.Author, current.SEOTitle, current.SEODescription, current.CanonicalURL); err != nil {
+		string(oldTags), current.Author, current.SEOTitle, current.SEODescription, current.CanonicalURL,
+		current.Featured); err != nil {
 		return nil, fmt.Errorf("keep revision: %w", err)
 	}
 	updated, err := scanPost(tx.QueryRowContext(ctx, `UPDATE posts SET
 		slug = ?, title = ?, description = ?, status = ?, body = ?, cover_url = ?, cover_alt = ?, extra = ?,
 		published_on = ?, updated_on = ?, publish_at = ?, publish_by = ?, updated_at = ?, updated_by = ?,
-		words = ?, author = ?, seo_title = ?, seo_description = ?, canonical_url = ?, version = version + 1
+		words = ?, author = ?, seo_title = ?, seo_description = ?, canonical_url = ?, featured = ?,
+		version = version + 1
 		WHERE id = ? RETURNING `+postColumns,
 		next.Slug, next.Title, next.Description, string(next.Status), next.Body, next.CoverURL, next.CoverAlt,
 		next.Extra, nullTime(next.PublishedOn), nullTime(next.UpdatedOn), nullTime(next.PublishAt), next.PublishBy,
 		now, by, post.CountWords(next.Body), next.Author, next.SEOTitle, next.SEODescription, next.CanonicalURL,
-		current.ID))
+		next.Featured, current.ID))
 	if err != nil {
 		return nil, err
 	}
@@ -594,8 +604,8 @@ func (s *Store) Revisions(ctx context.Context, slug string) ([]Revision, error) 
 		return nil, err
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT version, slug, title, description, status, words, cover_url, cover_alt,
-		extra, published_on, updated_on, saved_at, saved_by, tags, author, seo_title, seo_description, canonical_url
-		FROM revisions WHERE post_id = ? ORDER BY version DESC LIMIT 200`, p.ID)
+		extra, published_on, updated_on, saved_at, saved_by, tags, author, seo_title, seo_description, canonical_url,
+		featured FROM revisions WHERE post_id = ? ORDER BY version DESC LIMIT 200`, p.ID)
 	if err != nil {
 		return nil, fmt.Errorf("list revisions: %w", err)
 	}
@@ -607,7 +617,8 @@ func (s *Store) Revisions(ctx context.Context, slug string) ([]Revision, error) 
 		var publishedOn, updatedOn sql.NullString
 		if err := rows.Scan(&r.Version, &r.Post.Slug, &r.Post.Title, &r.Post.Description, &status, &r.Words,
 			&r.Post.CoverURL, &r.Post.CoverAlt, &r.Post.Extra, &publishedOn, &updatedOn, &saved, &r.SavedBy,
-			&tags, &r.Post.Author, &r.Post.SEOTitle, &r.Post.SEODescription, &r.Post.CanonicalURL); err != nil {
+			&tags, &r.Post.Author, &r.Post.SEOTitle, &r.Post.SEODescription, &r.Post.CanonicalURL,
+			&r.Post.Featured); err != nil {
 			return nil, fmt.Errorf("list revisions: %w", err)
 		}
 		if r.Post.Tags, err = decodeTags(tags); err != nil {
@@ -633,11 +644,11 @@ func (s *Store) Revision(ctx context.Context, slug string, version int64) (*Revi
 	var publishedOn, updatedOn sql.NullString
 	err = s.db.QueryRowContext(ctx, `SELECT version, slug, title, description, status, body, cover_url,
 		cover_alt, extra, published_on, updated_on, saved_at, saved_by, tags, author, seo_title,
-		seo_description, canonical_url
+		seo_description, canonical_url, featured
 		FROM revisions WHERE post_id = ? AND version = ?`, p.ID, version).Scan(
 		&r.Version, &r.Post.Slug, &r.Post.Title, &r.Post.Description, &status, &r.Post.Body, &r.Post.CoverURL,
 		&r.Post.CoverAlt, &r.Post.Extra, &publishedOn, &updatedOn, &saved, &r.SavedBy,
-		&tags, &r.Post.Author, &r.Post.SEOTitle, &r.Post.SEODescription, &r.Post.CanonicalURL)
+		&tags, &r.Post.Author, &r.Post.SEOTitle, &r.Post.SEODescription, &r.Post.CanonicalURL, &r.Post.Featured)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}

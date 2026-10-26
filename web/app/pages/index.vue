@@ -305,6 +305,13 @@ const origin = typeof window === "undefined" ? "" : window.location.origin;
               post.title || "Untitled"
             }}</span>
             <span class="post-sub">
+              <span v-if="post.featured" class="post-featured"
+                ><UIcon
+                  name="i-lucide-star"
+                  class="size-3.5"
+                  aria-hidden="true"
+                />Featured</span
+              >
               <span class="mono">{{ post.slug }}</span>
               <span v-if="post.tags.length" class="post-tags">{{
                 post.tags.map((t) => `#${t}`).join(" ")

@@ -404,6 +404,8 @@ const scopeUse = (t: Token) =>
       </div>
     </section>
 
+    <TagLabelsSection v-if="isAdmin" />
+
     <section v-if="isAdmin" class="settings-section" aria-labelledby="backup-heading">
       <div class="settings-aside">
         <h2 id="backup-heading" class="section-title">Backup</h2>

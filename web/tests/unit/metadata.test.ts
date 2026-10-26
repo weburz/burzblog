@@ -23,6 +23,7 @@ const draft = (change: Partial<PostDraft> = {}): PostDraft => ({
   seoTitle: "",
   seoDescription: "",
   canonicalUrl: "",
+  featured: false,
   publishedOn: null,
   updatedOn: null,
   ...change,
@@ -108,9 +109,14 @@ describe("sameDraft", () => {
     ])
       expect(sameDraft(draft(), draft(change))).toBe(false);
   });
+  it("sees a featured change", () => {
+    expect(sameDraft(draft(), draft({ featured: true }))).toBe(false);
+    expect(sameDraft(draft({ featured: true }), draft({ featured: true }))).toBe(true);
+  });
   it("treats a backup from before these fields as having none", () => {
     const old = draft();
     delete (old as Partial<PostDraft>).tags;
+    delete (old as Partial<PostDraft>).featured;
     expect(sameDraft(old, draft({ tags: [] }))).toBe(true);
   });
 });

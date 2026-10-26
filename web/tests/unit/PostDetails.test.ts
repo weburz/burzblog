@@ -18,6 +18,7 @@ const draftWith = (change: Partial<PostDraft> = {}): PostDraft =>
     seoTitle: "",
     seoDescription: "",
     canonicalUrl: "",
+    featured: false,
     publishedOn: null,
     updatedOn: null,
     ...change,
@@ -45,6 +46,12 @@ const show = (
             "<div :data-open='open'><slot /><slot v-if='open' name='content' /></div>",
         },
         UButton: { template: "<button><slot /></button>" },
+        USwitch: {
+          props: ["modelValue", "id", "label"],
+          emits: ["update:modelValue"],
+          template:
+            "<input type='checkbox' :id='id' :aria-label='label' :checked='modelValue' @change='$emit(\"update:modelValue\", $event.target.checked)' />",
+        },
       },
     },
   });
@@ -120,5 +127,24 @@ describe("post settings: slug redirects", () => {
   it("shows no list without redirects", () => {
     expect(show(draftWith()).find(".redirects").exists()).toBe(false);
     expect(show(draftWith(), { redirects: [] }).find(".redirects").exists()).toBe(false);
+  });
+});
+
+describe("post settings: featured", () => {
+  it("shows the flag and changes it on the draft", async () => {
+    const draft = draftWith({ featured: false });
+    const wrapper = show(draft);
+    const toggle = wrapper.get("#detail-featured");
+    expect((toggle.element as HTMLInputElement).checked).toBe(false);
+    await toggle.setValue(true);
+    expect(draft.featured).toBe(true);
+    await toggle.setValue(false);
+    expect(draft.featured).toBe(false);
+  });
+  it("shows a featured post as on", () => {
+    const wrapper = show(draftWith({ featured: true }));
+    expect((wrapper.get("#detail-featured").element as HTMLInputElement).checked).toBe(
+      true,
+    );
   });
 });

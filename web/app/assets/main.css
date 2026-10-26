@@ -557,6 +557,14 @@ code {
   text-overflow: ellipsis;
   color: var(--bb-text-3);
 }
+.post-featured {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+  color: var(--bb-text);
+}
 .post-tags {
   flex: 0 1 auto;
   min-width: 0;
@@ -1268,6 +1276,24 @@ code {
 .secret-reveal .copy-field {
   width: 100%;
 }
+.tag-label-row {
+  display: grid;
+  grid-template-columns: minmax(7em, 1fr) minmax(0, 2fr) auto;
+  align-items: end;
+  gap: 8px 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--bb-border);
+}
+.tag-label-slug {
+  display: grid;
+  min-width: 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.tag-label-actions {
+  display: flex;
+  gap: 8px;
+}
 .inline-form {
   display: flex;
   align-items: flex-end;
@@ -1277,6 +1303,9 @@ code {
 
 /* Narrow screens */
 @media (max-width: 899px) {
+  .tag-label-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .settings-section {
     grid-template-columns: minmax(0, 1fr);
     gap: 16px;

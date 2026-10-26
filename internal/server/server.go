@@ -150,6 +150,8 @@ func (s *Server) routes() {
 
 	m.HandleFunc("GET /api/posts", s.write(s.listPosts))
 	m.HandleFunc("GET /api/tags", s.write(s.listTags))
+	m.HandleFunc("PUT /api/tags/{tag}/label", s.admin(s.setTagLabel))
+	m.HandleFunc("DELETE /api/tags/{tag}/label", s.admin(s.clearTagLabel))
 	m.HandleFunc("POST /api/posts", s.write(s.createPost))
 	m.HandleFunc("GET /api/posts/{slug}", s.write(s.getPost))
 	m.HandleFunc("PUT /api/posts/{slug}", s.write(s.savePost))

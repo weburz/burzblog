@@ -40,6 +40,7 @@ const (
 	MaxAuthor      = 100
 	MaxSEOTitle    = 120
 	MaxSEODesc     = 320
+	MaxTagLabel    = 60
 )
 
 var (
@@ -58,6 +59,7 @@ func CountWords(text string) int {
 // Tags are the post's topics and categories in one list: lowercase words with
 // hyphens, in the author's order. SEOTitle, SEODescription and CanonicalURL
 // are for search engines and social cards; empty means the site's default.
+// Featured marks a post the site should lead with.
 type Post struct {
 	ID             int64
 	Slug           string
@@ -73,6 +75,7 @@ type Post struct {
 	SEOTitle       string
 	SEODescription string
 	CanonicalURL   string
+	Featured       bool
 	PublishedOn    *time.Time
 	UpdatedOn      *time.Time
 	// PublishAt is when a draft publishes itself; nil when not scheduled.
@@ -316,6 +319,34 @@ func validateTags(tags []string) error {
 	return nil
 }
 
+// DefaultTagLabel derives the label shown for a tag nobody labelled: hyphens
+// become spaces and each word starts with a capital, so "constitutional-law"
+// is "Constitutional Law".
+func DefaultTagLabel(tag string) string {
+	words := strings.Split(tag, "-")
+	for i, w := range words {
+		if w == "" {
+			continue
+		}
+		r, size := utf8.DecodeRuneInString(w)
+		words[i] = string(unicode.ToTitle(r)) + w[size:]
+	}
+	return strings.Join(words, " ")
+}
+
+// NormalizeTagLabel trims a tag label and checks it: one line of text, at
+// most MaxTagLabel characters, with no control characters.
+func NormalizeTagLabel(raw string) (string, error) {
+	label := strings.TrimSpace(raw)
+	if label == "" {
+		return "", &FieldError{"label", "must not be empty. To go back to the default, clear the label instead."}
+	}
+	if err := checkLines([]lineCheck{{"label", label, MaxTagLabel}}); err != nil {
+		return "", err
+	}
+	return label, nil
+}
+
 // Normalize trims incidental whitespace from single-line fields, cleans the
 // tags and uses LF line endings in the body.
 func Normalize(p *Post) {
@@ -342,7 +373,7 @@ func SameContent(a, b *Post) bool {
 		a.Status == b.Status && sameBody(a.Body, b.Body) && a.CoverURL == b.CoverURL &&
 		a.CoverAlt == b.CoverAlt && a.Extra == b.Extra && slices.Equal(a.Tags, b.Tags) &&
 		a.Author == b.Author && a.SEOTitle == b.SEOTitle && a.SEODescription == b.SEODescription &&
-		a.CanonicalURL == b.CanonicalURL &&
+		a.CanonicalURL == b.CanonicalURL && a.Featured == b.Featured &&
 		sameTime(a.PublishedOn, b.PublishedOn) && sameTime(a.UpdatedOn, b.UpdatedOn) &&
 		sameTime(a.PublishAt, b.PublishAt)
 }

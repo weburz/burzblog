@@ -15,7 +15,7 @@ import (
 var reserved = map[string]bool{
 	"title": true, "description": true, "status": true,
 	"timestamps": true, "coverImage": true, "slug": true,
-	"tags": true, "author": true, "canonical": true,
+	"tags": true, "author": true, "canonical": true, "featured": true,
 }
 
 const fence = "---"
@@ -63,6 +63,9 @@ func Encode(p *Post) string {
 	}
 	if p.Author != "" {
 		add("author", scalar(p.Author))
+	}
+	if p.Featured {
+		add("featured", &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: "true"})
 	}
 	extra, err := parseExtra(p.Extra)
 	if err != nil {
@@ -167,6 +170,7 @@ type Document struct {
 	SEOTitle       string
 	SEODescription string
 	CanonicalURL   string
+	Featured       bool
 	Extra          string
 	Body           string
 }
@@ -182,6 +186,7 @@ func (d *Document) Apply(p *Post) {
 	p.UpdatedOn = d.UpdatedOn
 	p.Tags, p.Author = d.Tags, d.Author
 	p.SEOTitle, p.SEODescription, p.CanonicalURL = d.SEOTitle, d.SEODescription, d.CanonicalURL
+	p.Featured = d.Featured
 	p.Extra = d.Extra
 	p.Body = d.Body
 }
@@ -232,15 +237,17 @@ func Decode(doc string) (*Document, error) {
 		// Only comments: there is no title.
 		return nil, &FieldError{"title", "must not be empty."}
 	}
-	if err := d.readMapping(root); err != nil {
+	if err := d.readMapping(root, false); err != nil {
 		return nil, err
 	}
 	return d, nil
 }
 
 // readMapping reads the modelled keys of a frontmatter mapping into d and
-// collects the rest as d.Extra.
-func (d *Document) readMapping(root *yaml.Node) error {
+// collects the rest as d.Extra. With keepFeatured, featured stays in the
+// extra instead: that is how it was before it was modelled, and what the
+// migration of older databases needs.
+func (d *Document) readMapping(root *yaml.Node, keepFeatured bool) error {
 	extra := &yaml.Node{Kind: yaml.MappingNode}
 	for i := 0; i+1 < len(root.Content); i += 2 {
 		key, value := root.Content[i], root.Content[i+1]
@@ -271,6 +278,12 @@ func (d *Document) readMapping(root *yaml.Node) error {
 			d.Author, err = text(key.Value, value)
 		case "canonical":
 			d.CanonicalURL, err = text(key.Value, value)
+		case "featured":
+			if keepFeatured {
+				extra.Content = append(extra.Content, key, value)
+			} else {
+				d.Featured, err = flag(key.Value, value)
+			}
 		case "seo":
 			var rest *yaml.Node
 			if rest, err = d.readSEO(value); err == nil && len(rest.Content) > 0 {
@@ -284,16 +297,23 @@ func (d *Document) readMapping(root *yaml.Node) error {
 		}
 	}
 	if len(extra.Content) > 0 {
-		var buf bytes.Buffer
-		enc := yaml.NewEncoder(&buf)
-		enc.SetIndent(2)
-		if err := enc.Encode(extra); err != nil {
-			return &FieldError{"frontmatter", "has values BurzBlog cannot keep."}
+		var err error
+		if d.Extra, err = encodeExtra(extra); err != nil {
+			return err
 		}
-		_ = enc.Close()
-		d.Extra = buf.String()
 	}
 	return nil
+}
+
+func encodeExtra(extra *yaml.Node) (string, error) {
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(2)
+	if err := enc.Encode(extra); err != nil {
+		return "", &FieldError{"frontmatter", "has values BurzBlog cannot keep."}
+	}
+	_ = enc.Close()
+	return buf.String(), nil
 }
 
 // readTags reads a YAML list of tags, or one text of comma-separated tags.
@@ -361,7 +381,7 @@ func MoveMetadataFromExtra(extra string) (moved *Post, rest string, ok bool) {
 		return nil, extra, false
 	}
 	var d Document
-	if d.readMapping(root) != nil {
+	if d.readMapping(root, true) != nil {
 		return nil, extra, false
 	}
 	found := false
@@ -381,6 +401,53 @@ func MoveMetadataFromExtra(extra string) (moved *Post, rest string, ok bool) {
 		return nil, extra, false
 	}
 	return p, d.Extra, true
+}
+
+// flag reads a YAML true or false. Anything else is an error rather than a
+// guess, so a typo does not quietly unfeature a post.
+func flag(field string, n *yaml.Node) (bool, error) {
+	if n.Kind == yaml.ScalarNode && n.Tag == "!!null" {
+		return false, nil
+	}
+	if n.Kind == yaml.ScalarNode && n.Tag == "!!bool" {
+		return n.Value == "true", nil
+	}
+	return false, &FieldError{field, fmt.Sprintf("(line %d) must be true or false.", n.Line)}
+}
+
+// MoveFeaturedFromExtra takes a featured flag out of extra, for posts saved
+// before BurzBlog modelled it. ok is false when extra has no featured key or
+// its value is not true or false; the post is then left as it is.
+func MoveFeaturedFromExtra(extra string) (featured bool, rest string, ok bool) {
+	root, err := parseMapping(extra, "extra frontmatter")
+	if err != nil || root == nil {
+		return false, extra, false
+	}
+	kept := &yaml.Node{Kind: yaml.MappingNode}
+	found := false
+	for i := 0; i+1 < len(root.Content); i += 2 {
+		key, value := root.Content[i], root.Content[i+1]
+		if key.Value != "featured" {
+			kept.Content = append(kept.Content, key, value)
+			continue
+		}
+		v, err := flag(key.Value, value)
+		if err != nil {
+			return false, extra, false
+		}
+		featured, found = v, true
+	}
+	if !found {
+		return false, extra, false
+	}
+	if len(kept.Content) == 0 {
+		return featured, "", true
+	}
+	rest, err = encodeExtra(kept)
+	if err != nil {
+		return false, extra, false
+	}
+	return featured, rest, true
 }
 
 func (d *Document) readTimestamps(n *yaml.Node) error {

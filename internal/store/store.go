@@ -266,14 +266,29 @@ var migrations = []string{
 		created_at TEXT NOT NULL
 	);
 	CREATE INDEX media_created ON media (created_at DESC, id DESC);`,
+	// Featured posts. The index serves the content API's ?featured= filter
+	// within a status. Revisions keep the flag so history shows the change.
+	// backfillFeatured moves a featured key out of extra.
+	`ALTER TABLE posts ADD COLUMN featured INTEGER NOT NULL DEFAULT 0 CHECK (featured IN (0, 1));
+	ALTER TABLE revisions ADD COLUMN featured INTEGER NOT NULL DEFAULT 0;
+	CREATE INDEX posts_featured ON posts (status, featured, published_on DESC);`,
+	// Display labels for tags. The tag stays the identity; a tag without a row
+	// shows the label derived from it (post.DefaultTagLabel).
+	`CREATE TABLE tag_labels (
+		tag TEXT PRIMARY KEY CHECK (length(tag) BETWEEN 1 AND 40),
+		label TEXT NOT NULL CHECK (length(label) BETWEEN 1 AND 60),
+		updated_at TEXT NOT NULL,
+		updated_by TEXT NOT NULL DEFAULT ''
+	);`,
 }
 
 // migrationSteps run in the migration's transaction after its SQL, for work
 // SQL cannot do. Keyed by the migration's number (its index + 1).
 var migrationSteps = map[int]func(context.Context, *sql.Tx) error{
-	3: backfillWords,
-	4: backfillMetadata,
-	5: backfillSearch,
+	3:  backfillWords,
+	4:  backfillMetadata,
+	5:  backfillSearch,
+	11: backfillFeatured,
 }
 
 // backfillWords counts the words of the posts and revisions that existed
@@ -361,6 +376,46 @@ func backfillMetadata(ctx context.Context, tx *sql.Tx) error {
 				return err
 			}
 			if err := insertTags(ctx, tx, m.id, p.Tags); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// backfillFeatured moves a featured flag that posts and revisions carried
+// inside extra into the new column. A value that is not true or false stays in
+// extra as it was.
+func backfillFeatured(ctx context.Context, tx *sql.Tx) error {
+	for _, table := range []string{"posts", "revisions"} {
+		rows, err := tx.QueryContext(ctx, "SELECT id, extra FROM "+table+" WHERE extra LIKE '%featured%'")
+		if err != nil {
+			return err
+		}
+		type move struct {
+			id       int64
+			featured bool
+			rest     string
+		}
+		var moves []move
+		for rows.Next() {
+			var id int64
+			var extra string
+			if err := rows.Scan(&id, &extra); err != nil {
+				rows.Close()
+				return err
+			}
+			if featured, rest, ok := post.MoveFeaturedFromExtra(extra); ok {
+				moves = append(moves, move{id, featured, rest})
+			}
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return err
+		}
+		for _, m := range moves {
+			if _, err := tx.ExecContext(ctx, "UPDATE "+table+" SET extra = ?, featured = ? WHERE id = ?",
+				m.rest, m.featured, m.id); err != nil {
 				return err
 			}
 		}

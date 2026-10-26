@@ -168,7 +168,7 @@ func TestTagsEndpoint(t *testing.T) {
 	h.do("POST", "/api/posts", map[string]any{"title": "B", "slug": "b", "tags": []string{"go"}})
 	resp, out := h.do("GET", "/api/tags", nil)
 	items, _ := out["items"].([]any)
-	if resp.StatusCode != 200 || fmt.Sprint(items) != "[map[count:2 tag:go] map[count:1 tag:web]]" {
+	if resp.StatusCode != 200 || fmt.Sprint(items) != "[map[count:2 custom:false label:Go tag:go] map[count:1 custom:false label:Web tag:web]]" {
 		t.Errorf("tags = %d %v", resp.StatusCode, out)
 	}
 	token := h.issueToken("export")

@@ -41,6 +41,7 @@ code `role` before the request body is read.
 |---|---|---|---|
 | Read, create and edit posts, tags, revisions, previews | `GET/POST/PUT /api/posts...`, `GET /api/tags`, `POST /api/preview` | yes | yes |
 | Publish, unpublish, archive, restore, schedule | `POST /api/posts/{slug}/{action}`, `PUT .../markdown` | yes | yes |
+| Set or clear a tag's display label | `PUT/DELETE /api/tags/{tag}/label` | no | yes |
 | Remove a slug redirect | `DELETE /api/posts/{slug}/redirects/{from}` | yes | yes |
 | Upload and list files | `POST /api/media`, `GET /api/media` | yes | yes |
 | Delete a post | `DELETE /api/posts/{slug}` | no | yes |
@@ -72,7 +73,8 @@ account (a wrong password, or a wrong two-factor code); first-run setup and
 accounts created on the host; two-factor turned on or off and recovery codes
 used; token created or revoked; password changes; role changes; publish,
 unpublish, archive, restore, schedule and unschedule (including a scheduled
-post the server publishes itself, as actor `scheduler`); post deletion; slug
+post the server publishes itself, as actor `scheduler`); post deletion; tag label
+changes (`tag.label`); slug
 redirect removal; file uploads and deletions; a manual website rebuild; and
 backup downloads. Changes made on the host with `burzblog user` are recorded as
 actor `host`. Failed sign-ins for names that do not exist are not recorded, so repeating them cannot grow the

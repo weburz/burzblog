@@ -141,6 +141,8 @@ The post body in Markdown.
   and social cards, and `canonical` is an absolute `https://` address. All of
   them are optional and left out of the file when empty. A file that leaves
   out `author` clears the post's author when you push it.
+- `featured: true` marks a post a site should lead with. Leave the line out
+  for an ordinary post: a file without it is not featured when you push it.
 - Any other keys (`sitemap`, ...) are kept exactly as written and passed
   through to your website, and so are other keys under `seo` (`robots`, ...).
 
