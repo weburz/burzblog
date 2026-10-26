@@ -65,9 +65,11 @@ onUnmounted(() => undoToast !== undefined && toast.remove(undoToast));
 const shortcutsOpen = useState("shortcuts-open", () => false);
 const { focused, toggle: toggleFocus } = useFocusedWriting();
 const titleField = ref<HTMLTextAreaElement | null>(null);
-const editor = ref<{ focus: () => void; element: HTMLTextAreaElement | null } | null>(
-  null,
-);
+const editor = ref<{
+  focus: () => void;
+  focusStart: () => void;
+  element: HTMLTextAreaElement | null;
+} | null>(null);
 
 const editable = (p: Post): PostDraft => ({
   slug: p.slug,
@@ -725,8 +727,22 @@ const grow = (event: Event) => {
 const titleKey = (event: KeyboardEvent) => {
   if (event.key === "Enter") {
     event.preventDefault();
-    editor.value?.focus();
+    editor.value?.focusStart();
   }
+};
+// The description is one line: Enter moves on to the body, and pasted line
+// breaks become spaces.
+const descriptionKey = (event: KeyboardEvent) => {
+  if (event.key === "Enter" && !event.isComposing) {
+    event.preventDefault();
+    editor.value?.focusStart();
+  }
+};
+const descriptionInput = (event: Event) => {
+  const el = event.target as HTMLTextAreaElement;
+  if (/[\r\n]/.test(el.value) && draft.value)
+    draft.value.description = el.value.replace(/\s*[\r\n]+\s*/g, " ");
+  grow(event);
 };
 
 // Ctrl/Cmd+S saves from anywhere on the page, Ctrl/Cmd+Shift+F toggles focus
@@ -968,7 +984,7 @@ const primary = computed(() => {
 
     <div v-if="conflict" class="editor-notice editor-notice-warn" role="alert">
       <UIcon name="i-lucide-git-compare" class="size-5 shrink-0" />
-      <div class="flex-1">
+      <div class="min-w-0 flex-1">
         <p>
           <strong
             >{{ conflict.updatedBy || "Someone" }} saved a newer version
@@ -1070,6 +1086,7 @@ const primary = computed(() => {
       >
         <div class="write-column">
           <textarea
+            id="post-title"
             ref="titleField"
             v-model="draft.title"
             class="title-field"
@@ -1082,6 +1099,7 @@ const primary = computed(() => {
             @keydown="titleKey"
           />
           <textarea
+            id="post-description"
             v-model="draft.description"
             class="description-field"
             rows="1"
@@ -1089,7 +1107,8 @@ const primary = computed(() => {
             aria-label="Description"
             maxlength="2000"
             :readonly="archived"
-            @input="grow"
+            @input="descriptionInput"
+            @keydown="descriptionKey"
           />
           <MarkdownEditor ref="editor" v-model="draft.body" :readonly="archived" />
         </div>
