@@ -8,6 +8,18 @@ All notable changes are recorded here, following
 
 ### Added
 
+- `burzblog upgrade` replaces the running binary with the latest GitHub release
+  (or `--version vX.Y.Z`). It downloads over https only, checks the SHA-256 sum
+  from `SHA256SUMS-<version>`, swaps the file in atomically and prints the
+  restart command; it never restarts or runs the download. `--check` exits `7`
+  when an update exists (new exit code, documented in `docs/terminal.md`),
+  `--json` is supported, downgrades need `--force`, development builds need
+  `--version`, and containers are told to pull the new image.
+- The database backs itself up before a schema upgrade. When a start finds the
+  schema older than the binary, it writes a consistent copy
+  (`VACUUM INTO`) to `<data>/backups/burzblog-schema<N>-<UTC time>.db` first
+  and refuses to migrate if that fails. The newest five copies are kept.
+  Restore steps are in `docs/self-hosting.md#upgrades`.
 - Featured posts. A post has a `featured` flag (frontmatter `featured: true`, a
   Featured switch in the post details, a badge in the posts list). It is saved
   as a versioned change with history like any other field and survives

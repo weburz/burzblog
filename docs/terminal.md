@@ -283,6 +283,21 @@ the same download under **Settings → Backup**. Backups and `burzblog export`
 need an admin account: an author gets a "needs an admin" error (exit code `1`,
 JSON `error.code` `role`).
 
+## Upgrading the binary
+
+```sh
+burzblog upgrade --check               # exit 0 up to date, 7 update available
+sudo burzblog upgrade                  # download, verify the SHA-256 sum, replace
+sudo burzblog upgrade --version v1.4.0 # a specific release
+```
+
+For the machine that runs `burzblog serve` as a binary or systemd service.
+`--force` allows a downgrade or a reinstall. A development build only upgrades
+with `--version`. It does not restart anything: it prints
+`sudo systemctl restart burzblog`, and the database backs itself up and migrates
+on the next start. In a container, pull the new image instead. See
+[self-hosting](self-hosting.md#upgrades).
+
 ## Renamed posts: redirects
 
 ```sh
@@ -343,7 +358,7 @@ or a human).
 means one JSON document on standard output (one line). It is supported by
 `list`, `whoami`, `new`, `pull`, `push`, `diff`, `status`, `publish`,
 `unpublish`, `archive`, `restore`, `schedule`, `unschedule`, `backup`,
-`import` and `redirects`. Other commands ignore it and print their usual text, but their
+`import`, `redirects` and `upgrade`. Other commands ignore it and print their usual text, but their
 failures are still JSON. `new` never opens an editor with `--json`.
 
 | Command | Output |
@@ -357,6 +372,7 @@ failures are still JSON. `new` never opens an editor with `--json`.
 | `status` | `{"dir","files":[{"file","slug","state","baseVersion","serverVersion"}]}` |
 | `backup` | `{"dir","posts"}` |
 | `redirects` | `{"items":[{"from","to"}]}`; `items` is `[]` when there are none |
+| `upgrade` | `{"from","to","path","restart"}`; with `--check` or when already current `{"current","latest","updateAvailable"}` |
 
 The field names are the HTTP API's (see [api.md](api.md#posts)); bodies are
 never included. `publishedOn` is `null` until a post is published, and
@@ -449,6 +465,7 @@ Nothing here deletes a post (`delete` is panel-only and only for archived posts)
 | `4` | the post does not exist | `not_found` |
 | `5` | not signed in, or the token or password is not accepted | `authentication`, `credentials` |
 | `6` | the server rejected the content (empty title, broken YAML, ...) | `validation` |
+| `7` | `upgrade --check` found a newer release (no error document) | |
 
 Scripts that only test for zero versus non-zero keep working. Failures that
 used to exit `1` and now exit `2` to `6` are conflicts, missing posts, sign-in
