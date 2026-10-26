@@ -134,6 +134,7 @@ func routeCases(otherToken int64) []routeCase {
 		{name: "export", method: "GET", path: "/api/export.tar.gz", adminOnly: true, want: 200},
 		{name: "export token", method: "POST", path: "/api/tokens", body: `{"name":"build","scope":"export"}`, adminOnly: true, want: 201},
 		{name: "revoke someone else's token", method: "DELETE", path: "/api/tokens/{other}", adminOnly: true, want: 200},
+		{name: "delete upload", method: "DELETE", path: "/api/media/999", adminOnly: true, want: 404},
 		// Every role.
 		{name: "write token", method: "POST", path: "/api/tokens", body: `{"name":"laptop","scope":"write"}`, want: 201},
 		{name: "list tokens", method: "GET", path: "/api/tokens", want: 200},
@@ -143,6 +144,7 @@ func routeCases(otherToken int64) []routeCase {
 		{name: "session", method: "GET", path: "/api/session", want: 200},
 		{name: "list posts", method: "GET", path: "/api/posts", want: 200},
 		{name: "list tags", method: "GET", path: "/api/tags", want: 200},
+		{name: "list uploads", method: "GET", path: "/api/media", want: 200},
 		{name: "create post", method: "POST", path: "/api/posts", body: `{"title":"Fresh"}`, want: 201},
 		{name: "get post", method: "GET", path: "/api/posts/hello", want: 200},
 		{name: "save post", method: "PUT", path: "/api/posts/hello", body: `{"version":1,"title":"Changed"}`, want: 200},

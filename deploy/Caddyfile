@@ -15,7 +15,7 @@
 
 blog.example.org {
 	request_body {
-		max_size 4MB
+		max_size 12MB
 	}
 	header {
 		Strict-Transport-Security "max-age=31536000"

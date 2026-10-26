@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -16,6 +18,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/weburz/burzblog/internal/auth"
+	"github.com/weburz/burzblog/internal/media"
 	"github.com/weburz/burzblog/internal/server"
 	"github.com/weburz/burzblog/internal/store"
 )
@@ -32,8 +35,12 @@ func (a *App) dataDir(flag string) string {
 	return "burzblog-data"
 }
 
+// maxUploadMBLimit caps --max-upload-mb: uploads are held in memory.
+const maxUploadMBLimit = 256
+
 func (a *App) serveCmd() *cobra.Command {
 	var addr, data, origin, hook string
+	var maxUploadMB int
 	var cfg server.Config // holds the site settings until serving
 	cmd := &cobra.Command{
 		Use:   "serve",
@@ -45,6 +52,9 @@ Put it behind a TLS proxy (Caddy, nginx) and set --origin to the public
 URL. Settings can also come from the environment:
 
   BURZBLOG_ADDR, BURZBLOG_DATA, BURZBLOG_ORIGIN, BURZBLOG_DEPLOY_HOOK
+
+Uploaded images and PDFs are kept in the media folder of the data directory,
+at most --max-upload-mb each (BURZBLOG_MAX_UPLOAD_MB, default 10).
 
 Feeds and the sitemap (GET /api/content/feed.xml, feed.atom, feed.json and
 sitemap.xml, also in the export archive) are made for your website and need its
@@ -66,6 +76,21 @@ public address:
 			cfg.PostPath = firstOf(cfg.PostPath, a.Getenv("BURZBLOG_POST_PATH"))
 			cfg.TagPath = firstOf(cfg.TagPath, a.Getenv("BURZBLOG_TAG_PATH"))
 			dir := a.dataDir(data)
+			if maxUploadMB == 0 {
+				if v := a.Getenv("BURZBLOG_MAX_UPLOAD_MB"); v != "" {
+					n, err := strconv.Atoi(v)
+					if err != nil {
+						return fmt.Errorf("BURZBLOG_MAX_UPLOAD_MB must be a whole number of MiB, got %q", v)
+					}
+					maxUploadMB = n
+				}
+			}
+			if maxUploadMB < 0 || maxUploadMB > maxUploadMBLimit {
+				return fmt.Errorf("the upload limit must be 1 to %d MiB, got %d", maxUploadMBLimit, maxUploadMB)
+			}
+			if maxUploadMB > 0 {
+				cfg.MaxUpload = int64(maxUploadMB) << 20
+			}
 
 			log := slog.New(slog.NewTextHandler(a.Err, &slog.HandlerOptions{Level: slog.LevelInfo}))
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -78,6 +103,9 @@ public address:
 			defer st.Close()
 			svc, err := auth.New(st)
 			if err != nil {
+				return err
+			}
+			if cfg.Media, err = media.NewDisk(filepath.Join(dir, media.DirName)); err != nil {
 				return err
 			}
 			cfg.Origin, cfg.DeployHook, cfg.Panel, cfg.Version, cfg.Logger = origin, hook, a.Panel, a.Version, log
@@ -127,6 +155,7 @@ public address:
 	}
 	cmd.Flags().StringVar(&addr, "addr", "", "address to listen on (default 127.0.0.1:8080)")
 	cmd.Flags().StringVar(&data, "data", "", "directory for the database (default $BURZBLOG_DATA, $STATE_DIRECTORY or ./burzblog-data)")
+	cmd.Flags().IntVar(&maxUploadMB, "max-upload-mb", 0, "largest upload in MiB (default 10)")
 	cmd.Flags().StringVar(&origin, "origin", "", "public URL people open, e.g. https://blog.example.com (default http://<addr>)")
 	cmd.Flags().StringVar(&hook, "deploy-hook", "", "URL to POST after published posts change; prefer BURZBLOG_DEPLOY_HOOK, it is a secret")
 	cmd.Flags().StringVar(&cfg.SiteURL, "site-url", "", "public address of your website, e.g. https://example.com; needed for feeds and the sitemap")

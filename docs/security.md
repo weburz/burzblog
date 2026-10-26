@@ -41,7 +41,9 @@ code `role` before the request body is read.
 | Read, create and edit posts, tags, revisions, previews | `GET/POST/PUT /api/posts...`, `GET /api/tags`, `POST /api/preview` | yes | yes |
 | Publish, unpublish, archive, restore, schedule | `POST /api/posts/{slug}/{action}`, `PUT .../markdown` | yes | yes |
 | Remove a slug redirect | `DELETE /api/posts/{slug}/redirects/{from}` | yes | yes |
+| Upload and list files | `POST /api/media`, `GET /api/media` | yes | yes |
 | Delete a post | `DELETE /api/posts/{slug}` | no | yes |
+| Delete an uploaded file | `DELETE /api/media/{id}` | no | yes |
 | Own password and two-factor sign-in | `/api/account/...` | yes | yes |
 | Own write tokens: create, list, revoke | `POST/GET /api/tokens`, `DELETE /api/tokens/{id}` | yes, own only | yes |
 | Export tokens (website builds): create | `POST /api/tokens` with `scope: "export"` | no | yes |
@@ -70,9 +72,9 @@ accounts created on the host; two-factor turned on or off and recovery codes
 used; token created or revoked; password changes; role changes; publish,
 unpublish, archive, restore, schedule and unschedule (including a scheduled
 post the server publishes itself, as actor `scheduler`); post deletion; slug
-redirect removal; a manual website rebuild; and backup downloads. Changes made
-on the host with `burzblog user` are recorded as actor `host`. Failed sign-ins
-for names that do not exist are not recorded, so repeating them cannot grow the
+redirect removal; file uploads and deletions; a manual website rebuild; and
+backup downloads. Changes made on the host with `burzblog user` are recorded as
+actor `host`. Failed sign-ins for names that do not exist are not recorded, so repeating them cannot grow the
 log; rate-limited attempts are not recorded either. A row is never updated or
 deleted: database triggers refuse both and ids are never reused, so the log
 only grows (an entry is roughly 150 bytes). Anyone with the database file can of
@@ -215,6 +217,42 @@ refuses NUL, so code samples with escape sequences still save. Existing data
 is never rewritten: a post that already has such a character still loads, and
 saving it again asks you to fix the named field.
 
+**Uploaded files.** <a id="uploaded-files"></a>`POST /api/media` is a change
+like any other (session with Origin and CSRF, or a write token; export tokens
+get 403). The body is capped at the upload limit (10 MiB by default) plus
+1 MiB of form framing, and is held in memory, so the limit is also the most
+memory one upload takes. What a file is comes from its leading bytes
+(`http.DetectContentType`, plus a check for AVIF's `ftyp` box), never from the
+client's `Content-Type` or file name: only JPEG, PNG, GIF, WebP, AVIF and PDF
+are stored, and JPEG, PNG and GIF must decode, so HTML, scripts and archives
+renamed `.png` are refused. **SVG is refused outright.** It is an XML document
+that can carry script and external references, and an image served from the
+panel's own origin that runs script would act as the signed-in author.
+Sanitising SVG safely is a project of its own, so authors who need vector art
+export a PNG or host the SVG elsewhere. The stored name is
+`<32 hex of SHA-256><extension>`; the client's file name is kept only as a
+label and never reaches the file system, so path traversal has nothing to
+grip. Files live in `media/` inside the data directory (`0700`, files `0600`),
+behind a small `media.Storage` interface so another backend can replace the
+disk without touching the handlers. Uploads are not scanned for malware.
+
+*The one public file route.* `GET /media/{name}` answers without a sign-in.
+This is an exception to "never add an unauthenticated content route", and is
+deliberate: images in published posts must load in readers' browsers and on
+the website, which cannot carry a session. The route serves immutable assets,
+not posts: it reveals nothing about drafts or about which post uses a file,
+only a file whose 128-bit hash name someone already has, and only what the
+author chose to upload. It does not list anything (listing is
+`GET /api/media`, authenticated). A file uploaded for a draft is reachable by
+anyone who learns its address, so do not upload what must stay private. The
+name is matched against a strict pattern before any file is opened, so no
+other file can be read. Responses carry `X-Content-Type-Options: nosniff`, the
+type derived from the extension, `Content-Security-Policy: default-src 'none';
+sandbox`, `Cache-Control: public, max-age=31536000, immutable`, an `ETag` (the
+name; content never changes under a name), `Cross-Origin-Resource-Policy:
+cross-origin` so other sites can embed the images, and `Content-Disposition:
+inline` for images but `attachment` for PDFs.
+
 **Terminal client.** `burzblog` never follows an HTTP redirect, because it
 could carry your password or token to plain `http://` or to another host; it
 stops and prints the address to run `burzblog login` with instead. Everything
@@ -240,6 +278,8 @@ returned by the API, and left out of error messages.
   roles separate writing from running the server, not authors from each other.
 - **TLS.** Terminate HTTPS in a reverse proxy (see [self-hosting](self-hosting.md)).
   BurzBlog ignores `X-Forwarded-*` headers.
+- **Quotas.** There is no limit on the number or total size of uploads;
+  every account is trusted, and the disk is the limit.
 - **Untrusted authors.** Authors control their post content, including image
   URLs in previews.
 

@@ -73,7 +73,12 @@ The post body in Markdown.
 - `timestamps.publishedOn` is set the first time a post is published and can be
   changed in **Post settings**. `updatedOn` is only present when the author sets
   it.
-- `coverImage` is present only when a cover URL is set.
+- `coverImage` is present only when a cover URL is set. An uploaded cover is an
+  absolute address on the BurzBlog origin (`https://blog.example.com/media/<name>`),
+  so the website loads it from there; the export carries no image files. Images
+  inserted in the body are absolute addresses the same way. Keep the BurzBlog
+  origin reachable, or copy the files from a backup's `media/` folder to your
+  own hosting and rewrite the addresses.
 - `tags` (a YAML list), `author`, `seo` and `canonical` are present only when
   set. Tags are lowercase words joined by hyphens, in the author's order; they
   hold categories too. `seo` has `title` and `description`, and any other keys

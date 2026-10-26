@@ -12,9 +12,11 @@ import (
 	"net/url"
 	"runtime/debug"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/weburz/burzblog/internal/auth"
+	"github.com/weburz/burzblog/internal/media"
 	"github.com/weburz/burzblog/internal/store"
 )
 
@@ -36,6 +38,11 @@ type Config struct {
 	// (default /blog/{slug}). TagPath, with {tag}, adds tag pages to the
 	// sitemap when set.
 	PostPath, TagPath string
+	// Media keeps uploaded files. Nil turns uploads off.
+	Media media.Storage
+	// MaxUpload is the largest accepted upload in bytes (default
+	// DefaultMaxUpload).
+	MaxUpload int64
 	// Panel is the built browser panel (index.html and _nuxt/). Nil serves
 	// a short notice instead.
 	Panel fs.FS
@@ -56,6 +63,9 @@ type Server struct {
 	scheduler *scheduler
 	log       *slog.Logger
 	mux       *http.ServeMux
+	// mediaMu keeps an upload and a delete of the same bytes from
+	// interleaving, which could leave a record whose file was just removed.
+	mediaMu sync.Mutex
 }
 
 // New builds a Server.
@@ -153,6 +163,9 @@ func (s *Server) routes() {
 	m.HandleFunc("GET /api/posts/{slug}/redirects", s.write(s.listPostRedirects))
 	m.HandleFunc("DELETE /api/posts/{slug}/redirects/{from}", s.write(s.deleteRedirect))
 	m.HandleFunc("POST /api/preview", s.write(s.preview))
+	m.HandleFunc("GET /api/media", s.write(s.listMedia))
+	m.HandleFunc("POST /api/media", s.write(s.uploadMedia))
+	m.HandleFunc("DELETE /api/media/{id}", s.write(adminOnly(s.deleteMedia)))
 	m.HandleFunc("GET /api/export.tar.gz", s.reader(adminOnly(s.export)))
 	m.HandleFunc("GET /api/content/posts", s.reader(s.contentList))
 	m.HandleFunc("GET /api/content/posts/{slug}", s.reader(s.contentPost))
@@ -164,6 +177,8 @@ func (s *Server) routes() {
 	m.HandleFunc("GET /api/content/"+sitemapFile, s.reader(s.contentSitemap))
 	m.HandleFunc("GET /api/content/redirects", s.reader(s.contentRedirects))
 	m.HandleFunc("GET /api/backup.tar.gz", s.admin(s.backup))
+
+	m.HandleFunc("GET "+mediaPrefix+"{name}", s.serveMedia)
 
 	m.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusNotFound, "not_found", "There is no such API endpoint.", "")

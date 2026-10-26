@@ -20,6 +20,8 @@ const labels: Record<string, string> = {
   "post.unschedule": "Schedule cancelled",
   "post.delete": "Post deleted",
   "redirect.delete": "Redirect removed",
+  "media.upload": "File uploaded",
+  "media.delete": "File deleted",
   deploy: "Rebuild requested",
   "backup.download": "Backup downloaded",
 };

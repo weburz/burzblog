@@ -75,6 +75,12 @@ export const goToCommands = (go: (path: string) => void): PaletteCommand[] => [
     run: () => go("/?status=archived"),
   },
   {
+    id: "go-media",
+    label: "Media",
+    icon: "i-lucide-images",
+    run: () => go("/media"),
+  },
+  {
     id: "go-settings",
     label: "Settings",
     icon: "i-lucide-settings",

@@ -32,6 +32,7 @@ export default defineNuxtConfig({
         "lucide:file-pen",
         "lucide:files",
         "lucide:globe",
+        "lucide:images",
         "lucide:keyboard",
         "lucide:log-out",
         "lucide:plus",

@@ -146,11 +146,21 @@ Or stop the service and copy `burzblog.db` (the `-wal` and `-shm` files are
 folded in on a clean stop). To restore, stop the service, put the file back as
 `burzblog.db` owned by `burzblog` with mode `0600`, and start it.
 
+Uploaded images and PDFs are files in the `media` folder of the data directory,
+not in the database, so copy that folder too (`cp -a` keeps the owner and modes
+`0700`/`0600`); the database and `media/` together are the complete backup. The
+files have content-derived names, so putting them back restores every address.
+Uploads default to 10 MiB each (`--max-upload-mb`, `BURZBLOG_MAX_UPLOAD_MB`);
+raise the request-size limit of your reverse proxy to match (the example
+configs allow 12 MiB).
+
 For a plain-text copy of every post, drafts and archived ones included, use
 **Settings → Backup** in the panel or `burzblog backup [dir]`. It writes
-`<status>/<slug>.md` files and a `README.txt`; restore each with
-`burzblog push`. It holds current posts only: revisions, accounts and tokens
-live only in the database, so the database file remains the complete backup.
+`<status>/<slug>.md` files, a `README.txt` and the uploaded files in `media/`;
+restore each post with `burzblog push`. It holds current posts only: revisions,
+accounts and tokens live only in the database, so the database file (with the
+`media` folder) remains the complete backup. To restore uploads, copy the files
+in `media/` back into the data directory's `media` folder.
 
 For a plain-text copy of your published writing, `burzblog export --out dir`
 writes every published post as a Markdown file.

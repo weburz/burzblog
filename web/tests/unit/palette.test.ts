@@ -132,6 +132,7 @@ describe("built-in commands", () => {
       "/?status=draft",
       "/?status=published",
       "/?status=archived",
+      "/media",
       "/settings",
     ]);
   });

@@ -41,9 +41,9 @@ Website: [burzblog.weburz.com](https://burzblog.weburz.com/). Downloads:
   (for example a Vercel deploy hook) rebuilds the site after you publish.
 
 Accounts are admins or authors, and the admin-only actions are written to an
-audit log. Not included yet: image and video uploads (use hosted image URLs),
-per-post permissions (any author can edit any post), and serving the public
-blog itself.
+audit log. Uploads cover images and PDFs (not video or SVG); for video use a
+hosted URL. Not included yet: per-post permissions (any author can edit any
+post) and serving the public blog itself.
 
 ![The post list in the dark theme, with drafts, a scheduled post and published posts](docs/images/posts-dark.png)
 

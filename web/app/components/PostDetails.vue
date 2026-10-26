@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import type { PostDraft, PostStatus } from "../types";
+import type { MediaItem, PostDraft, PostStatus } from "../types";
 import {
   canonicalOk,
   counterLabel,
@@ -34,6 +34,12 @@ const updated = computed({
   get: () => toLocalInput(draft.value.updatedOn),
   set: (v: string) => (draft.value.updatedOn = fromLocalInput(v)),
 });
+const pickerOpen = ref(false);
+// An uploaded image becomes the cover; its alt text fills an empty description.
+const coverPicked = (item: MediaItem) => {
+  draft.value.coverUrl = item.url;
+  if (!draft.value.coverAlt.trim()) draft.value.coverAlt = item.alt;
+};
 const coverOk = computed(() => /^https?:\/\/\S+$/.test(draft.value.coverUrl));
 const slugChanged = computed(() => draft.value.slug !== props.savedSlug);
 const canonicalValid = computed(() => canonicalOk(draft.value.canonicalUrl));
@@ -143,6 +149,16 @@ const setUpdatedNow = () => {
             placeholder="https://…"
             class="w-full"
           />
+          <div>
+            <UButton
+              size="sm"
+              color="neutral"
+              variant="outline"
+              icon="i-lucide-images"
+              @click="pickerOpen = true"
+              >Upload or choose</UButton
+            >
+          </div>
           <img
             v-if="coverOk"
             :src="draft.coverUrl"
@@ -299,4 +315,5 @@ const setUpdatedNow = () => {
       </fieldset>
     </template>
   </USlideover>
+  <MediaPicker v-model:open="pickerOpen" @pick="coverPicked" />
 </template>

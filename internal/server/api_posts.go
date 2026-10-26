@@ -662,7 +662,8 @@ func addToTar(tw *tar.Writer, name, doc string, modTime time.Time) error {
 
 // backup streams every post, drafts and archived ones included, as
 // <status>/<slug>.md in a gzipped tar with a README.txt, for a full copy of
-// the writing. Revisions are not included.
+// the writing, followed by the uploaded files as media/<name>. Revisions are
+// not included.
 func (s *Server) backup(w http.ResponseWriter, r *http.Request) {
 	counts, err := s.store.StatusCounts(r.Context())
 	if err != nil {
@@ -685,6 +686,9 @@ func (s *Server) backup(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	if err == nil {
+		err = s.addMediaToTar(r, tw)
+	}
+	if err == nil {
 		err = tw.Close()
 	}
 	if err == nil {
@@ -703,13 +707,17 @@ Version: BurzBlog %s
 Posts:   %d
 
 This archive holds every post as it is now, as Markdown with frontmatter, in
-one folder per status: draft/, published/ and archived/. Earlier versions
-(history), accounts and tokens are not included; the database file is the
-complete backup (see docs/self-hosting.md).
+one folder per status: draft/, published/ and archived/. Uploaded images and
+PDFs are in media/. Earlier versions (history), accounts and tokens are not
+included; the database file with the media folder next to it is the complete
+backup (see docs/self-hosting.md).
 
 To restore, push each file to a running BurzBlog:
 
   burzblog push <folder>/<slug>.md
+
+Uploaded files keep their address when uploaded again, because their names
+come from their content.
 
 The file name is the post's slug. Archived posts are stored with status: draft
 in their frontmatter; run "burzblog archive <slug>" after pushing to archive
