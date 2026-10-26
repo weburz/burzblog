@@ -248,7 +248,7 @@ func TestBackup(t *testing.T) {
 	e.must("", "archive", "gone")
 
 	dir := filepath.Join(t.TempDir(), "backup")
-	if out := e.must("", "backup", dir); !strings.Contains(out, "Backed up 3 posts") {
+	if out := e.must("", "backup", dir); !strings.Contains(out, "Backed up 3 posts and 0 uploads") {
 		t.Errorf("backup = %q", out)
 	}
 	for name, status := range map[string]string{
@@ -290,7 +290,7 @@ func TestReadBackup(t *testing.T) {
 	}
 	readme := tar.Header{Name: "README.txt"}
 
-	files, err := readBackup(archive(readme, tar.Header{Name: "draft/a.md"}, tar.Header{Name: "archived/b-2.md"}))
+	files, err := readBackup(archive(readme, tar.Header{Name: "draft/a.md"}, tar.Header{Name: "archived/b-2.md"}), nil)
 	if err != nil || len(files) != 3 {
 		t.Fatalf("valid backup = %v %v", files, err)
 	}
@@ -310,11 +310,33 @@ func TestReadBackup(t *testing.T) {
 		"no readme":      {{Name: "draft/a.md"}},
 	}
 	for name, entries := range bad {
-		if _, err := readBackup(archive(entries...)); err == nil {
+		if _, err := readBackup(archive(entries...), nil); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
 	}
-	if _, err := readBackup(strings.NewReader("not gzip")); err == nil {
+	// Uploads are handed to the callback, only with a valid name, only when asked for.
+	upload := tar.Header{Name: "media/" + strings.Repeat("ab", 16) + ".png"}
+	var saved []string
+	files, err = readBackup(archive(readme, tar.Header{Name: "draft/a.md"}, upload), func(name string, data []byte) error {
+		saved = append(saved, name+"="+string(data))
+		return nil
+	})
+	if err != nil || len(files) != 2 || len(saved) != 1 || saved[0] != strings.Repeat("ab", 16)+".png=x\n" {
+		t.Fatalf("backup with an upload = %v %v %v", files, saved, err)
+	}
+	if _, err := readBackup(archive(readme, upload), nil); err == nil {
+		t.Error("accepted an upload nobody asked for")
+	}
+	for name, h := range map[string]tar.Header{
+		"traversal": {Name: "media/../evil.png"}, "bad name": {Name: "media/a.png"}, "svg": {Name: "media/" + strings.Repeat("ab", 16) + ".svg"},
+		"nested":  {Name: "media/x/" + strings.Repeat("ab", 16) + ".png"},
+		"symlink": {Name: upload.Name, Typeflag: tar.TypeSymlink, Linkname: "/etc/passwd"},
+	} {
+		if _, err := readBackup(archive(readme, h), func(string, []byte) error { return nil }); err == nil {
+			t.Errorf("media %s: accepted", name)
+		}
+	}
+	if _, err := readBackup(strings.NewReader("not gzip"), nil); err == nil {
 		t.Error("accepted a file that is not gzip")
 	}
 }

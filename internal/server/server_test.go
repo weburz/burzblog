@@ -743,6 +743,9 @@ func TestExportTokenOnlyReadsPublishedContent(t *testing.T) {
 		{"DELETE", "/api/posts/x/redirects/y", 403},
 		{"POST", "/api/preview", 403},
 		{"GET", "/api/backup.tar.gz", 403},
+		{"GET", "/api/media", 403},
+		{"POST", "/api/media", 403},
+		{"DELETE", "/api/media/1", 403},
 	}
 	for _, rt := range routes {
 		t.Run(rt.method+" "+rt.path, func(t *testing.T) {

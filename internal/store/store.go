@@ -226,6 +226,23 @@ var migrations = []string{
 		expires_at INTEGER NOT NULL
 	);
 	CREATE INDEX login_challenges_user ON login_challenges (user_id);`,
+	// Uploaded images and PDFs. The bytes live in the data directory under
+	// file_name, which is derived from sha256, so identical uploads share one
+	// row. width and height are 0 when the format is not decoded.
+	`CREATE TABLE media (
+		id INTEGER PRIMARY KEY,
+		file_name TEXT NOT NULL UNIQUE CHECK (length(file_name) BETWEEN 1 AND 100),
+		original_name TEXT NOT NULL,
+		mime TEXT NOT NULL,
+		size INTEGER NOT NULL CHECK (size >= 0),
+		sha256 TEXT NOT NULL UNIQUE CHECK (length(sha256) = 64),
+		width INTEGER NOT NULL DEFAULT 0,
+		height INTEGER NOT NULL DEFAULT 0,
+		alt TEXT NOT NULL DEFAULT '',
+		uploaded_by TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL
+	);
+	CREATE INDEX media_created ON media (created_at DESC, id DESC);`,
 }
 
 // migrationSteps run in the migration's transaction after its SQL, for work

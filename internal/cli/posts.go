@@ -22,6 +22,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/weburz/burzblog/internal/client"
+	"github.com/weburz/burzblog/internal/media"
 	"github.com/weburz/burzblog/internal/post"
 )
 
@@ -878,11 +879,12 @@ func (a *App) backupCmd() *cobra.Command {
 		Use:   "backup [dir]",
 		Short: "Download every post, drafts and archived included, as Markdown files",
 		Long: `Writes every post to <dir>/<status>/<slug>.md, plus a README.txt, where status
-is draft, published or archived. The directory defaults to
-burzblog-backup-<date> in the current folder.
+is draft, published or archived, and every uploaded file to <dir>/media/. The
+directory defaults to burzblog-backup-<date> in the current folder.
 
-The backup holds current posts only. The database file is the complete backup,
-including history; see docs/self-hosting.md. Restore a file with burzblog push.`,
+The backup holds current posts only. The database file with the media folder
+beside it is the complete backup, including history; see docs/self-hosting.md.
+Restore a post with burzblog push.`,
 		Example: `  burzblog backup
   burzblog backup ~/backups/blog
   burzblog backup ~/backups/blog --json     # {"dir":"~/backups/blog","posts":12}`,
@@ -903,7 +905,15 @@ including history; see docs/self-hosting.md. Restore a file with burzblog push.`
 				return err
 			}
 			defer body.Close()
-			files, err := readBackup(body)
+			uploads := 0
+			files, err := readBackup(body, func(name string, data []byte) error {
+				uploads++
+				path := filepath.Join(dir, "media", name)
+				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+					return err
+				}
+				return writeFileAtomic(path, data, 0o644)
+			})
 			if err != nil {
 				return err
 			}
@@ -920,18 +930,25 @@ including history; see docs/self-hosting.md. Restore a file with burzblog push.`
 				return a.emit(struct {
 					Dir   string `json:"dir"`
 					Posts int    `json:"posts"`
-				}{dir, len(files) - 1})
+					Media int    `json:"media"`
+				}{dir, len(files) - 1, uploads})
 			}
-			fmt.Fprintf(a.Out, "%s Backed up %s to %s.\n", a.paint(green, "✓"), count(len(files)-1, "post", "posts"), dir)
+			fmt.Fprintf(a.Out, "%s Backed up %s and %s to %s.\n", a.paint(green, "✓"),
+				count(len(files)-1, "post", "posts"), count(uploads, "upload", "uploads"), dir)
 			return nil
 		},
 	}
 	return cmd
 }
 
-// readBackup reads the backup archive fully before anything is written, and
-// accepts only README.txt and regular <status>/<slug>.md files.
-func readBackup(r io.Reader) (map[string][]byte, error) {
+// maxBackupUpload caps one uploaded file read from a backup.
+const maxBackupUpload = 256 << 20
+
+// readBackup reads the posts of the backup archive fully before anything is
+// written, and accepts only README.txt, regular <status>/<slug>.md files and
+// media/<name> uploads. Each upload is passed to saveMedia as it is read; with
+// a nil saveMedia, uploads are refused.
+func readBackup(r io.Reader, saveMedia func(name string, data []byte) error) (map[string][]byte, error) {
 	gz, err := gzip.NewReader(r)
 	if err != nil {
 		return nil, fmt.Errorf("the backup is not a gzip archive: %w", err)
@@ -946,6 +963,20 @@ func readBackup(r io.Reader) (map[string][]byte, error) {
 		}
 		if err != nil {
 			return nil, fmt.Errorf("read backup: %w", err)
+		}
+		if mediaName, ok := strings.CutPrefix(hdr.Name, "media/"); ok && hdr.Typeflag == tar.TypeReg &&
+			media.ValidName(mediaName) && saveMedia != nil {
+			data, err := io.ReadAll(io.LimitReader(tr, maxBackupUpload+1))
+			if err != nil {
+				return nil, fmt.Errorf("read backup: %w", err)
+			}
+			if len(data) > maxBackupUpload {
+				return nil, errors.New("the backup is larger than expected")
+			}
+			if err := saveMedia(mediaName, data); err != nil {
+				return nil, err
+			}
+			continue
 		}
 		if hdr.Typeflag != tar.TypeReg || !validBackupName(hdr.Name) {
 			return nil, fmt.Errorf("the backup contains an unexpected entry %q", hdr.Name)
