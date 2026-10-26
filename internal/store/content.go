@@ -24,6 +24,13 @@ type Listing struct {
 // non-empty tag keeps only posts with that tag, normalized like ListPosts.
 // Bodies are not returned.
 func (s *Store) ListPublished(ctx context.Context, query, tag string, limit, offset int) ([]Listing, int, error) {
+	return s.ListPublishedFeatured(ctx, query, tag, nil, limit, offset)
+}
+
+// ListPublishedFeatured is ListPublished limited to featured posts when
+// featured points at true and to the others when it points at false. Nil keeps
+// both. The order is the same: newest published first.
+func (s *Store) ListPublishedFeatured(ctx context.Context, query, tag string, featured *bool, limit, offset int) ([]Listing, int, error) {
 	match := matchExpr(query)
 	from, args, order := "posts", []any{}, orderBy[SortPublished]
 	if match != "" {
@@ -35,12 +42,16 @@ func (s *Store) ListPublished(ctx context.Context, query, tag string, limit, off
 		where += " AND id IN (SELECT post_id FROM post_tags WHERE tag = ?)"
 		args = append(args, post.NormalizeTag(tag))
 	}
+	if featured != nil {
+		where += " AND featured = ?"
+		args = append(args, *featured)
+	}
 	var total int
 	if err := s.db.QueryRowContext(ctx, "SELECT count(*) FROM "+from+" WHERE "+where, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count published posts: %w", err)
 	}
 	stmt := `SELECT id, slug, title, description, cover_url, cover_alt, words, published_on, updated_on,
-		updated_at, version, author, seo_title, seo_description, canonical_url FROM ` + from + ` WHERE ` + where + " ORDER BY " + order
+		updated_at, version, author, seo_title, seo_description, canonical_url, featured FROM ` + from + ` WHERE ` + where + " ORDER BY " + order
 	if limit > 0 {
 		stmt += " LIMIT ? OFFSET ?"
 		args = append(args, limit, max(offset, 0))
@@ -58,7 +69,7 @@ func (s *Store) ListPublished(ctx context.Context, query, tag string, limit, off
 		var updated string
 		if err := rows.Scan(&p.ID, &p.Slug, &p.Title, &p.Description, &p.CoverURL, &p.CoverAlt, &l.Words,
 			&publishedOn, &updatedOn, &updated, &p.Version, &p.Author, &p.SEOTitle, &p.SEODescription,
-			&p.CanonicalURL); err != nil {
+			&p.CanonicalURL, &p.Featured); err != nil {
 			return nil, 0, fmt.Errorf("list published posts: %w", err)
 		}
 		p.PublishedOn, p.UpdatedOn, p.UpdatedAt = timePtr(publishedOn), timePtr(updatedOn), parseStamp(updated)
