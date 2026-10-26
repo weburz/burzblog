@@ -9,14 +9,17 @@ import (
 	"github.com/weburz/burzblog/internal/store"
 )
 
-func TestUserAddDefaultsToAuthor(t *testing.T) {
+func TestUserAddDefaultsToAuthorAfterTheFirst(t *testing.T) {
 	e := newEnv(t)
-	out := e.must("correct horse battery\n", "user", "add", "grace")
-	if !strings.Contains(out, "as author") {
-		t.Errorf("user add = %q", out)
+	// The first account is an admin, so a new server always has one.
+	if out := e.must("correct horse battery\n", "user", "add", "ada"); !strings.Contains(out, "as admin") {
+		t.Errorf("first user add = %q", out)
 	}
-	e.must("correct horse battery\n", "user", "add", "ada", "--role", "admin")
-	for name, want := range map[string]string{"grace": store.RoleAuthor, "ada": store.RoleAdmin} {
+	if out := e.must("correct horse battery\n", "user", "add", "grace"); !strings.Contains(out, "as author") {
+		t.Errorf("second user add = %q", out)
+	}
+	e.must("correct horse battery\n", "user", "add", "alan", "--role", "admin")
+	for name, want := range map[string]string{"ada": store.RoleAdmin, "grace": store.RoleAuthor, "alan": store.RoleAdmin} {
 		u, err := e.store.UserByName(context.Background(), name)
 		if err != nil || u.Role != want {
 			t.Errorf("%s = %+v, %v; want role %s", name, u, err, want)
@@ -31,6 +34,16 @@ func TestUserAddDefaultsToAuthor(t *testing.T) {
 	}
 	if _, err := e.store.UserByName(context.Background(), "bob"); err == nil {
 		t.Error("an account with a bad role was created")
+	}
+}
+
+func TestFirstAccountCannotBeAnAuthor(t *testing.T) {
+	e := newEnv(t)
+	if _, errOut, code := e.run("correct horse battery\n", "user", "add", "grace", "--role", "author"); code != ExitUsage || !strings.Contains(errOut, "first account must be an admin") {
+		t.Errorf("first author: %d %q", code, errOut)
+	}
+	if ok, err := e.store.HasUsers(context.Background()); err != nil || ok {
+		t.Errorf("an account was created: %v %v", ok, err)
 	}
 }
 

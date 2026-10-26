@@ -17,7 +17,8 @@ All notable changes are recorded here, following
   `role`; a token has the role of its owner, and `GET /api/tokens` lists only
   an author's own. The matrix is in `docs/security.md`. Existing accounts and
   the account made by first-run setup become admins (migration 8);
-  `burzblog user add` makes an author unless given `--role admin`, and
+  `burzblog user add` makes the first account an admin and later ones authors
+  unless given `--role admin`, and
   `burzblog user role <name> admin|author` changes a role on the host and
   refuses to demote the last admin. `GET /api/session` reports the `role`, and
   the panel hides what an author cannot do and gives admins an Audit log page.

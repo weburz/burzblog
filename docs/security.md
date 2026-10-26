@@ -26,8 +26,9 @@ or once, in the browser, by first-run setup (below). Every account is an
 **Roles.** An `admin` can do everything. An `author` writes and publishes posts
 and looks after their own password, two-factor sign-in and tokens. The first
 account made in the browser by first-run setup is an admin, so are the accounts
-that existed before roles did (migration 8), and `burzblog user add` makes an
-author unless you pass `--role admin`. Roles change only on the host:
+that existed before roles did (migration 8), and so is the first account
+`burzblog user add` makes; later ones are authors unless you pass
+`--role admin`. Roles change only on the host:
 `burzblog user role <name> admin|author`, which refuses to demote the last
 admin so someone can always manage the server. The role is read from the
 database on every request, so a change applies at once to open browser sessions

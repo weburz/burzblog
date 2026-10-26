@@ -77,7 +77,8 @@ Later accounts are managed on the host only: `burzblog user add`, `user passwd`,
 `user passwd` also signs that account out of every browser.
 
 An account is an admin or an author. The account first-run setup creates is an
-admin; `user add` makes an author unless you add `--role admin`. An author
+admin, and so is the first account `user add` makes; later ones are authors
+unless you add `--role admin`. An author
 writes and publishes posts and manages their own password, two-factor sign-in
 and tokens; an admin can also delete posts, manage everyone's tokens, change
 settings, deploy, download backups and read the audit log (see

@@ -259,13 +259,16 @@ func (a *App) userCmd() *cobra.Command {
 	var role string
 	add := &cobra.Command{
 		Use:   "add <username>",
-		Short: "Create an account (an author unless --role admin)",
+		Short: "Create an account (the first is an admin, later ones authors)",
 		Long: `Creates an account and asks for its password, at least 12 characters. Without a
 terminal the password is read from standard input.
 
 An author writes and publishes posts. An admin can also delete posts, manage
 every token, deploy, download backups and read the audit log. Change a role
-later with: burzblog user role <username> admin|author`,
+later with: burzblog user role <username> admin|author
+
+The first account is always an admin, so a new server is never left without
+one. Later accounts are authors unless given --role admin.`,
 		Example: `  burzblog user add ada --data /var/lib/burzblog
   burzblog user add grace --role admin --data /var/lib/burzblog`,
 		Args: cobra.ExactArgs(1),
@@ -274,7 +277,7 @@ later with: burzblog user role <username> admin|author`,
 			if err := auth.CheckUsername(name); err != nil {
 				return err
 			}
-			if !store.ValidRole(role) {
+			if role != "" && !store.ValidRole(role) {
 				return usagef("the role must be %s or %s, not %q", store.RoleAuthor, store.RoleAdmin, role)
 			}
 			st, err := open()
@@ -282,6 +285,18 @@ later with: burzblog user role <username> admin|author`,
 				return err
 			}
 			defer st.Close()
+			exists, err := st.HasUsers(context.Background())
+			if err != nil {
+				return err
+			}
+			switch {
+			case !exists && role == store.RoleAuthor:
+				return usagef("the first account must be an admin; leave out --role, or use --role admin")
+			case !exists:
+				role = store.RoleAdmin
+			case role == "":
+				role = store.RoleAuthor
+			}
 			hash, err := newPassword(name)
 			if err != nil {
 				return err
@@ -299,7 +314,7 @@ later with: burzblog user role <username> admin|author`,
 			return nil
 		},
 	}
-	add.Flags().StringVar(&role, "role", store.RoleAuthor, "role of the new account: author or admin")
+	add.Flags().StringVar(&role, "role", "", "role of the new account: author or admin (default: admin for the first account, author after)")
 	passwd := &cobra.Command{
 		Use:     "passwd <username>",
 		Short:   "Set a new password; ends browser sessions and terminal logins",
