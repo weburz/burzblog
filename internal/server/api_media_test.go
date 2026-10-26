@@ -162,7 +162,7 @@ func TestUploadAcceptsEveryAllowedType(t *testing.T) {
 		if w, _ := out["width"].(float64); w != c.width {
 			t.Errorf("%s: width = %v, want %v", c.name, out["width"], c.width)
 		}
-		if out["url"] != h.ts.URL+"/media/"+name || out["alt"] != "A picture" || out["uploaded_by"] != "ada" || out["original_name"] != c.name {
+		if out["url"] != h.ts.URL+"/media/"+name || out["alt"] != "A picture" || out["uploadedBy"] != "ada" || out["originalName"] != c.name {
 			t.Errorf("%s: reply = %v", c.name, out)
 		}
 		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
@@ -238,7 +238,7 @@ func TestUploadNameIsNeverTheClientsName(t *testing.T) {
 		if !media.ValidName(stored) {
 			t.Errorf("%q: stored as %q", name, stored)
 		}
-		if orig, _ := out["original_name"].(string); strings.ContainsAny(orig, `/\`) || strings.Contains(orig, "\x00") {
+		if orig, _ := out["originalName"].(string); strings.ContainsAny(orig, `/\`) || strings.Contains(orig, "\x00") {
 			t.Errorf("%q: original_name = %q", name, orig)
 		}
 	}

@@ -41,14 +41,14 @@ type mediaReply struct {
 	ID           int64     `json:"id"`
 	Name         string    `json:"name"`
 	URL          string    `json:"url"`
-	OriginalName string    `json:"original_name"`
+	OriginalName string    `json:"originalName"`
 	MIME         string    `json:"mime"`
 	Size         int64     `json:"size"`
 	Width        int       `json:"width,omitempty"`
 	Height       int       `json:"height,omitempty"`
 	Alt          string    `json:"alt"`
-	UploadedBy   string    `json:"uploaded_by"`
-	CreatedAt    time.Time `json:"created_at"`
+	UploadedBy   string    `json:"uploadedBy"`
+	CreatedAt    time.Time `json:"createdAt"`
 }
 
 // mediaURL is the stable public address of an upload. It is absolute, built

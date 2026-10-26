@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
+import type { MediaItem } from "../types";
 import { imageUrlError } from "../utils/markdown";
 
 const open = defineModel<boolean>("open", { default: false });
@@ -8,6 +9,7 @@ const emit = defineEmits<{ insert: [alt: string, url: string] }>();
 const url = ref("");
 const alt = ref("");
 const error = ref("");
+const pickerOpen = ref(false);
 
 watch(open, (value) => {
   if (!value) return;
@@ -15,6 +17,13 @@ watch(open, (value) => {
   alt.value = props.selected ?? "";
   error.value = "";
 });
+
+// An uploaded image fills in its address and, if none is typed, its alt text.
+const picked = (item: MediaItem) => {
+  url.value = item.url;
+  if (!alt.value.trim()) alt.value = item.alt;
+  error.value = "";
+};
 
 const insert = () => {
   error.value = imageUrlError(url.value);
@@ -28,7 +37,7 @@ const insert = () => {
   <UModal
     v-model:open="open"
     title="Insert image"
-    description="Link to an image that is already online. Uploads are not supported."
+    description="Upload an image or link to one that is already online."
     :ui="{ content: 'max-w-lg' }"
   >
     <template #body>
@@ -38,6 +47,15 @@ const insert = () => {
         novalidate
         @submit.prevent="insert"
       >
+        <div>
+          <UButton
+            color="neutral"
+            variant="outline"
+            icon="i-lucide-images"
+            @click="pickerOpen = true"
+            >Upload or choose an image</UButton
+          >
+        </div>
         <div class="field">
           <label for="image-url">Image address</label>
           <UInput
@@ -80,4 +98,5 @@ const insert = () => {
       </div>
     </template>
   </UModal>
+  <MediaPicker v-model:open="pickerOpen" @pick="picked" />
 </template>

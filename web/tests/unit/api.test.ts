@@ -23,6 +23,19 @@ describe("authenticated requests", () => {
       headers: { "X-CSRF-Token": "session-bound" },
     });
   });
+  it("sends a form as multipart, with the CSRF token and no JSON Content-Type", async () => {
+    rememberSession({ authenticated: true, csrf: "token" });
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValue(Response.json({ id: 1 }, { status: 201 }));
+    vi.stubGlobal("fetch", fetch);
+    const form = new FormData();
+    form.append("file", new File(["x"], "a.png"));
+    await request("/api/media", "POST", form);
+    const init = fetch.mock.calls[0]?.[1];
+    expect(init?.body).toBe(form);
+    expect(init?.headers).toEqual({ "X-CSRF-Token": "token" });
+  });
   it("retries once with a fresh token when the server rejects a stale one", async () => {
     rememberSession({ authenticated: true, csrf: "stale" });
     const fetch = vi

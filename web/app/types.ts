@@ -160,3 +160,24 @@ export interface Settings {
   deploy: DeployStatus;
   site: SiteSettings;
 }
+
+// An uploaded image or PDF, served publicly at url.
+export interface MediaItem {
+  id: number;
+  name: string;
+  url: string;
+  originalName: string;
+  mime: string;
+  size: number;
+  // Absent when the format is not decoded (WebP, AVIF, PDF).
+  width?: number;
+  height?: number;
+  alt: string;
+  uploadedBy: string;
+  createdAt: string;
+}
+
+export interface MediaList {
+  items: MediaItem[];
+  total: number;
+}

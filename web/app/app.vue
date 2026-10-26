@@ -101,6 +101,9 @@ useHead({
             <NuxtLink to="/" class="nav-tab" exact-active-class="is-active"
               >Posts</NuxtLink
             >
+            <NuxtLink to="/media" class="nav-tab" active-class="is-active"
+              >Media</NuxtLink
+            >
             <NuxtLink to="/settings" class="nav-tab" active-class="is-active"
               >Settings</NuxtLink
             >

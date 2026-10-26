@@ -32,7 +32,9 @@ const sessionExpired = () => {
 
 const send = async (path: string, method: string, body: unknown): Promise<Response> => {
   const headers: Record<string, string> = {};
-  if (body !== undefined) headers["Content-Type"] = "application/json";
+  // A form (an upload) sets its own Content-Type, with the multipart boundary.
+  const form = body instanceof FormData;
+  if (body !== undefined && !form) headers["Content-Type"] = "application/json";
   if (method !== "GET" && csrf) headers["X-CSRF-Token"] = csrf;
   try {
     return await fetch(path, {
@@ -40,7 +42,7 @@ const send = async (path: string, method: string, body: unknown): Promise<Respon
       headers,
       credentials: "same-origin",
       cache: "no-store",
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? undefined : form ? body : JSON.stringify(body),
     });
   } catch {
     throw new ApiError(
