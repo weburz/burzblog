@@ -8,6 +8,21 @@ All notable changes are recorded here, following
 
 ### Added
 
+- Featured posts. A post has a `featured` flag (frontmatter `featured: true`, a
+  Featured switch in the post details, a badge in the posts list). It is saved
+  as a versioned change with history like any other field and survives
+  push, pull, export, import and backup. The content API returns `featured` on
+  every post and `GET /api/content/posts?featured=true|false` filters on it
+  (anything else is a 422); `GET /api/posts` takes the same filter. A `featured`
+  key that posts kept as extra frontmatter is moved into the flag when the
+  database is upgraded (migration 11).
+- Tag display labels. A tag stays its slug; admins can give it a label
+  (`PUT/DELETE /api/tags/{tag}/label`, a Tags section in Settings, audited as
+  `tag.label`, migration 12). Without one the label is derived from the slug
+  (`constitutional-law` is `Constitutional Law`). `GET /api/content/tags` items
+  gain `label` and content posts gain `tagLabels`, a map from each tag to its
+  label; `tags` is unchanged. Post ETags change with the labels of their tags.
+
 - Roles and an audit log. Every account is an `admin` or an `author`. Authors
   write, edit, publish, unpublish and archive posts and manage their own
   password, two-factor sign-in and write tokens; admins also delete posts,

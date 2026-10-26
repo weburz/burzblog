@@ -52,6 +52,7 @@ tags:
   - authentication
   - web-security
 author: Ada Lovelace
+featured: true
 seo:
   title: Web authentication methods compared
   description: Passwords, tokens, sessions and passkeys, and when to use each.
@@ -79,9 +80,16 @@ The post body in Markdown.
   inserted in the body are absolute addresses the same way. Keep the BurzBlog
   origin reachable, or copy the files from a backup's `media/` folder to your
   own hosting and rewrite the addresses.
+- `featured: true` marks a post a site should lead with; it is written only
+  for featured posts, and a file without it is not featured. It must be `true`
+  or `false`. Posts that kept `featured` as extra frontmatter have it moved into
+  this field when the database is upgraded, and files you import or push with it
+  are read the same way. Sites list featured posts with
+  `GET /api/content/posts?featured=true`.
 - `tags` (a YAML list), `author`, `seo` and `canonical` are present only when
   set. Tags are lowercase words joined by hyphens, in the author's order; they
-  hold categories too. `seo` has `title` and `description`, and any other keys
+  hold categories too (the content API also returns a display label for each,
+  see [tag labels](api.md#tag-labels)). `seo` has `title` and `description`, and any other keys
   the author added under `seo` (`robots`, ...) are written back inside it.
   `canonical` is an absolute `https://` address. Posts written before BurzBlog
   modelled these keys, which kept them as extra frontmatter, have them moved
