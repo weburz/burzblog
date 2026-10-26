@@ -35,8 +35,8 @@ never commit or hand-edit it.
   disposable data directory; never point tests at real content. `E2E_PORT=3300`
   moves it off :3000 while a dev server runs; a busy port fails the run.
 - Short-lived feature branches; commit via Crisp; never push to main directly.
-  GitHub Actions is intentionally disabled: run `task check` and record exact
-  results in PRs. Keep the dormant workflows reproducible.
+  GitHub Actions runs `check.yml` on pull requests and `site.yml` publishes the
+  landing page; still run `task check` locally and record exact results in PRs.
 - Docker: content and secrets stay outside the image; preserve host UID/GID.
 - The license is Apache-2.0 (`LICENSE`); keep it. The `admin-panel/` cache is
   unrelated and must not be incorporated.
