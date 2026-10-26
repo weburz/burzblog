@@ -127,13 +127,11 @@ const savedCodes = () => {
           <form v-if="step === 'disable'" class="password-form" @submit.prevent="disable">
             <div class="field">
               <label for="tf-disable-password">Current password</label>
-              <UInput
+              <PasswordInput
                 id="tf-disable-password"
                 v-model="password"
-                type="password"
                 autocomplete="current-password"
                 required
-                class="w-full"
               />
             </div>
             <div class="field">
@@ -207,14 +205,12 @@ const savedCodes = () => {
         >
           <div class="field">
             <label for="tf-password">Current password</label>
-            <UInput
+            <PasswordInput
               id="tf-password"
               v-model="password"
-              type="password"
               autocomplete="current-password"
               required
               autofocus
-              class="w-full"
             />
           </div>
           <p v-if="error" class="alert" role="alert">{{ error }}</p>
