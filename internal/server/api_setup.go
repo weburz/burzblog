@@ -24,7 +24,7 @@ func (s *Server) setupStatus(w http.ResponseWriter, r *http.Request) {
 // and it is closed as soon as any account exists.
 func (s *Server) setup(w http.ResponseWriter, r *http.Request) {
 	if !s.sameOrigin(r) {
-		fail(w, http.StatusForbidden, "origin", "This request did not come from the BurzBlog page.", "")
+		s.failOrigin(w)
 		return
 	}
 	var body struct {

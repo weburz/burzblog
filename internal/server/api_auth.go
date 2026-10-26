@@ -118,7 +118,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	// A login form posted from another site could sign the victim into the
 	// attacker's account; only accept it from our own page.
 	if !s.sameOrigin(r) {
-		fail(w, http.StatusForbidden, "origin", "This request did not come from the BurzBlog page.", "")
+		s.failOrigin(w)
 		return
 	}
 	var c credentials
@@ -146,7 +146,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 // a recovery code) and the challenge the password step returned.
 func (s *Server) loginTOTP(w http.ResponseWriter, r *http.Request) {
 	if !s.sameOrigin(r) {
-		fail(w, http.StatusForbidden, "origin", "This request did not come from the BurzBlog page.", "")
+		s.failOrigin(w)
 		return
 	}
 	var body struct {
@@ -173,7 +173,7 @@ func (s *Server) loginTOTP(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	if !s.sameOrigin(r) {
-		fail(w, http.StatusForbidden, "origin", "This request did not come from the BurzBlog page.", "")
+		s.failOrigin(w)
 		return
 	}
 	if c, err := r.Cookie(s.cookieName()); err == nil {
@@ -209,7 +209,7 @@ func tokenJSON(t *store.Token) tokenReply {
 func (s *Server) issueCLIToken(w http.ResponseWriter, r *http.Request) {
 	// Browsers always send Origin on POST; refuse other sites' pages.
 	if o := r.Header.Get("Origin"); o != "" && !s.sameOrigin(r) {
-		fail(w, http.StatusForbidden, "origin", "This request did not come from the BurzBlog page.", "")
+		s.failOrigin(w)
 		return
 	}
 	var body struct {

@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/cookiejar"
 	"strings"
@@ -307,4 +308,24 @@ func TestResetFromTheHostEndsSessions(t *testing.T) {
 	}
 	h.csrf = ""
 	h.login() // the password alone signs in again
+}
+
+func TestWrongOriginNamesTheConfiguredOne(t *testing.T) {
+	h := newHarness(t, nil)
+	req, _ := http.NewRequest("POST", h.ts.URL+"/api/login", strings.NewReader(`{"username":"a","password":"b"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", "http://localhost:1")
+	resp, err := h.client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var out map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatal(err)
+	}
+	msg, _ := out["error"].(map[string]any)["message"].(string)
+	if resp.StatusCode != 403 || errCode(out) != "origin" || !strings.Contains(msg, "Open BurzBlog at "+h.ts.URL) {
+		t.Errorf("wrong origin = %d %q, want 403 naming %s", resp.StatusCode, msg, h.ts.URL)
+	}
 }
