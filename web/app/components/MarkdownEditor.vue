@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { ref } from "vue";
+import { caretScroll } from "../utils/caret";
 import {
   codeBlock,
   continueList,
   horizontalRule,
   image,
   indentList,
+  keepIndent,
   link,
   prefixLines,
   table,
@@ -83,7 +85,7 @@ const insertImage = (alt: string, url: string) => {
   apply(image(el.value, start, end, alt, url));
 };
 
-// Enter continues a list and Tab indents a list item. Outside a list both keep
+// Enter continues a list, quote or code indent and Tab indents a list item. Outside a list both keep
 // their normal behaviour, so Tab still moves focus out of the editor.
 const listKey = (event: KeyboardEvent): boolean => {
   const el = area.value;
@@ -91,12 +93,64 @@ const listKey = (event: KeyboardEvent): boolean => {
   if (event.metaKey || event.ctrlKey || event.altKey) return false;
   const { value, selectionStart: s, selectionEnd: e } = el;
   let edit: Edit | null = null;
-  if (event.key === "Enter" && !event.shiftKey) edit = continueList(value, s, e);
+  if (event.key === "Enter" && !event.shiftKey)
+    edit = continueList(value, s, e) ?? keepIndent(value, s, e);
   else if (event.key === "Tab") edit = indentList(value, s, e, event.shiftKey);
   if (!edit) return false;
   event.preventDefault();
   apply(edit);
   return true;
+};
+
+// The body grows with its text and the page scrolls, so the browser only
+// brings the caret to the very edge. Keep it off the bottom edge and out from
+// under the sticky toolbar while writing.
+const mirrored = [
+  "boxSizing",
+  "width",
+  "fontFamily",
+  "fontSize",
+  "fontWeight",
+  "lineHeight",
+  "letterSpacing",
+  "tabSize",
+  "paddingTop",
+  "paddingRight",
+  "paddingBottom",
+  "paddingLeft",
+] as const;
+const keepCaretVisible = () => {
+  const el = area.value;
+  const pane = el?.closest<HTMLElement>(".write-pane");
+  if (!el || !pane || el.selectionStart !== el.selectionEnd) return;
+  const style = getComputedStyle(el);
+  const ghost = document.createElement("div");
+  for (const name of mirrored) ghost.style[name] = style[name];
+  Object.assign(ghost.style, {
+    position: "absolute",
+    visibility: "hidden",
+    whiteSpace: "pre-wrap",
+    overflowWrap: "break-word",
+  });
+  ghost.textContent = el.value.slice(0, el.selectionStart);
+  const marker = document.createElement("span");
+  marker.textContent = "\u200b";
+  ghost.append(marker);
+  el.parentElement!.append(ghost);
+  const line = Number.parseFloat(style.lineHeight) || 24;
+  const top = el.getBoundingClientRect().top + marker.offsetTop;
+  ghost.remove();
+  const view = pane.getBoundingClientRect();
+  const tools = el.parentElement!.querySelector(".md-tools")?.getBoundingClientRect();
+  const margin = Math.min(120, view.height / 4);
+  const delta = caretScroll(
+    top,
+    top + line,
+    Math.max(view.top, tools?.bottom ?? 0) - margin + 24,
+    view.bottom,
+    margin,
+  );
+  if (delta) pane.scrollTop += delta;
 };
 
 const keydown = (event: KeyboardEvent) => {
@@ -108,6 +162,10 @@ const keydown = (event: KeyboardEvent) => {
     event.preventDefault();
     run(map[key]);
   }
+};
+
+const navigated = (event: KeyboardEvent) => {
+  if (/^(Arrow|Page|Home|End)/.test(event.key)) keepCaretVisible();
 };
 
 // Pasting a link over selected words turns them into a Markdown link.
@@ -144,7 +202,14 @@ const tools = [
   { kind: "rule", icon: "i-lucide-separator-horizontal", label: "Horizontal rule" },
 ];
 
-defineExpose({ focus: () => area.value?.focus(), element: area });
+// The cursor goes to the very start of the body, not to the end of the text
+// where the browser leaves it once the page has filled the body in.
+const focusStart = () => {
+  area.value?.focus({ preventScroll: true });
+  area.value?.setSelectionRange(0, 0);
+};
+
+defineExpose({ focus: () => area.value?.focus(), focusStart, element: area });
 </script>
 
 <template>
@@ -168,6 +233,7 @@ defineExpose({ focus: () => area.value?.focus(), element: area });
       </UTooltip>
     </div>
     <textarea
+      id="post-body"
       ref="area"
       v-model="model"
       class="md-source"
@@ -176,6 +242,8 @@ defineExpose({ focus: () => area.value?.focus(), element: area });
       spellcheck="true"
       :readonly="readonly"
       @keydown="keydown"
+      @input="keepCaretVisible"
+      @keyup="navigated"
       @paste="paste"
     />
     <ImageDialog
