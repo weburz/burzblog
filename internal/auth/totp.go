@@ -163,6 +163,12 @@ func newRecoveryCodes() ([]string, error) {
 	return codes, nil
 }
 
+// IsRecoveryCode reports whether code has the shape of a recovery code rather
+// than a TOTP code, so a sign-in that used one can be recorded.
+func IsRecoveryCode(code string) bool {
+	return len(normalizeCode(code)) == recoveryChars
+}
+
 // TwoFactorStatus is what Settings shows about a user's second factor.
 type TwoFactorStatus struct {
 	Enabled       bool

@@ -12,7 +12,7 @@ import (
 
 func TestRedirectsCommand(t *testing.T) {
 	e := newEnv(t)
-	e.must("correct horse battery\n", "user", "add", "ada")
+	e.must("correct horse battery\n", "user", "add", "ada", "--role", "admin")
 
 	// Not signed in is refused like every other command.
 	if _, errOut, code := e.run("", "redirects"); code != ExitAuth || !strings.Contains(errOut, "burzblog login") {

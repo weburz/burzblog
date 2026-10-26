@@ -131,8 +131,12 @@ func TestSetupCreatesFirstAccountAndSignsIn(t *testing.T) {
 	defer sess.Body.Close()
 	var got map[string]any
 	_ = json.NewDecoder(sess.Body).Decode(&got)
-	if got["authenticated"] != true || got["username"] != "ada" {
+	if got["authenticated"] != true || got["username"] != "ada" || got["role"] != "admin" {
 		t.Errorf("session after setup = %v", got)
+	}
+	if entries, _, _ := h.store.AuditLog(context.Background(), 10, 0); len(entries) != 2 ||
+		entries[0].Action != "login.success" || entries[1].Action != "account.create" || entries[1].Target != "ada as admin" {
+		t.Errorf("audit after setup = %+v", entries)
 	}
 	if h.needed() {
 		t.Error("GET /api/setup still says needed after the first account")
@@ -218,7 +222,7 @@ func TestSetupClosedAfterUserAdd(t *testing.T) {
 	h := newSetupHarness(t)
 	token := h.token()
 	hash, _ := auth.HashPassword(password)
-	if _, err := h.store.CreateUser(context.Background(), "root", hash); err != nil { // `burzblog user add`
+	if _, err := h.store.CreateUser(context.Background(), "root", hash, store.RoleAdmin); err != nil { // `burzblog user add`
 		t.Fatal(err)
 	}
 	if h.needed() {

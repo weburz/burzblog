@@ -43,7 +43,7 @@ func newHarness(t *testing.T, mutate func(*Config)) *harness {
 	}
 	t.Cleanup(func() { s.Close() })
 	hash, _ := auth.HashPassword(password)
-	if _, err := s.CreateUser(ctx, "ada", hash); err != nil {
+	if _, err := s.CreateUser(ctx, "ada", hash, store.RoleAdmin); err != nil {
 		t.Fatal(err)
 	}
 	a, err := auth.New(s)

@@ -3,7 +3,7 @@ package server
 import (
 	"context"
 	"errors"
-	"net"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -15,6 +15,7 @@ import (
 type sessionReply struct {
 	Authenticated bool   `json:"authenticated"`
 	Username      string `json:"username,omitempty"`
+	Role          string `json:"role,omitempty"`
 	CSRF          string `json:"csrf,omitempty"`
 }
 
@@ -24,7 +25,7 @@ func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 		reply(w, http.StatusOK, sessionReply{})
 		return
 	}
-	out := sessionReply{Authenticated: true, Username: id.user.Username}
+	out := sessionReply{Authenticated: true, Username: id.user.Username, Role: id.user.Role}
 	if id.session != nil {
 		out.CSRF = id.session.CSRF
 	}
@@ -39,11 +40,7 @@ type credentials struct {
 // clientContext tags the request context with the connecting address. It is
 // RemoteAddr only: X-Forwarded-For is never trusted.
 func clientContext(r *http.Request) context.Context {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		host = r.RemoteAddr
-	}
-	return auth.WithClient(r.Context(), host)
+	return auth.WithClient(r.Context(), remoteHost(r))
 }
 
 func busy(w http.ResponseWriter) {
@@ -61,6 +58,11 @@ func (s *Server) authenticate(w http.ResponseWriter, r *http.Request, c credenti
 	case errors.Is(err, auth.ErrRateLimited):
 		rateLimited(w)
 	case errors.Is(err, auth.ErrCredentials):
+		// Only failures against a real account are kept: a made-up name
+		// costs nothing to repeat, and would let anyone grow the log.
+		if u, err := s.store.UserByName(r.Context(), store.NormalizeUsername(c.Username)); err == nil {
+			s.recordAs(r, u, "login.failure", "password")
+		}
 		fail(w, http.StatusUnauthorized, "credentials", "That username and password do not match.", "")
 	case err != nil:
 		s.internal(w, r, err)
@@ -108,7 +110,8 @@ func (s *Server) startSession(w http.ResponseWriter, r *http.Request, user *stor
 		MaxAge: int(auth.SessionTTL.Seconds()), HttpOnly: true, Secure: s.origin.Scheme == "https",
 		SameSite: http.SameSiteStrictMode,
 	})
-	reply(w, status, sessionReply{Authenticated: true, Username: user.Username, CSRF: sess.CSRF})
+	s.recordAs(r, user, "login.success", "")
+	reply(w, status, sessionReply{Authenticated: true, Username: user.Username, Role: user.Role, CSRF: sess.CSRF})
 }
 
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
@@ -154,8 +157,16 @@ func (s *Server) loginTOTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user, err := s.auth.CompleteChallenge(clientContext(r), body.Challenge, body.Code)
+	if errors.Is(err, auth.ErrCode) {
+		if u, err := s.store.ChallengeUser(r.Context(), auth.Digest(body.Challenge)); err == nil {
+			s.recordAs(r, u, "login.failure", "second factor")
+		}
+	}
 	if s.codeFailed(w, r, err) {
 		return
+	}
+	if auth.IsRecoveryCode(body.Code) {
+		s.recordAs(r, user, "2fa.recovery", "")
 	}
 	s.startSession(w, r, user, http.StatusOK)
 }
@@ -219,8 +230,15 @@ func (s *Server) issueCLIToken(w http.ResponseWriter, r *http.Request) {
 			fail(w, http.StatusUnauthorized, "second_factor_required", "This account uses two-factor sign-in. Enter the code from your authenticator app, or a recovery code.", "")
 			return
 		}
-		if s.codeFailed(w, r, s.auth.VerifySecondFactor(clientContext(r), user, body.Code)) {
+		err := s.auth.VerifySecondFactor(clientContext(r), user, body.Code)
+		if errors.Is(err, auth.ErrCode) {
+			s.recordAs(r, user, "login.failure", "second factor")
+		}
+		if s.codeFailed(w, r, err) {
 			return
+		}
+		if auth.IsRecoveryCode(body.Code) {
+			s.recordAs(r, user, "2fa.recovery", "")
 		}
 	}
 	if body.Name == "" {
@@ -231,13 +249,27 @@ func (s *Server) issueCLIToken(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "validation", "The token could not be created.", err.Error())
 		return
 	}
+	s.recordAs(r, user, "login.success", "terminal")
+	s.recordAs(r, user, "token.create", tokenTarget(t))
 	out := tokenJSON(t)
 	out.Secret = secret
 	reply(w, http.StatusCreated, out)
 }
 
+// tokenTarget names a token in the audit log: never its secret.
+func tokenTarget(t *store.Token) string {
+	return fmt.Sprintf("%s (token %d, %s)", t.Name, t.ID, t.Scope)
+}
+
+// listTokens lists every token for an admin and the caller's own for an author.
 func (s *Server) listTokens(w http.ResponseWriter, r *http.Request) {
-	list, err := s.store.Tokens(r.Context())
+	var list []store.Token
+	var err error
+	if isAdmin(r) {
+		list, err = s.store.Tokens(r.Context())
+	} else {
+		list, err = s.store.UserTokens(r.Context(), who(r).user.ID)
+	}
 	if err != nil {
 		s.internal(w, r, err)
 		return
@@ -257,11 +289,18 @@ func (s *Server) createToken(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
+	// Export tokens exist for website builds and the export download, which
+	// are admin matters; an author's tokens are for the terminal.
+	if body.Scope == store.ScopeExport && !isAdmin(r) {
+		forbidRole(w)
+		return
+	}
 	secret, t, err := s.auth.NewToken(r.Context(), who(r).user, body.Name, body.Scope)
 	if err != nil {
 		fail(w, http.StatusBadRequest, "validation", "The token could not be created.", err.Error())
 		return
 	}
+	s.record(r, "token.create", tokenTarget(t))
 	out := tokenJSON(t)
 	out.Secret = secret
 	reply(w, http.StatusCreated, out)
@@ -273,13 +312,22 @@ func (s *Server) deleteToken(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusNotFound, "not_found", "That token does not exist.", "")
 		return
 	}
-	if err := s.store.DeleteToken(r.Context(), id); errors.Is(err, store.ErrNotFound) {
+	t, err := s.store.TokenByID(r.Context(), id)
+	if err == nil && t.UserID != who(r).user.ID && !isAdmin(r) {
+		forbidRole(w)
+		return
+	}
+	if err == nil {
+		err = s.store.DeleteToken(r.Context(), id)
+	}
+	if errors.Is(err, store.ErrNotFound) {
 		fail(w, http.StatusNotFound, "not_found", "That token does not exist. It may already be revoked.", "")
 		return
 	} else if err != nil {
 		s.internal(w, r, err)
 		return
 	}
+	s.record(r, "token.revoke", tokenTarget(t)+" of "+t.Username)
 	reply(w, http.StatusOK, map[string]bool{"revoked": true})
 }
 
@@ -309,6 +357,7 @@ func (s *Server) changePassword(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		s.internal(w, r, err)
 	default:
+		s.record(r, "password.change", "")
 		reply(w, http.StatusOK, map[string]bool{"changed": true})
 	}
 }
@@ -329,5 +378,6 @@ func (s *Server) triggerDeploy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.deploy.now()
+	s.record(r, "deploy", "")
 	reply(w, http.StatusAccepted, s.deploy.status())
 }

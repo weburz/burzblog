@@ -134,15 +134,16 @@ func (s *Server) routes() {
 	m.HandleFunc("POST /api/account/2fa/start", s.write(s.twoFactorStart))
 	m.HandleFunc("POST /api/account/2fa/confirm", s.write(s.twoFactorConfirm))
 	m.HandleFunc("POST /api/account/2fa/disable", s.write(s.twoFactorDisable))
-	m.HandleFunc("GET /api/settings", s.write(s.settings))
-	m.HandleFunc("POST /api/deploy", s.write(s.triggerDeploy))
+	m.HandleFunc("GET /api/settings", s.admin(s.settings))
+	m.HandleFunc("POST /api/deploy", s.admin(s.triggerDeploy))
+	m.HandleFunc("GET /api/audit", s.admin(s.listAudit))
 
 	m.HandleFunc("GET /api/posts", s.write(s.listPosts))
 	m.HandleFunc("GET /api/tags", s.write(s.listTags))
 	m.HandleFunc("POST /api/posts", s.write(s.createPost))
 	m.HandleFunc("GET /api/posts/{slug}", s.write(s.getPost))
 	m.HandleFunc("PUT /api/posts/{slug}", s.write(s.savePost))
-	m.HandleFunc("DELETE /api/posts/{slug}", s.write(s.deletePost))
+	m.HandleFunc("DELETE /api/posts/{slug}", s.admin(s.deletePost))
 	m.HandleFunc("POST /api/posts/{slug}/{action}", s.write(s.postAction))
 	m.HandleFunc("GET /api/posts/{slug}/markdown", s.write(s.getMarkdown))
 	m.HandleFunc("PUT /api/posts/{slug}/markdown", s.write(s.putMarkdown))
@@ -152,7 +153,7 @@ func (s *Server) routes() {
 	m.HandleFunc("GET /api/posts/{slug}/redirects", s.write(s.listPostRedirects))
 	m.HandleFunc("DELETE /api/posts/{slug}/redirects/{from}", s.write(s.deleteRedirect))
 	m.HandleFunc("POST /api/preview", s.write(s.preview))
-	m.HandleFunc("GET /api/export.tar.gz", s.reader(s.export))
+	m.HandleFunc("GET /api/export.tar.gz", s.reader(adminOnly(s.export)))
 	m.HandleFunc("GET /api/content/posts", s.reader(s.contentList))
 	m.HandleFunc("GET /api/content/posts/{slug}", s.reader(s.contentPost))
 	m.HandleFunc("GET /api/content/posts/{slug}/html", s.reader(s.contentHTML))
@@ -162,7 +163,7 @@ func (s *Server) routes() {
 	}
 	m.HandleFunc("GET /api/content/"+sitemapFile, s.reader(s.contentSitemap))
 	m.HandleFunc("GET /api/content/redirects", s.reader(s.contentRedirects))
-	m.HandleFunc("GET /api/backup.tar.gz", s.write(s.backup))
+	m.HandleFunc("GET /api/backup.tar.gz", s.admin(s.backup))
 
 	m.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusNotFound, "not_found", "There is no such API endpoint.", "")

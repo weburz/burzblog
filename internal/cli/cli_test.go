@@ -85,7 +85,7 @@ func (e *env) editor(script string) {
 
 func TestTerminalWorkflow(t *testing.T) {
 	e := newEnv(t)
-	e.must("correct horse battery\n", "user", "add", "ada")
+	e.must("correct horse battery\n", "user", "add", "ada", "--role", "admin")
 	if out := e.must("", "user", "list"); !strings.Contains(out, "ada") {
 		t.Errorf("user list = %q", out)
 	}
@@ -225,7 +225,7 @@ func TestCount(t *testing.T) {
 
 func TestListFooterPluralizes(t *testing.T) {
 	e := newEnv(t)
-	e.must("correct horse battery\n", "user", "add", "ada")
+	e.must("correct horse battery\n", "user", "add", "ada", "--role", "admin")
 	e.must("correct horse battery\n", "login", e.url, "-u", "ada")
 	e.must("", "new", "First draft", "--no-edit")
 	if out := e.must("", "list"); !strings.Contains(out, "1 draft (0 scheduled)") || strings.Contains(out, "1 drafts") {
@@ -239,7 +239,7 @@ func TestListFooterPluralizes(t *testing.T) {
 
 func TestBackup(t *testing.T) {
 	e := newEnv(t)
-	e.must("correct horse battery\n", "user", "add", "ada")
+	e.must("correct horse battery\n", "user", "add", "ada", "--role", "admin")
 	e.must("correct horse battery\n", "login", e.url, "-u", "ada")
 	e.must("", "new", "Only a draft", "--no-edit")
 	e.must("", "new", "Live one", "--no-edit")
@@ -321,7 +321,7 @@ func TestReadBackup(t *testing.T) {
 
 func TestExportWithEnvironmentToken(t *testing.T) {
 	e := newEnv(t)
-	e.must("correct horse battery\n", "user", "add", "ci")
+	e.must("correct horse battery\n", "user", "add", "ci", "--role", "admin")
 	e.must("correct horse battery\n", "login", e.url, "-u", "ci")
 	e.must("", "new", "Published thing", "--no-edit")
 	e.must("", "publish", "published-thing")
@@ -368,7 +368,7 @@ func touch(p *post.Post) error {
 
 func TestPasswdRevokesTerminalLogins(t *testing.T) {
 	e := newEnv(t)
-	e.must("correct horse battery\n", "user", "add", "ada")
+	e.must("correct horse battery\n", "user", "add", "ada", "--role", "admin")
 	e.must("correct horse battery\n", "login", e.url, "-u", "ada")
 	u, _ := e.store.UserByName(context.Background(), "ada")
 	svc, _ := auth.New(e.store)

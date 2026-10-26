@@ -138,6 +138,7 @@ func (s *Server) publishScheduled(ctx context.Context, slug string, version int6
 		case err != nil:
 			return false, err
 		}
+		s.addAudit(ctx, store.Audit{ActorName: "scheduler", Action: "post.publish", Target: slug, Remote: "local"})
 		s.deploy.schedule()
 		return true, nil
 	}

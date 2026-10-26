@@ -13,7 +13,7 @@ import (
 // secret and her recovery codes.
 func withTwoFactor(t *testing.T, e *env) (string, []string) {
 	t.Helper()
-	e.must("correct horse battery\n", "user", "add", "ada")
+	e.must("correct horse battery\n", "user", "add", "ada", "--role", "admin")
 	ctx := context.Background()
 	svc, _ := auth.New(e.store)
 	u, err := e.store.UserByName(ctx, "ada")
@@ -75,7 +75,7 @@ func TestLoginTwoFactor(t *testing.T) {
 
 func TestTokensSurviveEnablingTwoFactor(t *testing.T) {
 	e := newEnv(t)
-	e.must("correct horse battery\n", "user", "add", "ada")
+	e.must("correct horse battery\n", "user", "add", "ada", "--role", "admin")
 	e.must("correct horse battery\n", "login", e.url, "-u", "ada")
 	ctx := context.Background()
 	svc, _ := auth.New(e.store)
@@ -110,7 +110,7 @@ func TestUserTwoFactorReset(t *testing.T) {
 
 func TestLoginWithoutTwoFactorIgnoresCode(t *testing.T) {
 	e := newEnv(t)
-	e.must("correct horse battery\n", "user", "add", "ada")
+	e.must("correct horse battery\n", "user", "add", "ada", "--role", "admin")
 	e.vars["BURZBLOG_TOTP"] = "123456"
 	e.must("correct horse battery\n", "login", e.url, "-u", "ada")
 }

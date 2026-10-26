@@ -9,20 +9,37 @@ import (
 	"time"
 )
 
-// User is an account that can sign in. Every user can do everything.
+// Roles. An admin can do everything; an author writes and publishes posts and
+// manages their own password, two-factor sign-in and tokens (see
+// docs/security.md for the full matrix).
+const (
+	RoleAdmin  = "admin"
+	RoleAuthor = "author"
+)
+
+// ValidRole reports whether role is one BurzBlog knows.
+func ValidRole(role string) bool {
+	return role == RoleAdmin || role == RoleAuthor
+}
+
+// User is an account that can sign in.
 type User struct {
 	ID           int64
 	Username     string
 	PasswordHash string
+	Role         string
 	CreatedAt    time.Time
 }
 
-// CreateUser adds an account.
-func (s *Store) CreateUser(ctx context.Context, username, passwordHash string) (*User, error) {
-	u := &User{Username: username, PasswordHash: passwordHash, CreatedAt: s.now()}
-	err := s.db.QueryRowContext(ctx, `INSERT INTO users (username, password_hash, created_at)
-		VALUES (?, ?, ?) ON CONFLICT (username) DO NOTHING RETURNING id`,
-		username, passwordHash, s.stamp()).Scan(&u.ID)
+// CreateUser adds an account with the given role.
+func (s *Store) CreateUser(ctx context.Context, username, passwordHash, role string) (*User, error) {
+	if !ValidRole(role) {
+		return nil, fmt.Errorf("create user: role must be %s or %s, got %q", RoleAdmin, RoleAuthor, role)
+	}
+	u := &User{Username: username, PasswordHash: passwordHash, Role: role, CreatedAt: s.now()}
+	err := s.db.QueryRowContext(ctx, `INSERT INTO users (username, password_hash, role, created_at)
+		VALUES (?, ?, ?, ?) ON CONFLICT (username) DO NOTHING RETURNING id`,
+		username, passwordHash, role, s.stamp()).Scan(&u.ID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrTaken
 	}
@@ -41,7 +58,7 @@ func (s *Store) HasUsers(ctx context.Context) (bool, error) {
 	return exists, nil
 }
 
-// CreateFirstUser adds an account only if there are none. The check and the
+// CreateFirstUser adds an admin account only if there are none. The check and the
 // insert share one write transaction, so of any number of concurrent calls
 // exactly one succeeds and the rest get ErrHasUsers.
 func (s *Store) CreateFirstUser(ctx context.Context, username, passwordHash string) (*User, error) {
@@ -57,9 +74,9 @@ func (s *Store) CreateFirstUser(ctx context.Context, username, passwordHash stri
 	if exists {
 		return nil, ErrHasUsers
 	}
-	u := &User{Username: username, PasswordHash: passwordHash, CreatedAt: s.now()}
-	if err := tx.QueryRowContext(ctx, `INSERT INTO users (username, password_hash, created_at)
-		VALUES (?, ?, ?) RETURNING id`, username, passwordHash, s.stamp()).Scan(&u.ID); err != nil {
+	u := &User{Username: username, PasswordHash: passwordHash, Role: RoleAdmin, CreatedAt: s.now()}
+	if err := tx.QueryRowContext(ctx, `INSERT INTO users (username, password_hash, role, created_at)
+		VALUES (?, ?, ?, ?) RETURNING id`, username, passwordHash, RoleAdmin, s.stamp()).Scan(&u.ID); err != nil {
 		return nil, fmt.Errorf("create first account: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
@@ -81,8 +98,8 @@ func (s *Store) UserByID(ctx context.Context, id int64) (*User, error) {
 func (s *Store) user(ctx context.Context, where string, arg any) (*User, error) {
 	var u User
 	var created string
-	err := s.db.QueryRowContext(ctx, "SELECT id, username, password_hash, created_at FROM users WHERE "+where, arg).
-		Scan(&u.ID, &u.Username, &u.PasswordHash, &created)
+	err := s.db.QueryRowContext(ctx, "SELECT id, username, password_hash, role, created_at FROM users WHERE "+where, arg).
+		Scan(&u.ID, &u.Username, &u.PasswordHash, &u.Role, &created)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -95,7 +112,7 @@ func (s *Store) user(ctx context.Context, where string, arg any) (*User, error) 
 
 // Users lists every account.
 func (s *Store) Users(ctx context.Context) ([]User, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT id, username, created_at FROM users ORDER BY username")
+	rows, err := s.db.QueryContext(ctx, "SELECT id, username, role, created_at FROM users ORDER BY username")
 	if err != nil {
 		return nil, fmt.Errorf("list users: %w", err)
 	}
@@ -104,13 +121,47 @@ func (s *Store) Users(ctx context.Context) ([]User, error) {
 	for rows.Next() {
 		var u User
 		var created string
-		if err := rows.Scan(&u.ID, &u.Username, &created); err != nil {
+		if err := rows.Scan(&u.ID, &u.Username, &u.Role, &created); err != nil {
 			return nil, fmt.Errorf("list users: %w", err)
 		}
 		u.CreatedAt = parseStamp(created)
 		list = append(list, u)
 	}
 	return list, rows.Err()
+}
+
+// SetRole changes an account's role and returns the role it had. It refuses
+// to demote the last admin (ErrLastAdmin), so someone can always manage the
+// instance.
+func (s *Store) SetRole(ctx context.Context, userID int64, role string) (previous string, err error) {
+	if !ValidRole(role) {
+		return "", fmt.Errorf("set role: role must be %s or %s, got %q", RoleAdmin, RoleAuthor, role)
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return "", fmt.Errorf("begin role change: %w", err)
+	}
+	defer tx.Rollback()
+	err = tx.QueryRowContext(ctx, "SELECT role FROM users WHERE id = ?", userID).Scan(&previous)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	if err != nil {
+		return "", fmt.Errorf("read role: %w", err)
+	}
+	if previous == RoleAdmin && role != RoleAdmin {
+		var admins int
+		if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM users WHERE role = ?", RoleAdmin).Scan(&admins); err != nil {
+			return "", fmt.Errorf("count admins: %w", err)
+		}
+		if admins <= 1 {
+			return previous, ErrLastAdmin
+		}
+	}
+	if _, err := tx.ExecContext(ctx, "UPDATE users SET role = ? WHERE id = ?", role, userID); err != nil {
+		return "", fmt.Errorf("change role: %w", err)
+	}
+	return previous, tx.Commit()
 }
 
 // SetPassword replaces a user's password hash, signs them out everywhere
@@ -256,10 +307,38 @@ func (s *Store) TokenByHash(ctx context.Context, tokenHash string) (*Token, erro
 	return &t, nil
 }
 
+// TokenByID finds a token by id without recording a use.
+func (s *Store) TokenByID(ctx context.Context, id int64) (*Token, error) {
+	var t Token
+	var created string
+	var lastUsed sql.NullString
+	err := s.db.QueryRowContext(ctx, `SELECT t.id, t.user_id, u.username, t.name, t.scope, t.created_at, t.last_used_at
+		FROM tokens t JOIN users u ON u.id = t.user_id WHERE t.id = ?`, id).
+		Scan(&t.ID, &t.UserID, &t.Username, &t.Name, &t.Scope, &created, &lastUsed)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read token: %w", err)
+	}
+	t.CreatedAt = parseStamp(created)
+	t.LastUsedAt = timePtr(lastUsed)
+	return &t, nil
+}
+
 // Tokens lists every API token with its owner.
 func (s *Store) Tokens(ctx context.Context) ([]Token, error) {
+	return s.listTokens(ctx, "1 = 1")
+}
+
+// UserTokens lists the API tokens one account owns.
+func (s *Store) UserTokens(ctx context.Context, userID int64) ([]Token, error) {
+	return s.listTokens(ctx, "t.user_id = ?", userID)
+}
+
+func (s *Store) listTokens(ctx context.Context, where string, args ...any) ([]Token, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT t.id, t.user_id, u.username, t.name, t.scope, t.created_at, t.last_used_at
-		FROM tokens t JOIN users u ON u.id = t.user_id ORDER BY t.created_at DESC`)
+		FROM tokens t JOIN users u ON u.id = t.user_id WHERE `+where+` ORDER BY t.created_at DESC`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("list tokens: %w", err)
 	}

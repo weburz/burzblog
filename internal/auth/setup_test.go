@@ -100,7 +100,7 @@ func TestSetupTokenDiesWhenAnAccountExists(t *testing.T) {
 	a, s := emptyService(t)
 	token, _ := a.IssueSetupToken(ctx, SetupTTL)
 	hash, _ := HashPassword(goodPassword)
-	if _, err := s.CreateUser(ctx, "root", hash); err != nil { // like `burzblog user add`
+	if _, err := s.CreateUser(ctx, "root", hash, store.RoleAdmin); err != nil { // like `burzblog user add`
 		t.Fatal(err)
 	}
 	if _, err := a.Setup(ctx, token, "ada", goodPassword); !errors.Is(err, ErrSetupDone) {

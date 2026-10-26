@@ -82,7 +82,7 @@ func TestAnnounceSetupStaysQuietWithAccounts(t *testing.T) {
 	}
 	t.Cleanup(func() { st.Close() })
 	hash, _ := auth.HashPassword("correct horse battery")
-	if _, err := st.CreateUser(ctx, "ada", hash); err != nil {
+	if _, err := st.CreateUser(ctx, "ada", hash, store.RoleAdmin); err != nil {
 		t.Fatal(err)
 	}
 	svc, _ := auth.New(st)

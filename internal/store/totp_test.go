@@ -52,7 +52,7 @@ func TestMigrationAddsTwoFactorToExistingDatabase(t *testing.T) {
 func TestTOTPState(t *testing.T) {
 	ctx := context.Background()
 	s := open(t)
-	u, _ := s.CreateUser(ctx, "ada", "x")
+	u, _ := s.CreateUser(ctx, "ada", "x", RoleAdmin)
 	if err := s.StartTOTP(ctx, u.ID, "ONE"); err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestChallengeLifetime(t *testing.T) {
 	s := open(t)
 	now := time.Unix(1_700_000_000, 0)
 	s.SetClock(func() time.Time { return now })
-	u, _ := s.CreateUser(ctx, "ada", "x")
+	u, _ := s.CreateUser(ctx, "ada", "x", RoleAdmin)
 	if err := s.CreateChallenge(ctx, u.ID, "h1", now.Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}

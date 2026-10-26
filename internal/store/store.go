@@ -27,6 +27,8 @@ var (
 	ErrState    = errors.New("not allowed in the current state")
 	// ErrHasUsers means an account already exists, so there is no first one.
 	ErrHasUsers = errors.New("accounts already exist")
+	// ErrLastAdmin means a change would leave BurzBlog without an admin.
+	ErrLastAdmin = errors.New("it is the last admin")
 )
 
 // Store is a handle on the database.
@@ -226,6 +228,27 @@ var migrations = []string{
 		expires_at INTEGER NOT NULL
 	);
 	CREATE INDEX login_challenges_user ON login_challenges (user_id);`,
+	// Roles. Every account that exists when this runs becomes an admin, as
+	// every account could do everything before; accounts made later say their
+	// role explicitly.
+	`ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'admin' CHECK (role IN ('admin', 'author'));`,
+	// The audit log. Rows are only ever added: the triggers refuse to change or
+	// remove one, and AUTOINCREMENT keeps ids from being reused. Who did it is
+	// kept as text, not a foreign key, so the entry outlives the account.
+	`CREATE TABLE audit_log (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		at TEXT NOT NULL,
+		actor_user_id INTEGER,
+		actor_name TEXT NOT NULL,
+		token_id INTEGER,
+		action TEXT NOT NULL CHECK (length(action) BETWEEN 1 AND 64),
+		target TEXT NOT NULL DEFAULT '',
+		remote TEXT NOT NULL DEFAULT ''
+	);
+	CREATE TRIGGER audit_log_no_update BEFORE UPDATE ON audit_log
+	BEGIN SELECT RAISE(ABORT, 'audit log rows cannot be changed'); END;
+	CREATE TRIGGER audit_log_no_delete BEFORE DELETE ON audit_log
+	BEGIN SELECT RAISE(ABORT, 'audit log rows cannot be removed'); END;`,
 }
 
 // migrationSteps run in the migration's transaction after its SQL, for work

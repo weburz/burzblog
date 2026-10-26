@@ -99,5 +99,6 @@ func (s *Server) deleteRedirect(w http.ResponseWriter, r *http.Request) {
 		s.internal(w, r, err)
 		return
 	}
+	s.record(r, "redirect.delete", r.PathValue("from")+" to "+r.PathValue("slug"))
 	reply(w, http.StatusOK, map[string]bool{"deleted": true})
 }

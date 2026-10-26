@@ -181,6 +181,15 @@ func (a *App) healthCmd() *cobra.Command {
 	return cmd
 }
 
+// hostAudit records a change made from the command line on the server.
+func hostAudit(st *store.Store, action, target string) error {
+	err := st.AddAudit(context.Background(), store.Audit{ActorName: "host", Action: action, Target: target, Remote: "local"})
+	if err != nil {
+		return fmt.Errorf("the change was made but could not be recorded in the audit log: %w", err)
+	}
+	return nil
+}
+
 func firstOf(values ...string) string {
 	for _, v := range values {
 		if v != "" {
@@ -218,17 +227,26 @@ func (a *App) userCmd() *cobra.Command {
 		return auth.HashPassword(pw)
 	}
 
+	var role string
 	add := &cobra.Command{
 		Use:   "add <username>",
-		Short: "Create an account",
+		Short: "Create an account (an author unless --role admin)",
 		Long: `Creates an account and asks for its password, at least 12 characters. Without a
-terminal the password is read from standard input.`,
-		Example: "  burzblog user add ada --data /var/lib/burzblog",
-		Args:    cobra.ExactArgs(1),
+terminal the password is read from standard input.
+
+An author writes and publishes posts. An admin can also delete posts, manage
+every token, deploy, download backups and read the audit log. Change a role
+later with: burzblog user role <username> admin|author`,
+		Example: `  burzblog user add ada --data /var/lib/burzblog
+  burzblog user add grace --role admin --data /var/lib/burzblog`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := store.NormalizeUsername(args[0])
 			if err := auth.CheckUsername(name); err != nil {
 				return err
+			}
+			if !store.ValidRole(role) {
+				return usagef("the role must be %s or %s, not %q", store.RoleAuthor, store.RoleAdmin, role)
 			}
 			st, err := open()
 			if err != nil {
@@ -239,15 +257,20 @@ terminal the password is read from standard input.`,
 			if err != nil {
 				return err
 			}
-			if _, err := st.CreateUser(context.Background(), name, hash); errors.Is(err, store.ErrTaken) {
+			u, err := st.CreateUser(context.Background(), name, hash, role)
+			if errors.Is(err, store.ErrTaken) {
 				return fmt.Errorf("%s already exists; use `burzblog user passwd %s` to change the password", name, name)
 			} else if err != nil {
 				return err
 			}
-			fmt.Fprintf(a.Out, "%s Created %s. They can sign in to the panel or run `burzblog login`.\n", a.paint(green, "✓"), a.paint(bold, clean(name)))
+			if err := hostAudit(st, "account.create", u.Username+" as "+u.Role); err != nil {
+				return err
+			}
+			fmt.Fprintf(a.Out, "%s Created %s as %s. They can sign in to the panel or run `burzblog login`.\n", a.paint(green, "✓"), a.paint(bold, clean(name)), u.Role)
 			return nil
 		},
 	}
+	add.Flags().StringVar(&role, "role", store.RoleAuthor, "role of the new account: author or admin")
 	passwd := &cobra.Command{
 		Use:     "passwd <username>",
 		Short:   "Set a new password; ends browser sessions and terminal logins",
@@ -270,6 +293,9 @@ terminal the password is read from standard input.`,
 				return err
 			}
 			if err := st.SetPassword(context.Background(), u.ID, hash, ""); err != nil {
+				return err
+			}
+			if err := hostAudit(st, "password.change", u.Username); err != nil {
 				return err
 			}
 			fmt.Fprintf(a.Out, "%s Changed the password for %s.\n", a.paint(green, "✓"), clean(u.Username))
@@ -302,7 +328,50 @@ Terminal logins (tokens) keep working.`,
 			} else if err != nil {
 				return err
 			}
+			if err := hostAudit(st, "2fa.disable", u.Username); err != nil {
+				return err
+			}
 			fmt.Fprintf(a.Out, "%s Turned off two-factor sign-in for %s and ended their browser sessions.\n", a.paint(green, "✓"), clean(u.Username))
+			return nil
+		},
+	}
+	setRole := &cobra.Command{
+		Use:   "role <username> <admin|author>",
+		Short: "Make an account an admin or an author",
+		Long: `Changes what an account may do. The change applies to its browser sessions and
+tokens at once. The last admin cannot be made an author, so someone can always
+manage the server.`,
+		Example: "  burzblog user role ada admin --data /var/lib/burzblog",
+		Args:    cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if !store.ValidRole(args[1]) {
+				return usagef("the role must be %s or %s, not %q", store.RoleAdmin, store.RoleAuthor, args[1])
+			}
+			st, err := open()
+			if err != nil {
+				return err
+			}
+			defer st.Close()
+			u, err := st.UserByName(context.Background(), args[0])
+			if errors.Is(err, store.ErrNotFound) {
+				return fmt.Errorf("there is no account called %s", args[0])
+			} else if err != nil {
+				return err
+			}
+			previous, err := st.SetRole(context.Background(), u.ID, args[1])
+			if errors.Is(err, store.ErrLastAdmin) {
+				return fmt.Errorf("%s is the last admin; make another account an admin first (burzblog user role <username> admin)", clean(u.Username))
+			} else if err != nil {
+				return err
+			}
+			if previous == args[1] {
+				fmt.Fprintf(a.Out, "%s is already %s; nothing changed.\n", clean(u.Username), previous)
+				return nil
+			}
+			if err := hostAudit(st, "role.change", u.Username+": "+previous+" to "+args[1]); err != nil {
+				return err
+			}
+			fmt.Fprintf(a.Out, "%s %s is now %s (was %s).\n", a.paint(green, "✓"), clean(u.Username), args[1], previous)
 			return nil
 		},
 	}
@@ -324,11 +393,11 @@ Terminal logins (tokens) keep working.`,
 				fmt.Fprintln(a.Out, "No accounts yet. Create one with: burzblog user add <name>")
 			}
 			for _, u := range users {
-				fmt.Fprintf(a.Out, "%s  %s\n", clean(u.Username), a.paint(dim, "since "+u.CreatedAt.Local().Format("2 Jan 2006")))
+				fmt.Fprintf(a.Out, "%s  %s  %s\n", clean(u.Username), u.Role, a.paint(dim, "since "+u.CreatedAt.Local().Format("2 Jan 2006")))
 			}
 			return nil
 		},
 	}
-	cmd.AddCommand(add, passwd, reset2FA, list)
+	cmd.AddCommand(add, passwd, reset2FA, setRole, list)
 	return cmd
 }

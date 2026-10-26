@@ -58,6 +58,7 @@ func (s *Server) setup(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		s.internal(w, r, err)
 	default:
+		s.recordAs(r, user, "account.create", user.Username+" as "+user.Role)
 		s.startSession(w, r, user, http.StatusCreated)
 	}
 }

@@ -218,7 +218,7 @@ func TestChallengeBoundToItsUser(t *testing.T) {
 	a, s, u, clock, _, _ := twoFactor(t)
 	ctx := context.Background()
 	hash, _ := HashPassword("another long password")
-	grace, err := s.CreateUser(ctx, "grace", hash)
+	grace, err := s.CreateUser(ctx, "grace", hash, store.RoleAdmin)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -396,5 +396,19 @@ func TestDisableTwoFactor(t *testing.T) {
 	}
 	if _, second, err := a.Login(ctx, "ada", "correct horse battery"); err != nil || second {
 		t.Errorf("sign-in after disable = %v, %v", second, err)
+	}
+}
+
+func TestIsRecoveryCode(t *testing.T) {
+	for code, want := range map[string]bool{
+		"abcd-efgh-ijkl-mnop": true,
+		"ABCD EFGH IJKL MNOP": true,
+		"123456":              false,
+		"123 456":             false,
+		"":                    false,
+	} {
+		if got := IsRecoveryCode(code); got != want {
+			t.Errorf("IsRecoveryCode(%q) = %v, want %v", code, got, want)
+		}
 	}
 }

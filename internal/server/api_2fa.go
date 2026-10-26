@@ -82,6 +82,7 @@ func (s *Server) twoFactorConfirm(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		s.internal(w, r, err)
 	default:
+		s.record(r, "2fa.enable", "")
 		reply(w, http.StatusOK, map[string]any{"enabled": true, "recoveryCodes": codes})
 	}
 }
@@ -106,6 +107,10 @@ func (s *Server) twoFactorDisable(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusConflict, "two_factor_off", "Two-factor sign-in is not on.", "")
 	case s.codeFailed(w, r, err):
 	default:
+		if auth.IsRecoveryCode(body.Code) {
+			s.record(r, "2fa.recovery", "")
+		}
+		s.record(r, "2fa.disable", "")
 		reply(w, http.StatusOK, map[string]bool{"enabled": false})
 	}
 }

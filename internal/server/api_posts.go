@@ -266,6 +266,9 @@ func (s *Server) update(w http.ResponseWriter, r *http.Request, slug string, ver
 		s.postError(w, r, err, updated)
 		return
 	}
+	if updated.Version != before.Version {
+		s.recordStatus(r, &before, updated)
+	}
 	if updated.Version != before.Version && (before.Status == post.Published || updated.Status == post.Published) {
 		s.deploy.schedule()
 	}
@@ -363,6 +366,7 @@ func (s *Server) deletePost(w http.ResponseWriter, r *http.Request) {
 		s.postError(w, r, err, nil)
 		return
 	}
+	s.record(r, "post.delete", r.PathValue("slug"))
 	reply(w, http.StatusOK, map[string]bool{"deleted": true})
 }
 
@@ -411,6 +415,7 @@ func (s *Server) putMarkdown(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if created.Status == post.Published {
+			s.record(r, "post.publish", created.Slug)
 			s.deploy.schedule()
 		}
 		w.Header().Set("ETag", etag(created.Version))
@@ -665,6 +670,7 @@ func (s *Server) backup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	posts := counts.Draft + counts.Published + counts.Archived
+	s.record(r, "backup.download", "")
 	now := time.Now().UTC()
 	w.Header().Set("Content-Type", "application/gzip")
 	w.Header().Set("Content-Disposition", `attachment; filename="burzblog-backup-`+now.Format("2006-01-02")+`.tar.gz"`)

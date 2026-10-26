@@ -10,7 +10,7 @@ import (
 
 func TestMetadataThroughFiles(t *testing.T) {
 	e := newEnv(t)
-	e.must("correct horse battery\n", "user", "add", "ada")
+	e.must("correct horse battery\n", "user", "add", "ada", "--role", "admin")
 	e.must("correct horse battery\n", "login", e.url, "-u", "ada")
 	dir := t.TempDir()
 
