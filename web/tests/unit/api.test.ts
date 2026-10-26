@@ -135,7 +135,11 @@ describe("authenticated requests", () => {
       "fetch",
       vi.fn<typeof globalThis.fetch>().mockRejectedValue(new Error("offline")),
     );
-    await expect(request("/api/posts")).rejects.toThrow("Nothing was saved");
+    await expect(request("/api/login", "POST", {})).rejects.toThrow("Nothing was saved");
+    // A read has nothing to lose, so it does not claim anything was unsaved.
+    await expect(request("/api/posts")).rejects.toThrow(
+      "Cannot reach BurzBlog. Check your connection and try again.",
+    );
   });
 });
 

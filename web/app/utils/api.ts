@@ -48,7 +48,9 @@ const send = async (path: string, method: string, body: unknown): Promise<Respon
     throw new ApiError(
       0,
       "network",
-      "Cannot reach BurzBlog. Nothing was saved. Check your connection and try again.",
+      method === "GET"
+        ? "Cannot reach BurzBlog. Check your connection and try again."
+        : "Cannot reach BurzBlog. Nothing was saved. Check your connection and try again.",
     );
   }
 };

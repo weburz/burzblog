@@ -100,7 +100,9 @@ useHead({
       <header v-if="!editing || !state.authenticated" class="topbar">
         <div class="topbar-inner">
           <NuxtLink to="/" class="brand" aria-label="BurzBlog, all posts">
-            <span class="brand-mark" aria-hidden="true" />BurzBlog
+            <span class="brand-mark" aria-hidden="true" /><span class="brand-name"
+              >BurzBlog</span
+            >
           </NuxtLink>
           <nav v-if="state.authenticated" aria-label="Main" class="nav-tabs">
             <NuxtLink to="/" class="nav-tab" exact-active-class="is-active"
@@ -113,7 +115,7 @@ useHead({
               >Settings</NuxtLink
             >
             <NuxtLink v-if="isAdmin" to="/audit" class="nav-tab" active-class="is-active"
-              >Audit log</NuxtLink
+              >Audit<span class="max-sm:hidden">&nbsp;log</span></NuxtLink
             >
           </nav>
           <UButton

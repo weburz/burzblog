@@ -101,7 +101,7 @@ func (s *Server) write(next http.HandlerFunc) http.HandlerFunc {
 		}
 		if id.session != nil && r.Method != http.MethodGet && r.Method != http.MethodHead {
 			if !s.sameOrigin(r) {
-				fail(w, http.StatusForbidden, "origin", "This request did not come from the BurzBlog page.", "")
+				s.failOrigin(w)
 				return
 			}
 			if !auth.CheckCSRF(id.session, r.Header.Get("X-CSRF-Token")) {
@@ -135,6 +135,14 @@ func (s *Server) reader(next http.HandlerFunc) http.HandlerFunc {
 // non-GET fetch, to match the configured public origin.
 func (s *Server) sameOrigin(r *http.Request) bool {
 	return r.Header.Get("Origin") == s.origin.Scheme+"://"+s.origin.Host
+}
+
+// failOrigin rejects a request from the wrong origin. The configured origin is
+// public, so the message names it: the usual cause is opening the panel as
+// localhost when the server expects 127.0.0.1.
+func (s *Server) failOrigin(w http.ResponseWriter) {
+	fail(w, http.StatusForbidden, "origin",
+		"This request did not come from the BurzBlog page. Open BurzBlog at "+s.origin.Scheme+"://"+s.origin.Host+" to sign in.", "")
 }
 
 // Request bodies are small: the largest is one post.

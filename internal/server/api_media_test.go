@@ -193,6 +193,11 @@ func TestUploadRejectsWhatItShouldNot(t *testing.T) {
 		if resp.StatusCode != c.status || errCode(out) != c.code {
 			t.Errorf("%s: = %d %v, want %d %s", c.name, resp.StatusCode, out, c.status, c.code)
 		}
+		// The panel shows a detail in place of the message, so it must not be
+		// a bare field name like "file".
+		if e, _ := out["error"].(map[string]any); e["detail"] != nil && e["detail"] != "" {
+			t.Errorf("%s: detail = %v, want none", c.name, e["detail"])
+		}
 	}
 	if got := mediaFiles(t, dir); len(got) != 0 {
 		t.Errorf("rejected uploads left files: %v", got)
