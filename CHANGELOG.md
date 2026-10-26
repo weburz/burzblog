@@ -8,6 +8,14 @@ All notable changes are recorded here, following
 
 ### Added
 
+- Coolify deployment. `deploy/coolify.yaml` is a Compose file for Coolify's
+  Docker Compose Empty resource: Coolify generates the URL, `BURZBLOG_ORIGIN` is
+  set from it, and the database lives in a named volume. See
+  [docs/containers.md](docs/containers.md#coolify).
+- `task image:publish` publishes a multi-arch (`linux/amd64`, `linux/arm64`)
+  image to `ghcr.io/weburz/burzblog` as `X.Y.Z`, `X.Y`, `X` and `latest`, from a
+  clean `vX.Y.Z` tag; `--dry-run` builds without pushing. The dormant image
+  workflow does the same.
 - Featured posts. A post has a `featured` flag (frontmatter `featured: true`, a
   Featured switch in the post details, a badge in the posts list). It is saved
   as a versioned change with history like any other field and survives
@@ -190,6 +198,10 @@ All notable changes are recorded here, following
 
 ### Fixed
 
+- The container image now ships `/data` owned by the runtime user, so a new
+  Docker named volume mounted there is writable. Before, such a volume was
+  root-owned and BurzBlog could not start on it. The image is also
+  cross-compiled instead of emulated when built for another architecture.
 - Saving a published post with no publish date, such as pushing a file without
   `timestamps.publishedOn`, keeps its first publish date instead of resetting it
   to the time of the save.
@@ -324,4 +336,4 @@ All notable changes are recorded here, following
 - SSH and proxy Git transports are deferred (#18).
 - No visual editor, file watcher, ARM image or automatic update.
 
-Releases are tagged `vX.Y.Z`. Each GitHub release carries the binaries from `task release` (Linux amd64/arm64/arm, macOS amd64/arm64, Windows amd64) and a `SHA256SUMS` file; see [docs/terminal.md](docs/terminal.md#install). Container images are built locally with `task docker:build` (see [docs/containers.md](docs/containers.md)).
+Releases are tagged `vX.Y.Z`. Each GitHub release carries the binaries from `task release` (Linux amd64/arm64/arm, macOS amd64/arm64, Windows amd64) and a `SHA256SUMS` file; see [docs/terminal.md](docs/terminal.md#install). Container images are published to `ghcr.io/weburz/burzblog` or can be built locally with `task docker:build`; see [docs/containers.md](docs/containers.md).

@@ -93,6 +93,9 @@ tasks:
   docker:smoke:
     desc: Run the image against a disposable data directory and exercise the API (requires Docker)
     cmd: scripts/docker-smoke.sh burzblog:local
+  image:publish:
+    desc: Smoke-test and push the multi-arch image to ghcr.io/weburz/burzblog from a clean vX.Y.Z tag (docker login ghcr.io; CLI_ARGS=--dry-run to build only)
+    cmd: scripts/image-publish.sh {{.CLI_ARGS}}
   proxy:lint:
     desc: Validate deploy/Caddyfile and deploy/nginx.conf in pinned images (requires Docker)
     cmd: bash scripts/proxy-config-check.sh

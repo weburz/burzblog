@@ -1,14 +1,18 @@
 #!/bin/sh
 # Container acceptance test: run the image against a disposable data
 # directory as the invoking user, then sign in, write, publish and export
-# through the API. Requires Docker and curl.
+# through the API. Then run it with a fresh named volume and no --user, the
+# way Coolify does. Requires Docker and curl.
 set -eu
 image=${1:-burzblog:local}
 work=$(mktemp -d)
 name="burzblog-smoke-$$"
+vname="burzblog-smoke-vol-$$"
 port=18080
+vport=18081
 cleanup() {
-  docker rm -f "$name" >/dev/null 2>&1 || true
+  docker rm -f "$name" "$vname" >/dev/null 2>&1 || true
+  docker volume rm "$vname" >/dev/null 2>&1 || true
   rm -r "$work"
 }
 trap cleanup EXIT
@@ -53,4 +57,26 @@ done
 curl -fsS -H "$auth" "$origin/api/posts/smoke" | grep -q '"status":"published"' && check "data survives a restart"
 test "$(stat -c %a "$work/data/burzblog.db")" = 600 && check "database file is private (0600)"
 test "$(docker inspect -f '{{.State.Health.Status}}' "$name" 2>/dev/null || echo none)" != unhealthy && check "container health check is not failing"
+
+# A new named volume inherits the ownership of /data in the image, so the
+# default user can write to it without any --user override.
+vorigin="http://127.0.0.1:$vport"
+docker volume create "$vname" >/dev/null
+docker run -d --name "$vname" --read-only --cap-drop ALL \
+  --security-opt no-new-privileges:true -e BURZBLOG_ORIGIN="$vorigin" \
+  -p "127.0.0.1:$vport:8080" -v "$vname:/data" "$image" >/dev/null
+for _ in $(seq 1 50); do
+  curl -fsS "$vorigin/healthz" >/dev/null 2>&1 && break
+  sleep 0.2
+done
+curl -fsS "$vorigin/healthz" | grep -q '"ok"' && check "named volume: starts as the default user"
+printf 'volume password\n' | docker exec -i "$vname" /burzblog user add volumeuser >/dev/null && check "named volume: account created"
+docker restart "$vname" >/dev/null
+for _ in $(seq 1 50); do
+  curl -fsS "$vorigin/healthz" >/dev/null 2>&1 && break
+  sleep 0.2
+done
+curl -fsS -H 'Content-Type: application/json' \
+  -d '{"username":"volumeuser","password":"volume password","name":"volume"}' \
+  "$vorigin/api/auth/token" | grep -q '"secret"' && check "named volume: account survives a restart"
 echo "docker smoke: all checks passed"

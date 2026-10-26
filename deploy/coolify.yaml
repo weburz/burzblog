@@ -1,0 +1,41 @@
+# documentation: https://github.com/weburz/burzblog/blob/main/docs/containers.md#coolify
+# slogan: BurzBlog is a small self-hosted blog server: write Markdown posts in the browser or the terminal, feed your website.
+# category: cms
+# tags: blog, markdown, cms, sqlite, publishing, headless
+# logo: https://raw.githubusercontent.com/weburz/burzblog/main/site/assets/favicon.svg
+# port: 8080
+
+services:
+  burzblog:
+    # Pinned. Bump BURZBLOG_VERSION to update; "2" follows the latest 2.x.y.
+    image: "ghcr.io/weburz/burzblog:${BURZBLOG_VERSION:-2.0.0}"
+    environment:
+      # Coolify generates the public URL, routes the domain to port 8080 and
+      # fills $SERVICE_URL_BURZBLOG, which BurzBlog needs as its exact origin.
+      - SERVICE_URL_BURZBLOG_8080
+      - BURZBLOG_ORIGIN=$SERVICE_URL_BURZBLOG
+      # Optional: the address of your public website, for feeds and the sitemap.
+      # - BURZBLOG_SITE_URL=${BURZBLOG_SITE_URL}
+      # Optional: a secret URL POSTed after published posts change.
+      # - BURZBLOG_DEPLOY_HOOK=${BURZBLOG_DEPLOY_HOOK}
+      # Optional: check for new releases (off by default).
+      # - BURZBLOG_CHECK_UPDATES=${BURZBLOG_CHECK_UPDATES:-false}
+    volumes:
+      # The SQLite database (posts, accounts, tokens). Back it up.
+      - burzblog-data:/data
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
+    stop_grace_period: 25s
+    healthcheck:
+      test: ["CMD", "/burzblog", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  burzblog-data:
