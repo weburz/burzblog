@@ -31,6 +31,8 @@ type contentReply struct {
 	Description    string     `json:"description"`
 	CoverURL       string     `json:"coverUrl"`
 	CoverAlt       string     `json:"coverAlt"`
+	CoverWidth     int        `json:"coverWidth,omitempty"`
+	CoverHeight    int        `json:"coverHeight,omitempty"`
 	PublishedOn    *time.Time `json:"publishedOn"`
 	UpdatedOn      *time.Time `json:"updatedOn"`
 	UpdatedAt      time.Time  `json:"updatedAt"`
@@ -44,6 +46,9 @@ type contentReply struct {
 	Version        int64      `json:"version"`
 	Body           *string    `json:"body,omitempty"`
 	Snippet        string     `json:"snippet,omitempty"`
+	// Extra is a map[string]any, set on the single-post route and on a list
+	// with ?include=extra. It is an any so that an empty object is still sent.
+	Extra any `json:"extra,omitempty"`
 }
 
 func contentJSON(p *post.Post, words int, withBody bool) contentReply {
@@ -116,15 +121,39 @@ func (s *Server) contentList(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	withExtra, ok := includeExtra(w, r)
+	if !ok {
+		return
+	}
 	list, total, err := s.store.ListPublished(r.Context(), r.URL.Query().Get("q"), r.URL.Query().Get("tag"), limit, offset)
 	if err != nil {
 		s.internal(w, r, err)
 		return
 	}
+	posts := make([]*post.Post, len(list))
+	for i, l := range list {
+		posts[i] = l.Post
+	}
+	sizes, err := s.coverSizes(r.Context(), posts)
+	if err != nil {
+		s.internal(w, r, err)
+		return
+	}
+	var extras map[int64]string
+	if withExtra {
+		if extras, err = s.store.PublishedExtras(r.Context()); err != nil {
+			s.internal(w, r, err)
+			return
+		}
+	}
 	items := make([]contentReply, 0, len(list))
 	for _, l := range list {
 		item := contentJSON(l.Post, l.Words, false)
 		item.Snippet = l.Snippet
+		s.setCover(&item, l.Post, sizes)
+		if withExtra {
+			item.Extra = s.extraJSON(r, l.Post.Slug, extras[l.Post.ID])
+		}
 		items = append(items, item)
 	}
 	s.replyDigest(w, r, map[string]any{"items": items, "total": total})
@@ -152,11 +181,20 @@ func (s *Server) contentPost(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, post.Encode(p))
 		return
 	}
-	if notModified(w, r, etag(p.Version)) {
+	item := contentJSON(p, post.CountWords(p.Body), true)
+	sizes, err := s.coverSizes(r.Context(), []*post.Post{p})
+	if err != nil {
+		s.internal(w, r, err)
 		return
 	}
-	cached(w, etag(p.Version))
-	reply(w, http.StatusOK, contentJSON(p, post.CountWords(p.Body), true))
+	s.setCover(&item, p, sizes)
+	tag := tagWithCover(p.Version, item)
+	if notModified(w, r, tag) {
+		return
+	}
+	item.Extra = s.extraJSON(r, p.Slug, p.Extra)
+	cached(w, tag)
+	reply(w, http.StatusOK, item)
 }
 
 // contentHTML returns one published post's body rendered and sanitized like a

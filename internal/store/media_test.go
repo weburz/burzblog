@@ -91,3 +91,36 @@ func TestMediaUsers(t *testing.T) {
 		t.Errorf("limited users = %v", slugs)
 	}
 }
+
+func TestMediaSizes(t *testing.T) {
+	ctx := context.Background()
+	s := open(t)
+	if _, _, err := s.AddMedia(ctx, upload(digest("a"))); err != nil {
+		t.Fatal(err)
+	}
+	pdf := upload(digest("b"))
+	pdf.Width, pdf.Height = 0, 0
+	if _, _, err := s.AddMedia(ctx, pdf); err != nil {
+		t.Fatal(err)
+	}
+	names := []string{digest("a")[:32] + ".png", digest("b")[:32] + ".png", digest("c")[:32] + ".png"}
+	got, err := s.MediaSizes(ctx, names)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[names[0]] != (MediaSize{2, 3}) {
+		t.Errorf("MediaSizes = %v, want only the decoded upload at 2x3", got)
+	}
+	if got, err := s.MediaSizes(ctx, nil); err != nil || len(got) != 0 {
+		t.Errorf("MediaSizes(nil) = %v, %v", got, err)
+	}
+	// More names than one query takes still all resolve.
+	many := make([]string, 0, maxSizeNames+10)
+	for i := 0; i < maxSizeNames+9; i++ {
+		many = append(many, strings.Repeat("0", 28)+string(rune('a'+i%26))+strings.Repeat("0", 3)+".png")
+	}
+	many = append(many, names[0])
+	if got, err := s.MediaSizes(ctx, many); err != nil || len(got) != 1 {
+		t.Errorf("MediaSizes(%d names) = %v, %v", len(many), got, err)
+	}
+}
