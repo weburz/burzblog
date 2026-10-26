@@ -116,6 +116,7 @@ address to download posts.
 | `--data` | `BURZBLOG_DATA`, then systemd's `STATE_DIRECTORY` | `./burzblog-data` |
 | `--origin` | `BURZBLOG_ORIGIN` | `http://<addr>` |
 | `--deploy-hook` | `BURZBLOG_DEPLOY_HOOK` | none |
+| `--check-updates` | `BURZBLOG_CHECK_UPDATES` (`true` or `false`) | off |
 | `--site-url` | `BURZBLOG_SITE_URL` | none (feeds and sitemap answer 409) |
 | `--site-title` | `BURZBLOG_SITE_TITLE` | the site URL's host |
 | `--site-description` | `BURZBLOG_SITE_DESCRIPTION` | the title |
@@ -125,6 +126,29 @@ address to download posts.
 
 Prefer the environment for the deploy hook so it does not show up in process
 listings.
+
+### Update checks
+
+BurzBlog contacts nobody unless you ask. With `--check-updates` (or
+`BURZBLOG_CHECK_UPDATES=true`) it looks for a newer release about 30 seconds
+after it starts and then every 24 hours. Admins see the result in Settings and
+as a dot on the Settings tab; authors do not, and the content API never
+includes it.
+
+Each check is one `GET` to
+`https://api.github.com/repos/weburz/burzblog/releases/latest`. The only thing
+it carries is a `User-Agent` such as `burzblog/1.2.0`, which holds your BurzBlog
+version. Nothing about your posts, accounts or the instance's address is sent,
+though GitHub sees your server's IP address as it would for any request. The
+check has a 10 second timeout, reads at most 1 MiB, is not retried before the
+next day and keeps its answer in memory only. If it fails, BurzBlog logs one
+warning and carries on. A development build (a version that is not
+`MAJOR.MINOR.PATCH`) never reports an update. Remove the flag and restart to
+stop the checks.
+
+When a newer version exists, upgrade with `sudo burzblog upgrade` and restart
+the service on a systemd host, or pull the new image and recreate the
+container.
 
 The `--site-*`, `--post-path` and `--tag-path` settings describe your public
 website (not BurzBlog's own address, `--origin`). They only build the links in

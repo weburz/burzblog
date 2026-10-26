@@ -51,6 +51,7 @@ code `role` before the request body is read.
 | Export tokens (website builds): create | `POST /api/tokens` with `scope: "export"` | no | yes |
 | See and revoke other accounts' tokens | `GET /api/tokens`, `DELETE /api/tokens/{id}` | no | yes |
 | Settings (site, feeds, deploy status) | `GET /api/settings` | no | yes |
+| Newer-version notice | `GET /api/updates` | no | yes |
 | Rebuild the website | `POST /api/deploy` | no | yes |
 | Backup download | `GET /api/backup.tar.gz` | no | yes |
 | Export download | `GET /api/export.tar.gz` | no | yes |
@@ -274,6 +275,14 @@ post is deleted on purpose.
 
 **Deploy hook.** The URL is secret: it is read from the environment, never
 returned by the API, and left out of error messages.
+
+**Outbound requests.** BurzBlog makes none of its own accord. The deploy hook
+is called only when you set one. Update checks are opt-in
+(`--check-updates`): one `GET` to the GitHub releases API with a `User-Agent`
+that holds the BurzBlog version, with a timeout and a response size cap, and
+nothing about posts, accounts or the instance address. The result is shown only
+to admins through `GET /api/updates`; failures never affect anything else. See
+[self-hosting](self-hosting.md#update-checks).
 
 ## What is out of scope
 

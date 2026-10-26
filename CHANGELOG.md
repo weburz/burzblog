@@ -8,6 +8,12 @@ All notable changes are recorded here, following
 
 ### Added
 
+- Opt-in update notice. With `--check-updates` (`BURZBLOG_CHECK_UPDATES=true`)
+  the server checks GitHub for a newer release shortly after start and every
+  24 hours; nothing is sent but a `GET` with the BurzBlog version in the
+  `User-Agent`, and without the flag it never connects. Admins get
+  `GET /api/updates` (authors 403 `role`), a dismissible notice in Settings and
+  a dot on the Settings tab; development builds never report an update.
 - Featured posts. A post has a `featured` flag (frontmatter `featured: true`, a
   Featured switch in the post details, a badge in the posts list). It is saved
   as a versioned change with history like any other field and survives
