@@ -12,6 +12,11 @@ All notable changes are recorded here, following
   `UMAMI_WEBSITE_ID` is set. `scripts/site-analytics.sh` adds the tracker at
   deploy time, so the ID is never committed, and it only counts visits on the
   site's own domain.
+- The guides in `docs/` are on the website at
+  [burzblog.weburz.com/docs](https://burzblog.weburz.com/docs/), with a sidebar
+  and a contents list per page. `task site:docs` renders them; `go:check`
+  fails while the committed pages are out of date or a link between guides
+  points at a heading that does not exist.
 - Two-factor setup shows a QR code to scan with an authenticator app, drawn in
   the browser so the secret never leaves it; the setup key stays as a fallback
   and no longer wraps inside a group. Settings lists tag labels last, so
