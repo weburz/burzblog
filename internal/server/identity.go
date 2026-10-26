@@ -142,7 +142,7 @@ func (s *Server) sameOrigin(r *http.Request) bool {
 // localhost when the server expects 127.0.0.1.
 func (s *Server) failOrigin(w http.ResponseWriter) {
 	fail(w, http.StatusForbidden, "origin",
-		"This request did not come from the BurzBlog page. Open BurzBlog at "+s.origin.Scheme+"://"+s.origin.Host+" to sign in.", "")
+		"This request did not come from the BurzBlog page. Open BurzBlog at "+s.origin.Scheme+"://"+s.origin.Host+" and try again.", "")
 }
 
 // Request bodies are small: the largest is one post.
