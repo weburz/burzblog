@@ -119,11 +119,12 @@ const mirrored = [
   "paddingBottom",
   "paddingLeft",
 ] as const;
-const keepCaretVisible = () => {
-  const el = area.value;
-  const pane = el?.closest<HTMLElement>(".write-pane");
-  if (!el || !pane || el.selectionStart !== el.selectionEnd) return;
-  const style = getComputedStyle(el);
+// Past this many characters the body is far taller than its minimum height.
+const longText = 20_000;
+
+// caretTop measures where the caret's line starts by laying out the text
+// before it in a hidden copy of the body.
+const caretTop = (el: HTMLTextAreaElement, style: CSSStyleDeclaration) => {
   const ghost = document.createElement("div");
   for (const name of mirrored) ghost.style[name] = style[name];
   Object.assign(ghost.style, {
@@ -137,9 +138,24 @@ const keepCaretVisible = () => {
   marker.textContent = "\u200b";
   ghost.append(marker);
   el.parentElement!.append(ghost);
-  const line = Number.parseFloat(style.lineHeight) || 24;
   const top = el.getBoundingClientRect().top + marker.offsetTop;
   ghost.remove();
+  return top;
+};
+
+const keepCaretVisible = () => {
+  const el = area.value;
+  const pane = el?.closest<HTMLElement>(".write-pane");
+  if (!el || !pane || el.selectionStart !== el.selectionEnd) return;
+  const style = getComputedStyle(el);
+  const line = Number.parseFloat(style.lineHeight) || 24;
+  const top =
+    el.selectionStart === el.value.length && el.value.length > longText
+      ? // Writing at the end of a long post: the body is taller than its
+        // minimum height, so the caret sits on its last line. Skip the mirror,
+        // which costs a layout of the whole text on every key.
+        el.getBoundingClientRect().bottom - Number.parseFloat(style.paddingBottom) - line
+      : caretTop(el, style);
   const view = pane.getBoundingClientRect();
   const tools = el.parentElement!.querySelector(".md-tools")?.getBoundingClientRect();
   const margin = Math.min(120, view.height / 4);
