@@ -17,6 +17,8 @@ export interface Post {
   seoDescription: string;
   // An absolute https address, or empty.
   canonicalUrl: string;
+  // A post the website should lead with.
+  featured: boolean;
   publishedOn: string | null;
   updatedOn: string | null;
   // When a draft publishes itself; null unless it is scheduled.
@@ -42,6 +44,7 @@ export type PostDraft = Pick<
   | "seoTitle"
   | "seoDescription"
   | "canonicalUrl"
+  | "featured"
   | "publishedOn"
   | "updatedOn"
 >;
@@ -54,6 +57,7 @@ export interface PostSummary {
   words: number;
   tags: string[];
   author: string;
+  featured: boolean;
   publishedOn: string | null;
   publishAt: string | null;
   updatedAt: string;
@@ -64,6 +68,17 @@ export interface PostSummary {
 export interface TagCount {
   tag: string;
   count: number;
+  // What readers see for the tag: the admin's label, or one derived from the slug.
+  label: string;
+  // False while the label is the derived one.
+  custom: boolean;
+}
+
+// The answer to setting or clearing a tag's label.
+export interface TagLabel {
+  tag: string;
+  label: string;
+  custom: boolean;
 }
 
 // Scheduled drafts are counted in draft as well.

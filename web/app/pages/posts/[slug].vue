@@ -84,6 +84,7 @@ const editable = (p: Post): PostDraft => ({
   seoTitle: p.seoTitle,
   seoDescription: p.seoDescription,
   canonicalUrl: p.canonicalUrl,
+  featured: p.featured,
   publishedOn: p.publishedOn,
   updatedOn: p.updatedOn,
 });
