@@ -8,6 +8,10 @@ All notable changes are recorded here, following
 
 ### Added
 
+- The website counts visits with Umami when the repository variable
+  `UMAMI_WEBSITE_ID` is set. `scripts/site-analytics.sh` adds the tracker at
+  deploy time, so the ID is never committed, and it only counts visits on the
+  site's own domain.
 - The guides in `docs/` are on the website at
   [burzblog.weburz.com/docs](https://burzblog.weburz.com/docs/), with a sidebar
   and a contents list per page. `task site:docs` renders them; `go:check`
