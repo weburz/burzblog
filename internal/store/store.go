@@ -33,8 +33,9 @@ var (
 
 // Store is a handle on the database.
 type Store struct {
-	db  *sql.DB
-	now func() time.Time
+	db   *sql.DB
+	path string
+	now  func() time.Time
 }
 
 // FileName is the database file inside the data directory.
@@ -63,7 +64,7 @@ func OpenPath(ctx context.Context, path string) (*Store, error) {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
 	db.SetMaxOpenConns(4)
-	s := &Store{db: db, now: func() time.Time { return time.Now().UTC() }}
+	s := &Store{db: db, path: path, now: func() time.Time { return time.Now().UTC() }}
 	if err := s.migrate(ctx); err != nil {
 		db.Close()
 		return nil, err
@@ -430,6 +431,12 @@ func (s *Store) migrate(ctx context.Context) error {
 	}
 	if version > len(migrations) {
 		return fmt.Errorf("database schema %d is newer than this BurzBlog (%d); upgrade BurzBlog", version, len(migrations))
+	}
+	// A database with no schema yet is new and has nothing to lose.
+	if version > 0 && version < len(migrations) {
+		if err := s.backupBeforeMigrating(ctx, version); err != nil {
+			return err
+		}
 	}
 	for i := version; i < len(migrations); i++ {
 		tx, err := s.db.BeginTx(ctx, nil)
