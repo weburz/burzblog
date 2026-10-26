@@ -78,23 +78,43 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Publish the exact tested image
+      - name: Resolve image tags
         if: inputs.publish && steps.release.outputs.release == 'true'
+        id: tags
         env:
           IMAGE_REPOSITORY: ghcr.io/${{ github.repository }}
           VERSION: ${{ steps.release.outputs.version }}
         run: |
-          sha_ref="${IMAGE_REPOSITORY,,}:sha-${GITHUB_SHA}"
-          version_ref="${IMAGE_REPOSITORY,,}:v${VERSION}"
-          if docker manifest inspect "$version_ref" > /dev/null 2>&1; then
-            echo "$version_ref already exists; published tags are never overwritten" >&2
+          repo="${IMAGE_REPOSITORY,,}"
+          if docker manifest inspect "${repo}:${VERSION}" > /dev/null 2>&1; then
+            echo "${repo}:${VERSION} already exists; published tags are never overwritten" >&2
             exit 1
           fi
-          for image_ref in "$sha_ref" "$version_ref"; do
-            docker tag burzblog:local "$image_ref"
-            docker push "$image_ref"
-          done
-          for image_ref in "$sha_ref" "$version_ref"; do
-            digest="$(docker inspect --format '{{index .RepoDigests 0}}' "$image_ref")"
-            echo "Published ${image_ref} digest ${digest}" >> "$GITHUB_STEP_SUMMARY"
-          done
+          major="${VERSION%%.*}"
+          minor="${VERSION#*.}"
+          minor="${minor%%.*}"
+          {
+            echo "list<<EOF"
+            echo "${repo}:${VERSION}"
+            echo "${repo}:${major}.${minor}"
+            echo "${repo}:${major}"
+            echo "${repo}:latest"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+      - name: Publish the multi-arch image
+        if: inputs.publish && steps.release.outputs.release == 'true'
+        id: push
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          push: true
+          provenance: false
+          build-args: VERSION=${{ steps.release.outputs.version }}
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.tags.outputs.list }}
+      - name: Record the digest
+        if: inputs.publish && steps.release.outputs.release == 'true'
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+          TAGS: ${{ steps.tags.outputs.list }}
+        run: printf 'Published digest %s as:\n%s\n' "$DIGEST" "$TAGS" >> "$GITHUB_STEP_SUMMARY"
