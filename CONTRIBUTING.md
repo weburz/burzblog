@@ -70,8 +70,9 @@ hooks with `pre-commit install` and check a message with
 `crisp message 'feat(store): describe the change'`.
 
 Open a PR using the template, with the exact verification commands and results
-and any limitations. GitHub Actions is intentionally disabled, so run
-`task check` locally and record the result in the PR. Do not bypass reviews.
+and any limitations. GitHub Actions runs the same checks on every pull request;
+run `task check` locally first and record the result in the PR. Do not bypass
+reviews.
 
 Contributions are accepted under the repository's Apache-2.0 license
 (`LICENSE`); there is no CLA and no sign-off requirement.

@@ -64,7 +64,7 @@ tasks:
     dir: web
     cmd: pnpm check
   check:
-    desc: Run all local merge gates (Actions is intentionally disabled)
+    desc: Run all merge gates locally (Actions runs the same on pull requests)
     cmds:
       - task: go:check
       - task: web:check
