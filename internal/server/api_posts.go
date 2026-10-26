@@ -35,6 +35,7 @@ type postReply struct {
 	SEOTitle       string      `json:"seoTitle"`
 	SEODescription string      `json:"seoDescription"`
 	CanonicalURL   string      `json:"canonicalUrl"`
+	Featured       bool        `json:"featured"`
 	PublishedOn    *time.Time  `json:"publishedOn"`
 	UpdatedOn      *time.Time  `json:"updatedOn"`
 	PublishAt      *time.Time  `json:"publishAt"`
@@ -48,7 +49,7 @@ func postJSON(p *post.Post) postReply {
 	return postReply{
 		Slug: p.Slug, Title: p.Title, Description: p.Description, Status: p.Status, Body: p.Body,
 		CoverURL: p.CoverURL, CoverAlt: p.CoverAlt, Extra: p.Extra, Tags: tagsJSON(p.Tags), Author: p.Author,
-		SEOTitle: p.SEOTitle, SEODescription: p.SEODescription, CanonicalURL: p.CanonicalURL, PublishedOn: p.PublishedOn,
+		SEOTitle: p.SEOTitle, SEODescription: p.SEODescription, CanonicalURL: p.CanonicalURL, Featured: p.Featured, PublishedOn: p.PublishedOn,
 		UpdatedOn: p.UpdatedOn, PublishAt: p.PublishAt, CreatedAt: p.CreatedAt, UpdatedAt: p.UpdatedAt, UpdatedBy: p.UpdatedBy,
 		Version: p.Version,
 	}
@@ -70,6 +71,7 @@ type summaryReply struct {
 	Words       int         `json:"words"`
 	Tags        []string    `json:"tags"`
 	Author      string      `json:"author"`
+	Featured    bool        `json:"featured"`
 	PublishedOn *time.Time  `json:"publishedOn"`
 	PublishAt   *time.Time  `json:"publishAt"`
 	UpdatedAt   time.Time   `json:"updatedAt"`
@@ -151,8 +153,12 @@ func (s *Server) listPosts(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	featured, ok := featuredParam(w, r)
+	if !ok {
+		return
+	}
 	list, counts, err := s.store.ListPosts(r.Context(), store.Filter{Status: status, Scheduled: scheduled,
-		Query: r.URL.Query().Get("q"), Tag: r.URL.Query().Get("tag"), Sort: sort, Limit: limit, Offset: offset})
+		Query: r.URL.Query().Get("q"), Tag: r.URL.Query().Get("tag"), Featured: featured, Sort: sort, Limit: limit, Offset: offset})
 	if err != nil {
 		s.internal(w, r, err)
 		return
@@ -161,7 +167,7 @@ func (s *Server) listPosts(w http.ResponseWriter, r *http.Request) {
 	for _, p := range list {
 		items = append(items, summaryReply{
 			Slug: p.Slug, Title: p.Title, Description: p.Description, Status: p.Status, Words: p.Words,
-			Tags: tagsJSON(p.Tags), Author: p.Author, PublishedOn: p.PublishedOn, PublishAt: p.PublishAt, UpdatedAt: p.UpdatedAt, UpdatedBy: p.UpdatedBy,
+			Tags: tagsJSON(p.Tags), Author: p.Author, Featured: p.Featured, PublishedOn: p.PublishedOn, PublishAt: p.PublishAt, UpdatedAt: p.UpdatedAt, UpdatedBy: p.UpdatedBy,
 			Version: p.Version,
 		})
 	}
@@ -173,36 +179,61 @@ func (s *Server) listPosts(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// listTags lists the tags in use and how many posts carry each.
+// featuredParam reads ?featured=true or ?featured=false, answering 422 itself
+// for anything else. Without it the result is nil: featured and not.
+func featuredParam(w http.ResponseWriter, r *http.Request) (*bool, bool) {
+	raw := r.URL.Query().Get("featured")
+	if raw == "" {
+		return nil, true
+	}
+	featured, err := strconv.ParseBool(raw)
+	if err != nil || (raw != "true" && raw != "false") {
+		fail(w, http.StatusUnprocessableEntity, "validation", "Featured must be true or false.", "featured")
+		return nil, false
+	}
+	return &featured, true
+}
+
+// listTags lists the tags in use, how many posts carry each and the label
+// shown for it. Custom says whether an admin set that label.
 func (s *Server) listTags(w http.ResponseWriter, r *http.Request) {
 	tags, err := s.store.Tags(r.Context())
 	if err != nil {
 		s.internal(w, r, err)
 		return
 	}
+	labels, err := s.store.TagLabels(r.Context())
+	if err != nil {
+		s.internal(w, r, err)
+		return
+	}
 	items := make([]map[string]any, 0, len(tags))
 	for _, t := range tags {
-		items = append(items, map[string]any{"tag": t.Tag, "count": t.Count})
+		_, custom := labels[t.Tag]
+		items = append(items, map[string]any{"tag": t.Tag, "count": t.Count, "label": tagLabel(labels, t.Tag), "custom": custom})
 	}
 	reply(w, http.StatusOK, map[string]any{"items": items})
 }
 
 type postInput struct {
-	Version        int64      `json:"version"`
-	Slug           string     `json:"slug"`
-	Title          string     `json:"title"`
-	Description    string     `json:"description"`
-	Body           string     `json:"body"`
-	CoverURL       string     `json:"coverUrl"`
-	CoverAlt       string     `json:"coverAlt"`
-	Extra          string     `json:"extra"`
-	Tags           []string   `json:"tags"`
-	Author         string     `json:"author"`
-	SEOTitle       string     `json:"seoTitle"`
-	SEODescription string     `json:"seoDescription"`
-	CanonicalURL   string     `json:"canonicalUrl"`
-	PublishedOn    *time.Time `json:"publishedOn"`
-	UpdatedOn      *time.Time `json:"updatedOn"`
+	Version        int64    `json:"version"`
+	Slug           string   `json:"slug"`
+	Title          string   `json:"title"`
+	Description    string   `json:"description"`
+	Body           string   `json:"body"`
+	CoverURL       string   `json:"coverUrl"`
+	CoverAlt       string   `json:"coverAlt"`
+	Extra          string   `json:"extra"`
+	Tags           []string `json:"tags"`
+	Author         string   `json:"author"`
+	SEOTitle       string   `json:"seoTitle"`
+	SEODescription string   `json:"seoDescription"`
+	CanonicalURL   string   `json:"canonicalUrl"`
+	// Featured left out keeps the post's flag, so a client written before
+	// the flag existed does not unfeature a post by saving it.
+	Featured    *bool      `json:"featured"`
+	PublishedOn *time.Time `json:"publishedOn"`
+	UpdatedOn   *time.Time `json:"updatedOn"`
 }
 
 func (in *postInput) apply(p *post.Post) {
@@ -213,6 +244,9 @@ func (in *postInput) apply(p *post.Post) {
 	p.CoverURL, p.CoverAlt, p.Extra = in.CoverURL, in.CoverAlt, in.Extra
 	p.Tags, p.Author = in.Tags, in.Author
 	p.SEOTitle, p.SEODescription, p.CanonicalURL = in.SEOTitle, in.SEODescription, in.CanonicalURL
+	if in.Featured != nil {
+		p.Featured = *in.Featured
+	}
 	p.PublishedOn, p.UpdatedOn = in.PublishedOn, in.UpdatedOn
 }
 
@@ -491,7 +525,7 @@ func stateOf(p *post.Post, words int) revisionState {
 		DescriptionDigest: digest(p.Description),
 		CoverDigest:       digest(p.CoverURL, p.CoverAlt),
 		SettingsDigest: digest(p.Extra, stamp(p.PublishedOn), stamp(p.UpdatedOn), strings.Join(p.Tags, ","),
-			p.Author, p.SEOTitle, p.SEODescription, p.CanonicalURL),
+			p.Author, p.SEOTitle, p.SEODescription, p.CanonicalURL, strconv.FormatBool(p.Featured)),
 	}
 }
 
@@ -561,6 +595,7 @@ func (s *Server) restoreRevision(w http.ResponseWriter, r *http.Request) {
 		p.CoverURL, p.CoverAlt, p.Extra = old.CoverURL, old.CoverAlt, old.Extra
 		p.Tags, p.Author = old.Tags, old.Author
 		p.SEOTitle, p.SEODescription, p.CanonicalURL = old.SEOTitle, old.SEODescription, old.CanonicalURL
+		p.Featured = old.Featured
 		p.PublishedOn, p.UpdatedOn = old.PublishedOn, old.UpdatedOn
 		return nil
 	})

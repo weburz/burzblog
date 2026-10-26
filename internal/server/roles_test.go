@@ -53,7 +53,7 @@ func seedPosts(t *testing.T, h *harness) {
 			t.Fatal(err)
 		}
 	}
-	change("pub", func(p *post.Post) { p.Status = post.Published })
+	change("pub", func(p *post.Post) { p.Status = post.Published; p.Tags = []string{"news"} })
 	change("gone", func(p *post.Post) { p.Status = post.Archived })
 	change("old", func(p *post.Post) { p.Slug = "renamed" })
 }
@@ -135,6 +135,8 @@ func routeCases(otherToken int64) []routeCase {
 		{name: "export token", method: "POST", path: "/api/tokens", body: `{"name":"build","scope":"export"}`, adminOnly: true, want: 201},
 		{name: "revoke someone else's token", method: "DELETE", path: "/api/tokens/{other}", adminOnly: true, want: 200},
 		{name: "delete upload", method: "DELETE", path: "/api/media/999", adminOnly: true, want: 404},
+		{name: "label a tag", method: "PUT", path: "/api/tags/news/label", body: `{"label":"The News"}`, adminOnly: true, want: 200},
+		{name: "clear a tag label", method: "DELETE", path: "/api/tags/news/label", adminOnly: true, want: 200},
 		// Every role.
 		{name: "write token", method: "POST", path: "/api/tokens", body: `{"name":"laptop","scope":"write"}`, want: 201},
 		{name: "list tokens", method: "GET", path: "/api/tokens", want: 200},

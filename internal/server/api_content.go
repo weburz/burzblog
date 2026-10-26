@@ -44,6 +44,12 @@ type contentReply struct {
 	Version        int64      `json:"version"`
 	Body           *string    `json:"body,omitempty"`
 	Snippet        string     `json:"snippet,omitempty"`
+
+	// Featured marks a post the site should lead with. TagLabels maps each
+	// of Tags to its display label; the handlers set it, reading the labels
+	// once per request.
+	Featured  bool              `json:"featured"`
+	TagLabels map[string]string `json:"tagLabels"`
 }
 
 func contentJSON(p *post.Post, words int, withBody bool) contentReply {
@@ -57,6 +63,7 @@ func contentJSON(p *post.Post, words int, withBody bool) contentReply {
 	if c.Tags == nil {
 		c.Tags = []string{}
 	}
+	c.Featured = p.Featured
 	if withBody {
 		c.Body = &p.Body
 	}
@@ -116,7 +123,16 @@ func (s *Server) contentList(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	list, total, err := s.store.ListPublished(r.Context(), r.URL.Query().Get("q"), r.URL.Query().Get("tag"), limit, offset)
+	featured, ok := featuredParam(w, r)
+	if !ok {
+		return
+	}
+	list, total, err := s.store.ListPublishedFeatured(r.Context(), r.URL.Query().Get("q"), r.URL.Query().Get("tag"), featured, limit, offset)
+	if err != nil {
+		s.internal(w, r, err)
+		return
+	}
+	overrides, err := s.store.TagLabels(r.Context())
 	if err != nil {
 		s.internal(w, r, err)
 		return
@@ -124,6 +140,7 @@ func (s *Server) contentList(w http.ResponseWriter, r *http.Request) {
 	items := make([]contentReply, 0, len(list))
 	for _, l := range list {
 		item := contentJSON(l.Post, l.Words, false)
+		item.TagLabels = tagLabelsFor(overrides, l.Post.Tags)
 		item.Snippet = l.Snippet
 		items = append(items, item)
 	}
@@ -152,11 +169,21 @@ func (s *Server) contentPost(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, post.Encode(p))
 		return
 	}
-	if notModified(w, r, etag(p.Version)) {
+	overrides, err := s.store.TagLabels(r.Context())
+	if err != nil {
+		s.internal(w, r, err)
 		return
 	}
-	cached(w, etag(p.Version))
-	reply(w, http.StatusOK, contentJSON(p, post.CountWords(p.Body), true))
+	item := contentJSON(p, post.CountWords(p.Body), true)
+	item.TagLabels = tagLabelsFor(overrides, p.Tags)
+	// The reply shows tag labels, which change without a new version, so
+	// the tag also covers the labels an admin set for this post's tags.
+	tag := labelledETag(p.Version, overrides, p.Tags)
+	if notModified(w, r, tag) {
+		return
+	}
+	cached(w, tag)
+	reply(w, http.StatusOK, item)
 }
 
 // contentHTML returns one published post's body rendered and sanitized like a
@@ -186,11 +213,32 @@ func (s *Server) contentTags(w http.ResponseWriter, r *http.Request) {
 		s.internal(w, r, err)
 		return
 	}
+	overrides, err := s.store.TagLabels(r.Context())
+	if err != nil {
+		s.internal(w, r, err)
+		return
+	}
 	items := make([]map[string]any, 0, len(tags))
 	for _, t := range tags {
-		items = append(items, map[string]any{"tag": t.Tag, "count": t.Count})
+		items = append(items, map[string]any{"tag": t.Tag, "count": t.Count, "label": tagLabel(overrides, t.Tag)})
 	}
 	s.replyDigest(w, r, map[string]any{"items": items})
+}
+
+// labelledETag is the ETag of a post's JSON reply: its version, plus a digest
+// of the labels an admin set for its tags when there are any, so changing or
+// clearing a label changes the tag.
+func labelledETag(version int64, overrides map[string]string, tags []string) string {
+	parts := []string{}
+	for _, tag := range tags {
+		if label, ok := overrides[tag]; ok {
+			parts = append(parts, tag, label)
+		}
+	}
+	if len(parts) == 0 {
+		return etag(version)
+	}
+	return strings.TrimSuffix(etag(version), `"`) + "-" + digest(parts...) + `"`
 }
 
 // replyDigest answers v as JSON tagged with a digest of its encoding, for

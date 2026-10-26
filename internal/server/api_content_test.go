@@ -344,7 +344,7 @@ func TestContentTagsAndMetadata(t *testing.T) {
 	if resp.StatusCode != 200 || resp.Header.Get("ETag") == "" {
 		t.Fatalf("tags = %d etag %q %s", resp.StatusCode, resp.Header.Get("ETag"), raw)
 	}
-	if want := `{"items":[{"count":1,"tag":"go"},{"count":1,"tag":"web"}]}`; strings.TrimSpace(raw) != want {
+	if want := `{"items":[{"count":1,"label":"Go","tag":"go"},{"count":1,"label":"Web","tag":"web"}]}`; strings.TrimSpace(raw) != want {
 		t.Errorf("tags = %s, want %s", raw, want)
 	}
 	if resp, _ := c.get(c.export, "/api/content/tags", "If-None-Match", resp.Header.Get("ETag")); resp.StatusCode != 304 {
