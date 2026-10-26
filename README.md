@@ -96,6 +96,8 @@ burzblog status                              # which local .md files changed
   Content example and deploy hooks.
 - [Containers](docs/containers.md): the optional Docker image.
 - [HTTP API](docs/api.md) and [security model](docs/security.md).
+- [Architecture](docs/architecture.md): how the binary, storage and access
+  fit together.
 
 ## Development
 

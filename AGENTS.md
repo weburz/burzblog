@@ -2,8 +2,8 @@
 
 One Go binary (`cmd/burzblog`) is the server, the embedded browser panel and the
 terminal client. Posts are Markdown stored in one SQLite file. Read
-`docs/adr/013-database-storage.md` and `docs/security.md` before changing
-storage, auth or the API. ADR-001 to ADR-012 are superseded history.
+`docs/architecture.md` and `docs/security.md` before changing storage, auth or
+the API.
 
 - `task setup`: Go modules, pnpm dependencies, the Playwright browser.
 - `task dev`: Go API on :8080 (data in ./burzblog-data) and Nuxt dev on :3000.

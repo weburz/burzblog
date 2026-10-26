@@ -17,7 +17,7 @@ const stub = (tag: string) =>
 describe("login form forgot-password note", () => {
   it("explains the server-side reset with a copyable command", () => {
     const wrapper = mount(LoginForm, {
-      props: { username: "sagar" },
+      props: { username: "ada" },
       global: {
         stubs: {
           UInput: stub("input"),
@@ -33,6 +33,6 @@ describe("login form forgot-password note", () => {
     const details = wrapper.get("details");
     expect(details.get("summary").text()).toBe("Forgot your password?");
     expect(details.text()).toContain("whoever runs BurzBlog");
-    expect(details.get("pre").text()).toBe("burzblog user passwd sagar");
+    expect(details.get("pre").text()).toBe("burzblog user passwd ada");
   });
 });
