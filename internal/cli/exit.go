@@ -20,6 +20,7 @@ const (
 	ExitNotFound   = 4 // the post does not exist
 	ExitAuth       = 5 // not signed in, or the token or password is not accepted
 	ExitValidation = 6 // the server rejected the content
+	ExitUpdate     = 7 // upgrade --check found a newer release
 )
 
 // exitError is a failure with a stable machine-readable code and exit code.
