@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import type { Post } from "./types";
 import { errorMessage } from "./utils/api";
 import { themeOptions } from "./utils/theme";
 
 const { state, isAdmin, load, signOut } = useCurrentSession();
+const { visible: updateVisible, load: loadUpdates } = useAvailableUpdate();
 const theme = usePreferredTheme();
 const { enabled: shortcutsEnabled } = useEnabledShortcuts();
 let stopTheme = () => {};
@@ -47,6 +48,9 @@ const helpKey = (event: KeyboardEvent) => {
 };
 onMounted(() => window.addEventListener("keydown", helpKey));
 onUnmounted(() => window.removeEventListener("keydown", helpKey));
+
+// Only admins can ask, and only they see the dot.
+watch(isAdmin, (admin) => admin && void loadUpdates(), { immediate: true });
 
 const leave = async () => {
   confirmingSignOut.value = false;
@@ -112,8 +116,12 @@ useHead({
               >Media</NuxtLink
             >
             <NuxtLink to="/settings" class="nav-tab" active-class="is-active"
-              >Settings</NuxtLink
-            >
+              >Settings<span
+                v-if="isAdmin && updateVisible"
+                class="nav-dot"
+                role="img"
+                aria-label="Update available"
+            /></NuxtLink>
             <NuxtLink v-if="isAdmin" to="/audit" class="nav-tab" active-class="is-active"
               >Audit<span class="max-sm:hidden">&nbsp;log</span></NuxtLink
             >
