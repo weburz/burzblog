@@ -8,6 +8,27 @@ All notable changes are recorded here, following
 
 ### Added
 
+- Roles and an audit log. Every account is an `admin` or an `author`. Authors
+  write, edit, publish, unpublish and archive posts and manage their own
+  password, two-factor sign-in and write tokens; admins also delete posts,
+  manage other accounts' tokens and export tokens, see settings, rebuild the
+  website, download the backup and the export, and read the audit log. The server
+  answers an author's request for an admin route 403 with the error code
+  `role`; a token has the role of its owner, and `GET /api/tokens` lists only
+  an author's own. The matrix is in `docs/security.md`. Existing accounts and
+  the account made by first-run setup become admins (migration 8);
+  `burzblog user add` makes an author unless given `--role admin`, and
+  `burzblog user role <name> admin|author` changes a role on the host and
+  refuses to demote the last admin. `GET /api/session` reports the `role`, and
+  the panel hides what an author cannot do and gives admins an Audit log page.
+- An append-only audit log (migration 9): sign-ins and failed sign-ins for
+  existing accounts, account creation, two-factor changes and recovery-code use,
+  token create and revoke, password and role changes, publish, unpublish,
+  archive, restore, schedule and delete, slug redirect removal, manual
+  rebuilds and backup downloads, each with the time, the account (and token),
+  the target and the connecting address. Database triggers refuse any change or
+  removal of a row, and no secret is ever stored in it. Admins read it with
+  `GET /api/audit` (paged), in the panel, and with `burzblog audit` on the host.
 - Search finds words in post bodies, not only titles, slugs and descriptions.
   `?q=` on `GET /api/posts` and `GET /api/content/posts`, the panel's posts
   search box and `burzblog list --search` use an FTS5 index over title,

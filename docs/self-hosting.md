@@ -71,10 +71,20 @@ first-run setup:
 sudo -u burzblog burzblog user add ada --data /var/lib/burzblog
 ```
 
-Later accounts are managed on the host only: `burzblog user add`, `user passwd`
-and `user list`, always with `--data /var/lib/burzblog` and as the `burzblog`
-user. Passwords need at least 12 characters.
+Later accounts are managed on the host only: `burzblog user add`, `user passwd`,
+`user role` and `user list`, always with `--data /var/lib/burzblog` and as the
+`burzblog` user. Passwords need at least 12 characters.
 `user passwd` also signs that account out of every browser.
+
+An account is an admin or an author. The account first-run setup creates is an
+admin; `user add` makes an author unless you add `--role admin`. An author
+writes and publishes posts and manages their own password, two-factor sign-in
+and tokens; an admin can also delete posts, manage everyone's tokens, change
+settings, deploy, download backups and read the audit log (see
+[security](security.md) for the full list). Change an account's role with
+`burzblog user role <name> admin|author --data /var/lib/burzblog`; the last
+admin cannot be demoted. `burzblog audit --data /var/lib/burzblog` prints the
+audit log on the host.
 
 If someone loses their authenticator app and recovery codes,
 `burzblog user 2fa-reset <name> --data /var/lib/burzblog` turns two-factor

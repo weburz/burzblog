@@ -277,7 +277,9 @@ Writes every post, drafts and archived ones too, to
 `<dir>/<status>/<slug>.md` with a `README.txt`. Restore a file with
 `burzblog push <file>.md`. History is not included; the database file is the
 complete backup (see [self-hosting](self-hosting.md#backups)). The panel offers
-the same download under **Settings → Backup**.
+the same download under **Settings → Backup**. Backups and `burzblog export`
+need an admin account: an author gets a "needs an admin" error (exit code `1`,
+JSON `error.code` `role`).
 
 ## Renamed posts: redirects
 

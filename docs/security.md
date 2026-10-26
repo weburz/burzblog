@@ -20,7 +20,68 @@ sign-ins are limited per username, counted before the password is checked so
 parallel guesses cannot slip past (see [API](api.md)); expired counters are
 pruned as sign-ins arrive. There
 is no self sign-up; accounts are created on the host with `burzblog user add`,
-or once, in the browser, by first-run setup (below).
+or once, in the browser, by first-run setup (below). Every account is an
+`admin` or an `author` (next paragraph).
+
+**Roles.** An `admin` can do everything. An `author` writes and publishes posts
+and looks after their own password, two-factor sign-in and tokens. The first
+account made in the browser by first-run setup is an admin, so are the accounts
+that existed before roles did (migration 8), and `burzblog user add` makes an
+author unless you pass `--role admin`. Roles change only on the host:
+`burzblog user role <name> admin|author`, which refuses to demote the last
+admin so someone can always manage the server. The role is read from the
+database on every request, so a change applies at once to open browser sessions
+and to tokens: a token has the role of the account that owns it. The check is on
+the server; the panel hides what an author cannot do, but that is only a
+courtesy. A request an author may not make is answered `403` with the error
+code `role` before the request body is read.
+
+| Action | Route | Author | Admin |
+|---|---|---|---|
+| Read, create and edit posts, tags, revisions, previews | `GET/POST/PUT /api/posts...`, `GET /api/tags`, `POST /api/preview` | yes | yes |
+| Publish, unpublish, archive, restore, schedule | `POST /api/posts/{slug}/{action}`, `PUT .../markdown` | yes | yes |
+| Remove a slug redirect | `DELETE /api/posts/{slug}/redirects/{from}` | yes | yes |
+| Delete a post | `DELETE /api/posts/{slug}` | no | yes |
+| Own password and two-factor sign-in | `/api/account/...` | yes | yes |
+| Own write tokens: create, list, revoke | `POST/GET /api/tokens`, `DELETE /api/tokens/{id}` | yes, own only | yes |
+| Export tokens (website builds): create | `POST /api/tokens` with `scope: "export"` | no | yes |
+| See and revoke other accounts' tokens | `GET /api/tokens`, `DELETE /api/tokens/{id}` | no | yes |
+| Settings (site, feeds, deploy status) | `GET /api/settings` | no | yes |
+| Rebuild the website | `POST /api/deploy` | no | yes |
+| Backup download | `GET /api/backup.tar.gz` | no | yes |
+| Export download | `GET /api/export.tar.gz` | no | yes |
+| Audit log | `GET /api/audit`, `burzblog audit` | no | yes |
+| Read published content | `GET /api/content/...` | yes | yes |
+| Accounts, roles, passwords, `2fa-reset` | `burzblog user ...` on the host | host only | host only |
+
+Authors are not limited to their own posts: any author can edit and publish any
+post, which suits a few people writing for one blog. Because a token has its
+owner's role, an author's export token cannot be created and an author's token
+cannot download the export; the website build needs an export token made by an
+admin. The content API serves only published posts, so a token of either role
+may read it.
+
+**Audit log.** Sign-ins and sensitive changes are appended to the `audit_log`
+table: when, who (the account, and the token when the request used one), what,
+what it was done to and the connecting address (`X-Forwarded-For` is ignored,
+as everywhere). Recorded: sign-in successes, and failures against an existing
+account (a wrong password, or a wrong two-factor code); first-run setup and
+accounts created on the host; two-factor turned on or off and recovery codes
+used; token created or revoked; password changes; role changes; publish,
+unpublish, archive, restore, schedule and unschedule (including a scheduled
+post the server publishes itself, as actor `scheduler`); post deletion; slug
+redirect removal; a manual website rebuild; and backup downloads. Changes made
+on the host with `burzblog user` are recorded as actor `host`. Failed sign-ins
+for names that do not exist are not recorded, so repeating them cannot grow the
+log; rate-limited attempts are not recorded either. A row is never updated or
+deleted: database triggers refuse both and ids are never reused, so the log
+only grows (an entry is roughly 150 bytes). Anyone with the database file can of
+course rewrite it; the log guards against accounts, not against the host. A
+failure to write an entry is logged and does not undo the action it describes.
+Entries never hold secrets: no passwords, session or API token secrets, the
+deploy hook URL, two-factor secrets or recovery codes. Targets are post slugs,
+account names and token names and ids. Admins read the log in the panel, with
+`GET /api/audit` and with `burzblog audit` on the host.
 
 **First-run setup.** `POST /api/setup` is the one unauthenticated write, and
 it exists so a fresh install does not need a shell to get its first account.
@@ -175,8 +236,8 @@ returned by the API, and left out of error messages.
 
 ## What is out of scope
 
-- **Roles.** Every account can do everything, including revoking others'
-  tokens. Only give accounts to people you trust with all posts.
+- **Per-post ownership.** Any author can edit, publish and archive any post;
+  roles separate writing from running the server, not authors from each other.
 - **TLS.** Terminate HTTPS in a reverse proxy (see [self-hosting](self-hosting.md)).
   BurzBlog ignores `X-Forwarded-*` headers.
 - **Untrusted authors.** Authors control their post content, including image

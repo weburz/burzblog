@@ -40,9 +40,10 @@ Website: [burzblog.weburz.com](https://burzblog.weburz.com/). Downloads:
   Nuxt Content and other static site generators read. An optional deploy hook
   (for example a Vercel deploy hook) rebuilds the site after you publish.
 
-Not included yet: image and video uploads (use hosted image URLs), roles and
-permissions (every account can do everything), and serving the public blog
-itself.
+Accounts are admins or authors, and the admin-only actions are written to an
+audit log. Not included yet: image and video uploads (use hosted image URLs),
+per-post permissions (any author can edit any post), and serving the public
+blog itself.
 
 ![The post list in the dark theme, with drafts, a scheduled post and published posts](docs/images/posts-dark.png)
 
