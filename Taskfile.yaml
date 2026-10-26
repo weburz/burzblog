@@ -69,6 +69,9 @@ tasks:
       - task: go:check
       - task: web:check
       - task: hooks:check
+  site:docs:
+    desc: Render docs/*.md into the website (site/docs/); go:check fails until you do
+    cmd: go run ./cmd/sitedocs
   site:serve:
     desc: Preview the project website (site/) on http://127.0.0.1:8090
     cmd: python3 -m http.server --bind 127.0.0.1 --directory site 8090

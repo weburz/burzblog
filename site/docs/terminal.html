@@ -1,0 +1,603 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Writing from the terminal · BurzBlog docs</title>
+    <meta name="description" content="The burzblog binary is also the client. Posts always live on the server; files on your computer are working copies." />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; img-src 'self'; style-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'"
+    />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#fafaf8" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#12171d" media="(prefers-color-scheme: dark)" />
+    <link rel="canonical" href="https://burzblog.weburz.com/docs/terminal.html" />
+    <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="../style.css" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="top">
+      <div class="wrap top-inner">
+        <a class="brand" href="../" aria-label="BurzBlog home"><span class="mark" aria-hidden="true"></span>BurzBlog</a>
+        <nav aria-label="Main">
+          <a href="./">Docs</a>
+          <a href="https://github.com/weburz/burzblog">GitHub</a>
+          <a class="nav-cta" href="../#install">Download</a>
+        </nav>
+      </div>
+    </header>
+
+    <div class="wrap docs">
+      <nav class="docs-nav" aria-label="Documentation">
+        <div>
+          <p class="docs-nav-title">Guides</p>
+          <ul>
+            <li><a href="self-hosting.html">Running BurzBlog</a></li>
+            <li><a href="terminal.html" aria-current="page">Writing from the terminal</a></li>
+            <li><a href="publishing.html">Connecting your website</a></li>
+            <li><a href="containers.html">Containers</a></li>
+          </ul>
+        </div>
+        <div>
+          <p class="docs-nav-title">Reference</p>
+          <ul>
+            <li><a href="api.html">HTTP API</a></li>
+            <li><a href="security.html">Security model</a></li>
+            <li><a href="architecture.html">Architecture</a></li>
+          </ul>
+        </div>
+      </nav>
+
+      <main id="main" class="docs-main">
+        <article class="doc">
+          <h1>Writing from the terminal</h1>
+          <nav class="doc-toc" aria-label="On this page">
+            <p>On this page</p>
+            <ul>
+              <li><a href="#install">Install</a></li>
+              <li><a href="#connect-once">Connect once</a></li>
+              <li><a href="#everyday-commands">Everyday commands</a></li>
+              <li><a href="#your-own-tools-pull-and-push">Your own tools: pull and push</a></li>
+              <li><a href="#comparing-with-the-server-diff-and-status">Comparing with the server: diff and status</a></li>
+              <li><a href="#when-someone-else-saved-first">When someone else saved first</a></li>
+              <li><a href="#importing-existing-posts">Importing existing posts</a></li>
+              <li><a href="#backing-up-your-posts">Backing up your posts</a></li>
+              <li><a href="#upgrading-the-binary">Upgrading the binary</a></li>
+              <li><a href="#renamed-posts-redirects">Renamed posts: redirects</a></li>
+              <li><a href="#build-machines">Build machines</a></li>
+              <li><a href="#scripts-and-ai-agents">Scripts and AI agents</a></li>
+            </ul>
+          </nav>
+<p>The <code>burzblog</code> binary is also the client. Posts always live on the server; files
+on your computer are working copies.</p>
+<h2 id="install">Install</h2>
+<p>On Linux and macOS, one line installs the latest release:</p>
+<pre><code class="language-sh">curl -fsSL https://burzblog.weburz.com/install.sh | sh
+</code></pre>
+<p>It picks the build for your computer, checks it against the release's
+<code>SHA256SUMS</code>, and installs it to <code>/usr/local/bin</code> if that is writable,
+otherwise <code>~/.local/bin</code> (it never runs <code>sudo</code> for you). Set
+<code>BURZBLOG_VERSION=v2.0.0</code> to pin a version or <code>BURZBLOG_INSTALL_DIR</code> to choose
+the directory. Prefer to check what you run? Read the script first:
+<code>curl -fsSL https://burzblog.weburz.com/install.sh | less</code>. The script only
+works once the repository and its releases are public. It downloads over HTTPS
+only. The checksum guards against a corrupted download, not against a
+compromised release: releases are not signed yet, so <code>SHA256SUMS</code> comes from
+the same place as the binary.</p>
+<p>To install by hand instead, <code>burzblog</code> is one file with nothing else to
+install. Download the build for your computer from the
+<a href="https://github.com/weburz/burzblog/releases/latest">latest release</a>:</p>
+<table>
+<thead>
+<tr>
+<th>Computer</th>
+<th>File</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Linux (Intel/AMD)</td>
+<td><code>burzblog-&lt;version&gt;-linux-amd64</code></td>
+</tr>
+<tr>
+<td>Linux (ARM 64-bit), Raspberry Pi 4/5</td>
+<td><code>burzblog-&lt;version&gt;-linux-arm64</code></td>
+</tr>
+<tr>
+<td>Raspberry Pi (32-bit OS)</td>
+<td><code>burzblog-&lt;version&gt;-linux-arm</code></td>
+</tr>
+<tr>
+<td>macOS (Apple silicon)</td>
+<td><code>burzblog-&lt;version&gt;-darwin-arm64</code></td>
+</tr>
+<tr>
+<td>macOS (Intel)</td>
+<td><code>burzblog-&lt;version&gt;-darwin-amd64</code></td>
+</tr>
+<tr>
+<td>Windows</td>
+<td><code>burzblog-&lt;version&gt;-windows-amd64.exe</code></td>
+</tr>
+</tbody>
+</table>
+<p>On Linux and macOS, make it executable and put it on your <code>PATH</code>:</p>
+<pre><code class="language-sh">chmod +x burzblog-*-linux-amd64
+sudo mv burzblog-*-linux-amd64 /usr/local/bin/burzblog
+burzblog --version
+</code></pre>
+<p>macOS may refuse to open a downloaded binary the first time; run
+<code>xattr -d com.apple.quarantine /usr/local/bin/burzblog</code> once. Check the file
+against <code>SHA256SUMS-&lt;version&gt;</code> from the same release with <code>sha256sum -c</code>
+(<code>shasum -a 256 -c</code> on macOS).</p>
+<p>With Go installed you can build it instead: clone the repository and run
+<code>task build</code> (the binary lands in <code>bin/burzblog</code>). The same binary also runs the
+server (<code>burzblog serve</code>), so a server host already has it.</p>
+<h2 id="connect-once">Connect once</h2>
+<pre><code class="language-sh">burzblog login https://blog.example.com      # asks for username and password
+burzblog whoami
+</code></pre>
+<p>If the account uses two-factor sign-in, <code>login</code> asks for the code after the
+password (a recovery code works too). Without a terminal, pass it with
+<code>--code 123456</code> or the <code>BURZBLOG_TOTP</code> environment variable, or put it on the
+line after the password when reading from standard input. Tokens that already
+exist keep working when two-factor sign-in is turned on: the token is the
+second factor. Only a new <code>login</code> needs the code.</p>
+<p><code>login</code> creates an API token named after your computer and stores it in
+<code>~/.config/burzblog/config.json</code> (mode <code>0600</code>). It appears in the panel under
+<strong>Settings → Connected computers</strong>, where it can be revoked. <code>burzblog logout</code>
+revokes it and forgets the server. Plain <code>http://</code> is refused except for
+<code>localhost</code>, so your password never travels unencrypted. The client does not
+follow redirects either; if the server answers with one, <code>login</code> stops and
+tells you the address to use, for example <code>burzblog login https://blog.example.com</code>.</p>
+<h2 id="everyday-commands">Everyday commands</h2>
+<pre><code class="language-sh">burzblog list                          # newest first; --status draft|scheduled|published|archived, --search text (also in post bodies),
+                                       # --sort updated|published|title|created, --tag name (`ls` works too)
+burzblog new &quot;Understanding Go interfaces&quot;   # creates a draft and opens it in your editor
+                                       # (only in a terminal; --no-edit skips it, --slug sets the URL name)
+burzblog edit understanding-go-interfaces
+burzblog publish understanding-go-interfaces
+burzblog unpublish | archive | restore &lt;slug&gt;
+burzblog schedule &lt;slug&gt; &quot;2026-11-03 09:00&quot;   # publish a draft by itself, at a future time
+burzblog unschedule &lt;slug&gt;
+burzblog open [slug]                   # open the browser panel
+</code></pre>
+<p><code>schedule</code> takes an RFC 3339 time (<code>2026-11-03T09:00:00Z</code>) or a local date and
+time in quotes (<code>&quot;2026-11-03 09:00&quot;</code>, in this computer's time zone). The time
+must be in the future and at most two years away. <code>list</code> marks scheduled drafts
+with their time, and <code>list --status scheduled</code> shows only those. Publishing,
+archiving or unscheduling a post ends its schedule. A scheduled draft is
+published as it is at the due time, including any edits made after it was
+scheduled, and it still publishes if the session or token that scheduled it has
+since been revoked. Unschedule it to stop that.</p>
+<p><code>edit</code> downloads the post, opens it in <code>$VISUAL</code> or <code>$EDITOR</code> (then <code>vi</code>), and
+saves it back when the editor exits. Editors that return immediately need their
+wait flag, for example <code>EDITOR=&quot;code --wait&quot;</code>.</p>
+<p>The file looks like this:</p>
+<pre><code class="language-markdown">---
+title: Understanding Go interfaces
+description: Small interfaces, accepted where they are used.
+status: draft
+tags:
+  - go
+  - api-design
+author: Ada Lovelace
+seo:
+  title: Go interfaces explained
+  description: Why small interfaces make Go code easier to change.
+canonical: https://example.com/blog/go-interfaces
+timestamps:
+  publishedOn: 2026-10-24T09:30:00Z
+coverImage:
+  url: https://images.example.com/cover.png
+  alt: A diagram of three small interfaces.
+sitemap:
+  changefreq: yearly
+---
+
+The post body in Markdown.
+</code></pre>
+<ul>
+<li><code>title</code> is required. <code>status</code> is <code>draft</code> or <code>published</code>; changing it to
+<code>published</code> publishes the post when you save.</li>
+<li>The slug is the post's name on the server and the file name, so BurzBlog
+does not write it into the frontmatter. A <code>slug</code> key you add must match.</li>
+<li><code>tags</code> is a list of lowercase words with hyphens (<code>Machine Learning</code> is saved
+as <code>machine-learning</code>), at most 20 tags of 40 characters each, in your order;
+it is also where categories go. <code>tags: go, web</code> (one comma-separated line)
+is accepted too. <code>author</code> is a display name; <code>burzblog new</code> fills it with
+your account name. <code>seo.title</code> and <code>seo.description</code> are for search engines
+and social cards, and <code>canonical</code> is an absolute <code>https://</code> address. All of
+them are optional and left out of the file when empty. A file that leaves
+out <code>author</code> clears the post's author when you push it.</li>
+<li><code>featured: true</code> marks a post a site should lead with. Leave the line out
+for an ordinary post: a file without it is not featured when you push it.</li>
+<li>Any other keys (<code>sitemap</code>, ...) are kept exactly as written and passed
+through to your website, and so are other keys under <code>seo</code> (<code>robots</code>, ...).</li>
+</ul>
+<h2 id="your-own-tools-pull-and-push">Your own tools: pull and push</h2>
+<pre><code class="language-sh">burzblog pull my-post                  # writes ./my-post.md
+burzblog pull my-post -o -             # prints it
+burzblog push my-post.md               # saves it back
+burzblog push new-idea.md              # creates &quot;new-idea&quot; if it does not exist
+burzblog push - --slug my-post --base-version 3   # reads the file from standard input
+</code></pre>
+<p>The file name is the slug, so name new files <code>&lt;slug&gt;.md</code> with lowercase letters,
+digits and hyphens. <code>pull -o</code> also needs a file name ending in <code>&lt;slug&gt;.md</code> (it
+may be in another folder), or <code>-</code>.</p>
+<h2 id="comparing-with-the-server-diff-and-status">Comparing with the server: diff and status</h2>
+<pre><code class="language-sh">burzblog diff my-post.md               # server's version -&gt; your file
+burzblog diff my-post                  # the same, for ./my-post.md
+burzblog diff my-post drafts/copy.md   # a file with another name
+burzblog status                        # every &lt;slug&gt;.md in this folder
+burzblog status drafts
+</code></pre>
+<p><code>diff</code> prints a unified diff from the server's current post, as the Markdown
+with frontmatter that <code>pull</code> writes, to your file. Lines starting with <code>-</code> are
+only on the server, lines starting with <code>+</code> only in your file. It is colored
+under the same rules as the rest of the CLI: no color when output is piped or
+<code>NO_COLOR</code> is set. On standard error it says whether the file is based on the
+server's current version or an older one, using the version <code>pull</code> or your last
+<code>push</code> recorded for that file. A file this computer never pulled or pushed has
+no known base version.</p>
+<p>The exit code follows <code>diff(1)</code>: <code>0</code> identical, <code>1</code> different. Failures use the
+usual codes: <code>4</code> the post is not on the server, <code>5</code> not signed in, <code>2</code> an
+unreadable file or a bad name. A network or server failure is also <code>1</code>, so a
+script that must tell it apart from &quot;different&quot; should use <code>--json</code>: it
+writes an error document to standard error only for failures.</p>
+<p>Text output is for reading: tabs become spaces, a line ending in a carriage
+return shows <code>␍</code>, and control characters from the post are replaced by <code>�</code>.
+<code>--json</code> prints one document with the exact, unsanitised diff:
+<code>{&quot;slug&quot;,&quot;baseVersion&quot;,&quot;serverVersion&quot;,&quot;stale&quot;,&quot;identical&quot;,&quot;diff&quot;}</code>.
+<code>baseVersion</code> is <code>null</code> when unknown, and <code>stale</code> is <code>true</code> when the server's
+version is newer than <code>baseVersion</code>. Lines are compared exactly, so a missing
+final newline or Windows line endings show up as differences. Two very large,
+very different files are shown as one block removed and one added instead of a
+minimal diff.</p>
+<p><code>status</code> looks at each <code>.md</code> file in the folder (default <code>.</code>; subfolders are
+not entered) whose name is a valid slug, and prints one line per file:</p>
+<table>
+<thead>
+<tr>
+<th>State</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>up to date</code></td>
+<td>the file matches the server</td>
+</tr>
+<tr>
+<td><code>modified locally</code></td>
+<td>you edited the file; the server has not moved on</td>
+</tr>
+<tr>
+<td><code>changed on server</code></td>
+<td>the server's version is newer than the one you pulled; your file is untouched</td>
+</tr>
+<tr>
+<td><code>both changed</code></td>
+<td>both of the above; run <code>burzblog diff &lt;file&gt;</code> before pushing</td>
+</tr>
+<tr>
+<td><code>not on server</code></td>
+<td>no post has that slug yet; <code>push</code> would create it</td>
+</tr>
+<tr>
+<td><code>differs, not pulled by this computer</code></td>
+<td>the file differs and this computer has no record of where it came from</td>
+</tr>
+</tbody>
+</table>
+<p>With <code>--json</code> it prints
+<code>{&quot;dir&quot;,&quot;files&quot;:[{&quot;file&quot;,&quot;slug&quot;,&quot;state&quot;,&quot;baseVersion&quot;,&quot;serverVersion&quot;}]}</code>, where
+<code>state</code> is <code>up_to_date</code>, <code>modified</code>, <code>changed_on_server</code>, <code>both_changed</code>,
+<code>not_on_server</code> or <code>not_pulled</code>. The exit code is non-zero only when something
+went wrong: not signed in, an unreadable folder or file, a network failure.</p>
+<h2 id="when-someone-else-saved-first">When someone else saved first</h2>
+<p>Every save says which version it started from. If the post changed on the
+server in the meantime, nothing is overwritten:</p>
+<ul>
+<li><code>edit</code> keeps your text in a draft file and tells you where it is. Running
+<code>burzblog edit &lt;slug&gt;</code> again offers to continue with it.</li>
+<li><code>push</code> refuses. Compare with <code>burzblog diff &lt;file&gt;</code>, then either edit
+your file to include their changes or <code>burzblog push &lt;file&gt; --force</code> to
+replace their version with yours.</li>
+</ul>
+<p>Replaced versions are never lost: the panel's <strong>History</strong> keeps every save and
+can restore any of them.</p>
+<p>If a save is refused because something in the file is invalid (for example an
+empty title or broken YAML), <code>edit</code> shows the reason and offers to reopen the
+editor; your text is kept either way. Control characters (tabs, escape
+sequences) are not allowed in <code>title</code>, <code>description</code> or the cover <code>alt</code>; the
+error names the field. Anything the server sends is shown with such characters
+replaced by <code>�</code>.</p>
+<h2 id="importing-existing-posts">Importing existing posts</h2>
+<pre><code class="language-sh">burzblog import content/blog           # every .md file in the folder
+burzblog import content/blog --recursive
+burzblog import a.md b.md --update
+burzblog import content/blog --dry-run
+</code></pre>
+<p>The inverse of <code>export</code>: bring posts from a static site repository, for example
+a Nuxt Content <code>content/blog/</code> folder of <code>&lt;slug&gt;.md</code> files, into BurzBlog. The
+slug is the frontmatter <code>slug</code>, or the file name without <code>.md</code>. The title,
+description, <code>tags</code>, <code>author</code>, <code>seo</code>, <code>canonical</code>, <code>timestamps</code>, <code>coverImage</code>
+and any other frontmatter keys are kept. A file with <code>status: published</code> is imported as published; a file without
+a status becomes a draft. <code>--draft</code> imports everything as a draft.
+If the frontmatter <code>slug</code> differs from the file name, a warning is printed (and
+included as <code>&quot;warning&quot;</code> in <code>--json</code>), and with <code>--update</code> the file is refused so
+it cannot overwrite a post its name does not hint at; rename the file or fix the
+slug.</p>
+<ul>
+<li>Only <code>.md</code> files are read. Folders are not entered unless you add <code>--recursive</code>.</li>
+<li>A post that already exists is never overwritten: it prints
+<code>skipped my-post: already exists</code>. With <code>--update</code> the file is saved over it as
+a new version, so the old text stays in <strong>History</strong>. Together with <code>--draft</code>
+that also turns a published post back into a draft.</li>
+<li><code>--dry-run</code> prints what would happen and changes nothing.</li>
+<li>One bad file (broken YAML, an invalid slug, no title) does not stop the
+others. It is listed on standard error and the exit code is non-zero: <code>6</code>
+when every failure was invalid content, <code>1</code> otherwise.</li>
+<li>With <code>--json</code>, standard output holds one document:
+<code>{&quot;dryRun&quot;,&quot;created&quot;,&quot;updated&quot;,&quot;unchanged&quot;,&quot;skipped&quot;,&quot;failed&quot;,&quot;files&quot;:[{&quot;file&quot;,&quot;slug&quot;,&quot;action&quot;,&quot;status&quot;,&quot;version&quot;,&quot;error&quot;}]}</code>.
+<code>action</code> is <code>created</code>, <code>updated</code>, <code>unchanged</code>, <code>skipped</code> or <code>failed</code>; <code>error</code>
+is <code>{&quot;code&quot;,&quot;message&quot;}</code> and only present on failures.</li>
+</ul>
+<h2 id="backing-up-your-posts">Backing up your posts</h2>
+<pre><code class="language-sh">burzblog backup                        # ./burzblog-backup-&lt;date&gt;/
+burzblog backup ~/backups/blog
+</code></pre>
+<p>Writes every post, drafts and archived ones too, to
+<code>&lt;dir&gt;/&lt;status&gt;/&lt;slug&gt;.md</code> with a <code>README.txt</code>. Restore a file with
+<code>burzblog push &lt;file&gt;.md</code>. History is not included; the database file is the
+complete backup (see <a href="self-hosting.html#backups">self-hosting</a>). The panel offers
+the same download under <strong>Settings → Backup</strong>. Backups and <code>burzblog export</code>
+need an admin account: an author gets a &quot;needs an admin&quot; error (exit code <code>1</code>,
+JSON <code>error.code</code> <code>role</code>).</p>
+<h2 id="upgrading-the-binary">Upgrading the binary</h2>
+<pre><code class="language-sh">burzblog upgrade --check               # exit 0 up to date, 7 update available
+sudo burzblog upgrade                  # download, verify the SHA-256 sum, replace
+sudo burzblog upgrade --version v1.4.0 # a specific release
+</code></pre>
+<p>For the machine that runs <code>burzblog serve</code> as a binary or systemd service.
+<code>--force</code> allows a downgrade or a reinstall. A development build only upgrades
+with <code>--version</code>. It does not restart anything: it prints
+<code>sudo systemctl restart burzblog</code>, and the database backs itself up and migrates
+on the next start. In a container, pull the new image instead. See
+<a href="self-hosting.html#upgrades">self-hosting</a>.</p>
+<h2 id="renamed-posts-redirects">Renamed posts: redirects</h2>
+<pre><code class="language-sh">burzblog redirects            # FROM and TO, one line per old slug
+burzblog redirects --json     # {&quot;items&quot;:[{&quot;from&quot;:&quot;old-slug&quot;,&quot;to&quot;:&quot;new-slug&quot;}]}
+</code></pre>
+<p>Lists the old slugs of renamed published posts and the slug each has now, the
+same list a website gets from <code>GET /api/content/redirects</code>. <code>burzblog export</code>
+also writes it to <code>redirects.json</code> in the output folder. Rename a post by
+changing its slug in the panel's post settings; that is also where a redirect is
+removed.</p>
+<h2 id="build-machines">Build machines</h2>
+<p>For reader-site builds, use a build token from <strong>Settings → Your website</strong>
+instead of logging in:</p>
+<pre><code class="language-sh">BURZBLOG_SERVER=https://blog.example.com BURZBLOG_TOKEN=bzb_... burzblog export --out content/blogs --clean
+</code></pre>
+<p>Build tokens can only read published posts. See <a href="publishing.html">publishing</a>.</p>
+<h2 id="scripts-and-ai-agents">Scripts and AI agents</h2>
+<p>Every command works without a person: nothing prompts or opens an editor unless
+standard input is a terminal. Results can be printed as JSON, failures have
+their own exit codes, and a save always names the version it started from, so a
+script cannot silently overwrite someone else's work.</p>
+<h3 id="sign-in-without-a-terminal">Sign in without a terminal</h3>
+<p>Write tokens come from <code>burzblog login</code>; the panel's <strong>Settings</strong> page only
+creates build (export) tokens. Sign in once on a computer you control, ideally
+with an account used only by the agent, then hand the stored token to the
+script. It appears under <strong>Settings → Connected computers</strong>, where it can be
+revoked on its own:</p>
+<pre><code class="language-sh">burzblog login https://blog.example.com -u agent      # once, asks for the password
+python3 -c 'import json,os; print(json.load(open(os.path.expanduser(&quot;~/.config/burzblog/config.json&quot;)))[&quot;token&quot;])'
+
+export BURZBLOG_SERVER=https://blog.example.com
+export BURZBLOG_TOKEN=bzb_...        # a write token; build tokens only work for `export` and the content API
+burzblog whoami --json
+</code></pre>
+<p>The environment wins over the stored login. <code>burzblog login</code> itself can also
+run unattended: <code>echo &quot;$PASSWORD&quot; | burzblog login https://blog.example.com -u ada --password-stdin</code>
+(add <code>--code &quot;$CODE&quot;</code> or <code>BURZBLOG_TOTP</code> for an account with two-factor sign-in; a
+code is valid once, so unattended logins for such accounts need a recovery code
+or a human).</p>
+<h3 id="json-output">JSON output</h3>
+<p><code>--json</code> is a global flag, so it works the same on every command and always
+means one JSON document on standard output (one line). It is supported by
+<code>list</code>, <code>whoami</code>, <code>new</code>, <code>pull</code>, <code>push</code>, <code>diff</code>, <code>status</code>, <code>publish</code>,
+<code>unpublish</code>, <code>archive</code>, <code>restore</code>, <code>schedule</code>, <code>unschedule</code>, <code>backup</code>,
+<code>import</code>, <code>redirects</code> and <code>upgrade</code>. Other commands ignore it and print their usual text, but their
+failures are still JSON. <code>new</code> never opens an editor with <code>--json</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Output</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>list</code></td>
+<td><code>{&quot;items&quot;:[{&quot;slug&quot;,&quot;title&quot;,&quot;description&quot;,&quot;status&quot;,&quot;words&quot;,&quot;tags&quot;,&quot;author&quot;,&quot;publishedOn&quot;,&quot;publishAt&quot;,&quot;updatedAt&quot;,&quot;updatedBy&quot;,&quot;version&quot;}],&quot;counts&quot;:{&quot;draft&quot;,&quot;published&quot;,&quot;archived&quot;,&quot;scheduled&quot;}}</code>; <code>items</code> is <code>[]</code> when nothing matches</td>
+</tr>
+<tr>
+<td><code>whoami</code></td>
+<td><code>{&quot;username&quot;,&quot;server&quot;}</code></td>
+</tr>
+<tr>
+<td><code>new</code>, <code>publish</code>, <code>unpublish</code>, <code>archive</code>, <code>restore</code>, <code>schedule</code>, <code>unschedule</code></td>
+<td>the post: <code>{&quot;slug&quot;,&quot;title&quot;,&quot;description&quot;,&quot;status&quot;,&quot;tags&quot;,&quot;author&quot;,&quot;publishedOn&quot;,&quot;publishAt&quot;,&quot;updatedAt&quot;,&quot;updatedBy&quot;,&quot;version&quot;}</code></td>
+</tr>
+<tr>
+<td><code>push</code></td>
+<td>the same, plus <code>&quot;created&quot;</code> (<code>true</code> if the post did not exist)</td>
+</tr>
+<tr>
+<td><code>pull</code></td>
+<td><code>{&quot;slug&quot;,&quot;version&quot;,&quot;path&quot;}</code>; with <code>-o -</code> it is <code>{&quot;slug&quot;,&quot;version&quot;,&quot;markdown&quot;}</code> instead of the raw file</td>
+</tr>
+<tr>
+<td><code>diff</code></td>
+<td><code>{&quot;slug&quot;,&quot;baseVersion&quot;,&quot;serverVersion&quot;,&quot;stale&quot;,&quot;identical&quot;,&quot;diff&quot;}</code>; exit <code>1</code> when different</td>
+</tr>
+<tr>
+<td><code>status</code></td>
+<td><code>{&quot;dir&quot;,&quot;files&quot;:[{&quot;file&quot;,&quot;slug&quot;,&quot;state&quot;,&quot;baseVersion&quot;,&quot;serverVersion&quot;}]}</code></td>
+</tr>
+<tr>
+<td><code>backup</code></td>
+<td><code>{&quot;dir&quot;,&quot;posts&quot;}</code></td>
+</tr>
+<tr>
+<td><code>redirects</code></td>
+<td><code>{&quot;items&quot;:[{&quot;from&quot;,&quot;to&quot;}]}</code>; <code>items</code> is <code>[]</code> when there are none</td>
+</tr>
+<tr>
+<td><code>upgrade</code></td>
+<td><code>{&quot;from&quot;,&quot;to&quot;,&quot;path&quot;,&quot;restart&quot;}</code>; with <code>--check</code> or when already current <code>{&quot;current&quot;,&quot;latest&quot;,&quot;updateAvailable&quot;}</code></td>
+</tr>
+</tbody>
+</table>
+<p>The field names are the HTTP API's (see <a href="api.html#posts">api.md</a>); bodies are
+never included. <code>publishedOn</code> is <code>null</code> until a post is published, and
+<code>publishAt</code> is <code>null</code> unless the draft is scheduled.</p>
+<pre><code class="language-sh">$ burzblog list --status draft --json
+{&quot;items&quot;:[{&quot;slug&quot;:&quot;release-notes&quot;,&quot;title&quot;:&quot;Release notes&quot;,&quot;description&quot;:&quot;&quot;,&quot;status&quot;:&quot;draft&quot;,&quot;words&quot;:212,&quot;tags&quot;:[&quot;release&quot;],&quot;author&quot;:&quot;agent&quot;,&quot;publishedOn&quot;:null,&quot;publishAt&quot;:null,&quot;updatedAt&quot;:&quot;2026-10-25T09:12:00Z&quot;,&quot;updatedBy&quot;:&quot;agent&quot;,&quot;version&quot;:3}],&quot;counts&quot;:{&quot;archived&quot;:0,&quot;draft&quot;:1,&quot;published&quot;:4,&quot;scheduled&quot;:0}}
+
+$ burzblog new &quot;Release notes&quot; --body-file notes.md --json
+{&quot;slug&quot;:&quot;release-notes&quot;,&quot;title&quot;:&quot;Release notes&quot;,&quot;description&quot;:&quot;&quot;,&quot;status&quot;:&quot;draft&quot;,&quot;tags&quot;:[],&quot;author&quot;:&quot;agent&quot;,&quot;publishedOn&quot;:null,&quot;publishAt&quot;:null,&quot;updatedAt&quot;:&quot;2026-10-25T09:12:00Z&quot;,&quot;updatedBy&quot;:&quot;agent&quot;,&quot;version&quot;:2}
+</code></pre>
+<p>With <code>--json</code>, errors go to standard error as one line, with a non-zero exit
+code, and standard output stays empty:</p>
+<pre><code class="language-json">{&quot;error&quot;:{&quot;code&quot;:&quot;conflict&quot;,&quot;message&quot;:&quot;release-notes changed on the server since you pulled it, so nothing was overwritten.&quot;,&quot;detail&quot;:&quot;Compare with `burzblog pull release-notes -o -`, then push again with --force to replace it&quot;}}
+</code></pre>
+<p><code>code</code> is stable and meant for programs (<code>usage</code>, <code>conflict</code>, <code>not_found</code>,
+<code>authentication</code>, <code>validation</code>, <code>error</code>, or one of the <a href="api.html#errors">API's error
+codes</a> such as <code>slug_taken</code>); <code>message</code> and <code>detail</code> are for
+people and may change.</p>
+<h3 id="writing-without-an-editor">Writing without an editor</h3>
+<pre><code class="language-sh">burzblog new &quot;Release notes&quot; --no-edit                  # creates the draft, prints &quot;Created draft release-notes.&quot;
+burzblog new &quot;Release notes&quot; --body-file notes.md       # the body (Markdown, no frontmatter) from a file
+generate-notes | burzblog new &quot;Release notes&quot; --body-file - --json
+burzblog pull my-post -o - | burzblog push - --slug my-post --base-version 3
+</code></pre>
+<p><code>new</code> opens an editor only when standard input is a terminal and neither
+<code>--no-edit</code>, <code>--body-file</code> nor <code>--json</code> is given. <code>edit</code> needs a terminal or
+<code>$VISUAL</code>/<code>$EDITOR</code>; scripts should use <code>pull</code> and <code>push</code>. <code>login</code> and
+<code>user add</code> read their password from standard input when it is not a terminal,
+and <code>edit</code>'s questions answer themselves with their default.</p>
+<p><code>push -</code> needs <code>--slug</code> and, for a post that already exists, <code>--base-version</code>
+(the version you started from; <code>list --json</code> and <code>pull --json</code> show it). Without
+it <code>push -</code> refuses to touch an existing post, because nothing records where
+the text came from. <code>push &lt;file&gt;</code> remembers the version from <code>pull</code>.</p>
+<h3 id="a-safe-edit-loop-for-an-agent">A safe edit loop for an agent</h3>
+<pre><code class="language-sh">set -eu
+slug=release-notes
+
+# 1. pull; the version the text started from is remembered for this file
+mkdir -p work
+burzblog pull &quot;$slug&quot; -o &quot;work/$slug.md&quot; --force --json
+
+# 2. modify work/$slug.md with any tool
+
+# 3. push it back. The server compares against the pulled version.
+status=0
+burzblog push &quot;work/$slug.md&quot; --json || status=$?
+case $status in
+  0) ;;
+  3) echo &quot;someone saved first: pull again, redo the change, retry&quot; ;;  # never add --force
+  6) echo &quot;the file is invalid: fix it, retry&quot; ;;
+  *) echo &quot;failed with exit code $status&quot; ;;
+esac
+</code></pre>
+<p>Rules that keep this safe:</p>
+<ul>
+<li>Always push the file you pulled, or pass <code>--base-version</code>. A conflict (exit
+3) means nothing was written. Pull again, redo the change on the new text and
+push again. Do not use <code>--force</code> in automation; it replaces the other version.</li>
+<li>Prefer <code>--json</code> and branch on the exit code, not on message text.</li>
+<li>Create drafts, not published posts: <code>status: published</code> in a file publishes
+on save. Publishing is <code>burzblog publish &lt;slug&gt;</code>, a separate step.</li>
+</ul>
+<p>Mistakes are recoverable: every save keeps the previous content as a revision,
+including a <code>--force</code> push, and the panel's <strong>History</strong> restores any of them.
+Nothing here deletes a post (<code>delete</code> is panel-only and only for archived posts).</p>
+<h3 id="exit-codes">Exit codes</h3>
+<table>
+<thead>
+<tr>
+<th>Code</th>
+<th>Meaning</th>
+<th>JSON <code>error.code</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>0</code></td>
+<td>success</td>
+<td></td>
+</tr>
+<tr>
+<td><code>1</code></td>
+<td>any other failure: network, server error, unreadable file, ...; also <code>diff</code> finding a difference (no error document)</td>
+<td><code>error</code>, or the API's code</td>
+</tr>
+<tr>
+<td><code>2</code></td>
+<td>wrong flags or arguments, or a file or <code>--slug</code> that is not a valid slug</td>
+<td><code>usage</code></td>
+</tr>
+<tr>
+<td><code>3</code></td>
+<td>version conflict (the post changed since its base version) or the slug is already taken</td>
+<td><code>conflict</code>, <code>slug_taken</code></td>
+</tr>
+<tr>
+<td><code>4</code></td>
+<td>the post does not exist</td>
+<td><code>not_found</code></td>
+</tr>
+<tr>
+<td><code>5</code></td>
+<td>not signed in, or the token or password is not accepted</td>
+<td><code>authentication</code>, <code>credentials</code></td>
+</tr>
+<tr>
+<td><code>6</code></td>
+<td>the server rejected the content (empty title, broken YAML, ...)</td>
+<td><code>validation</code></td>
+</tr>
+<tr>
+<td><code>7</code></td>
+<td><code>upgrade --check</code> found a newer release (no error document)</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>Scripts that only test for zero versus non-zero keep working. Failures that
+used to exit <code>1</code> and now exit <code>2</code> to <code>6</code> are conflicts, missing posts, sign-in
+problems, invalid content and wrong usage.</p>
+
+          <p class="doc-source"><a href="https://github.com/weburz/burzblog/blob/main/docs/terminal.md">Edit this page on GitHub</a></p>
+        </article>
+      </main>
+    </div>
+
+    <footer class="foot">
+      <div class="wrap foot-inner">
+        <p><span class="mark" aria-hidden="true"></span>BurzBlog is made by <a href="https://weburz.com">Weburz</a> and released under the Apache-2.0 license.</p>
+        <nav aria-label="Footer">
+          <a href="https://github.com/weburz/burzblog">Source</a>
+          <a href="https://github.com/weburz/burzblog/blob/main/CHANGELOG.md">Changelog</a>
+          <a href="security.html">Security</a>
+          <a href="https://github.com/weburz/burzblog/issues">Issues</a>
+        </nav>
+      </div>
+    </footer>
+  </body>
+</html>

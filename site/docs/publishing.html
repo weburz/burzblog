@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Connecting your website · BurzBlog docs</title>
+    <meta name="description" content="BurzBlog is where posts are written. Your website stays a separate project, built and hosted wherever you like. While it builds, it downloads the published posts from BurzBlog as Markdown files." />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; img-src 'self'; style-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'"
+    />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#fafaf8" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#12171d" media="(prefers-color-scheme: dark)" />
+    <link rel="canonical" href="https://burzblog.weburz.com/docs/publishing.html" />
+    <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="../style.css" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="top">
+      <div class="wrap top-inner">
+        <a class="brand" href="../" aria-label="BurzBlog home"><span class="mark" aria-hidden="true"></span>BurzBlog</a>
+        <nav aria-label="Main">
+          <a href="./">Docs</a>
+          <a href="https://github.com/weburz/burzblog">GitHub</a>
+          <a class="nav-cta" href="../#install">Download</a>
+        </nav>
+      </div>
+    </header>
+
+    <div class="wrap docs">
+      <nav class="docs-nav" aria-label="Documentation">
+        <div>
+          <p class="docs-nav-title">Guides</p>
+          <ul>
+            <li><a href="self-hosting.html">Running BurzBlog</a></li>
+            <li><a href="terminal.html">Writing from the terminal</a></li>
+            <li><a href="publishing.html" aria-current="page">Connecting your website</a></li>
+            <li><a href="containers.html">Containers</a></li>
+          </ul>
+        </div>
+        <div>
+          <p class="docs-nav-title">Reference</p>
+          <ul>
+            <li><a href="api.html">HTTP API</a></li>
+            <li><a href="security.html">Security model</a></li>
+            <li><a href="architecture.html">Architecture</a></li>
+          </ul>
+        </div>
+      </nav>
+
+      <main id="main" class="docs-main">
+        <article class="doc">
+          <h1>Connecting your website</h1>
+          <nav class="doc-toc" aria-label="On this page">
+            <p>On this page</p>
+            <ul>
+              <li><a href="#1-create-a-build-token">1. Create a build token</a></li>
+              <li><a href="#2-download-posts-in-the-build">2. Download posts in the build</a></li>
+              <li><a href="#the-file-format">The file format</a></li>
+              <li><a href="#example-nuxt-content-on-vercel">Example: Nuxt Content on Vercel</a></li>
+              <li><a href="#redirecting-renamed-posts">Redirecting renamed posts</a></li>
+              <li><a href="#3-rebuild-on-publish">3. Rebuild on publish</a></li>
+              <li><a href="#feeds-and-sitemap">Feeds and sitemap</a></li>
+              <li><a href="#previews-and-images">Previews and images</a></li>
+            </ul>
+          </nav>
+<p>BurzBlog is where posts are written. Your website stays a separate project,
+built and hosted wherever you like. While it builds, it downloads the published
+posts from BurzBlog as Markdown files.</p>
+<p>This keeps the site static and independent: if BurzBlog is down, the site keeps
+serving its last build; only new posts wait.</p>
+<h2 id="1-create-a-build-token">1. Create a build token</h2>
+<p>In the panel, open <strong>Settings → Your website → New build token</strong>. Copy the token
+(it starts with <code>bzb_</code> and is shown once) and store it as a secret environment
+variable in your host, for example <code>BURZBLOG_TOKEN</code> in Vercel.</p>
+<p>A build token can only read published posts. It cannot read drafts, change
+anything or sign in. Revoke it in Settings at any time.</p>
+<h2 id="2-download-posts-in-the-build">2. Download posts in the build</h2>
+<p>Either with curl and tar, which every build image has:</p>
+<pre><code class="language-sh">mkdir -p content/blogs
+curl -fsSL -H &quot;Authorization: Bearer $BURZBLOG_TOKEN&quot; \
+  https://blog.example.com/api/export.tar.gz | tar -xz -C content/blogs
+</code></pre>
+<p>Or with the <code>burzblog</code> binary, which also removes files of posts that are no
+longer published:</p>
+<pre><code class="language-sh">BURZBLOG_SERVER=https://blog.example.com BURZBLOG_TOKEN=bzb_... burzblog export --out content/blogs --clean
+</code></pre>
+<p>The archive contains one <code>&lt;slug&gt;.md</code> per published post and a <code>redirects.json</code>
+with the old addresses of renamed posts (see
+<a href="#redirecting-renamed-posts">Redirecting renamed posts</a>). When BurzBlog knows
+your website's address it also holds <code>feed.xml</code>, <code>feed.atom</code>, <code>feed.json</code> and
+<code>sitemap.xml</code> at the top level; see <a href="#feeds-and-sitemap">Feeds and sitemap</a>.
+<code>burzblog export</code> writes them all next to the posts, and <code>--clean</code> leaves them
+alone.</p>
+<h2 id="the-file-format">The file format</h2>
+<pre><code class="language-markdown">---
+title: &quot;Web Authentication Methods Explained: Pros, Cons, and Best Practices&quot;
+description: A guide to authentication in web applications.
+status: published
+tags:
+  - authentication
+  - web-security
+author: Ada Lovelace
+featured: true
+seo:
+  title: Web authentication methods compared
+  description: Passwords, tokens, sessions and passkeys, and when to use each.
+canonical: https://example.com/blogs/a-comprehensive-guide-authentication-in-web-applications
+timestamps:
+  publishedOn: 2026-04-25T01:46:48Z
+  updatedOn: 2026-05-01T10:00:00Z
+coverImage:
+  url: https://images.example.com/cover.svg
+  alt: A comprehensive guide to authentication in web applications.
+sitemap:
+  loc: /blogs/a-comprehensive-guide-authentication-in-web-applications
+  changefreq: yearly
+---
+
+The post body in Markdown.
+</code></pre>
+<ul>
+<li><code>timestamps.publishedOn</code> is set the first time a post is published and can be
+changed in <strong>Post settings</strong>. <code>updatedOn</code> is only present when the author sets
+it.</li>
+<li><code>coverImage</code> is present only when a cover URL is set. An uploaded cover is an
+absolute address on the BurzBlog origin (<code>https://blog.example.com/media/&lt;name&gt;</code>),
+so the website loads it from there; the export carries no image files. Images
+inserted in the body are absolute addresses the same way. Keep the BurzBlog
+origin reachable, or copy the files from a backup's <code>media/</code> folder to your
+own hosting and rewrite the addresses.</li>
+<li><code>featured: true</code> marks a post a site should lead with; it is written only
+for featured posts, and a file without it is not featured. It must be <code>true</code>
+or <code>false</code>. Posts that kept <code>featured</code> as extra frontmatter have it moved into
+this field when the database is upgraded, and files you import or push with it
+are read the same way. Sites list featured posts with
+<code>GET /api/content/posts?featured=true</code>.</li>
+<li><code>tags</code> (a YAML list), <code>author</code>, <code>seo</code> and <code>canonical</code> are present only when
+set. Tags are lowercase words joined by hyphens, in the author's order; they
+hold categories too (the content API also returns a display label for each,
+see <a href="api.html#tag-labels">tag labels</a>). <code>seo</code> has <code>title</code> and <code>description</code>, and any other keys
+the author added under <code>seo</code> (<code>robots</code>, ...) are written back inside it.
+<code>canonical</code> is an absolute <code>https://</code> address. Posts written before BurzBlog
+modelled these keys, which kept them as extra frontmatter, have them moved
+into these fields when the database is upgraded, and files you import or push
+with them are read the same way.</li>
+<li>Every other frontmatter key the author added (here <code>sitemap</code>) is passed
+through unchanged, so site-specific fields keep working. Extra keys may not
+use merge keys (<code>&lt;&lt;</code>) or YAML tags other than the core ones (<code>!!str</code>,
+<code>!!int</code>, <code>!!float</code>, <code>!!bool</code>, <code>!!null</code>, <code>!!timestamp</code>, <code>!!map</code>, <code>!!seq</code>,
+<code>!!binary</code>); BurzBlog refuses them on save because strict readers such as
+js-yaml would fail or resolve them into other fields.</li>
+<li>Values that YAML readers could misread (<code>yes</code>, <code>on</code>, a bare date) are quoted.</li>
+</ul>
+<h2 id="example-nuxt-content-on-vercel">Example: Nuxt Content on Vercel</h2>
+<p>For example, a Nuxt Content site that reads posts from a GitHub repository:</p>
+<pre><code class="language-ts">// content.config.ts (before)
+const source = { repository: &quot;https://github.com/example/blogposts&quot;, include: &quot;blogs/**.md&quot; };
+</code></pre>
+<p>Point it at a local folder instead:</p>
+<pre><code class="language-ts">// content.config.ts (after)
+const source = process.env.NODE_ENV === &quot;test&quot; ? undefined : { include: &quot;blogs/**.md&quot; };
+</code></pre>
+<p>Download posts before generating, in <code>package.json</code>:</p>
+<pre><code class="language-json">{
+  &quot;scripts&quot;: {
+    &quot;posts&quot;: &quot;mkdir -p content/blogs &amp;&amp; curl -fsSL -H \&quot;Authorization: Bearer $BURZBLOG_TOKEN\&quot; \&quot;$BURZBLOG_SERVER/api/export.tar.gz\&quot; | tar -xz -C content/blogs&quot;,
+    &quot;generate&quot;: &quot;pnpm posts &amp;&amp; nuxt generate&quot;
+  }
+}
+</code></pre>
+<p>Set <code>BURZBLOG_SERVER</code> and <code>BURZBLOG_TOKEN</code> in the Vercel project settings, and
+add <code>content/blogs/</code> to <code>.gitignore</code>. The schema (<code>title</code>, <code>description</code>,
+<code>status</code>, <code>timestamps</code>, <code>coverImage</code>, <code>sitemap</code>) already matches what BurzBlog
+exports; add <code>tags: z.array(z.string()).default([])</code>, <code>author</code>, <code>canonical</code> and
+<code>seo: z.object({ title, description })</code> if your site uses them.</p>
+<h2 id="redirecting-renamed-posts">Redirecting renamed posts</h2>
+<p>When you change a published post's slug, BurzBlog remembers the old one.
+<code>redirects.json</code> in the export (and <code>GET /api/content/redirects</code>) lists them:</p>
+<pre><code class="language-json">{ &quot;items&quot;: [{ &quot;from&quot;: &quot;old-slug&quot;, &quot;to&quot;: &quot;new-slug&quot; }] }
+</code></pre>
+<p><code>to</code> is always the post's current slug, and only published posts are listed.
+Your site decides what an address looks like, so map <code>from</code> and <code>to</code> onto it. In
+a Nuxt site, load the file into <code>routeRules</code> so each old address answers 301:</p>
+<pre><code class="language-ts">// nuxt.config.ts
+import { existsSync, readFileSync } from &quot;node:fs&quot;;
+
+const file = &quot;content/blogs/redirects.json&quot;;
+const moved: { from: string; to: string }[] = existsSync(file)
+  ? JSON.parse(readFileSync(file, &quot;utf8&quot;)).items
+  : [];
+
+export default defineNuxtConfig({
+  routeRules: Object.fromEntries(
+    moved.map(({ from, to }) =&gt; [
+      `/blog/${from}`,
+      { redirect: { to: `/blog/${to}`, statusCode: 301 } },
+    ]),
+  ),
+});
+</code></pre>
+<p><code>routeRules</code> are read when the site builds, and BurzBlog rebuilds it on every
+save of a published post (see below), so a rename is live after the next build.
+For a site that renders on a server and fetches posts at request time, ask the
+content API instead: <code>GET /api/content/posts/old-slug</code> answers <code>308</code> with the
+current slug, so a server middleware only needs to follow it:</p>
+<pre><code class="language-ts">// server/middleware/redirects.ts
+export default defineEventHandler(async (event) =&gt; {
+  const match = event.path.match(/^\/blog\/([a-z0-9-]+)$/);
+  if (!match) return;
+  const res = await fetch(`${process.env.BURZBLOG_SERVER}/api/content/posts/${match[1]}`, {
+    headers: { Authorization: `Bearer ${process.env.BURZBLOG_TOKEN}` },
+    redirect: &quot;manual&quot;,
+  });
+  if (res.status !== 308) return;
+  const { redirect } = await res.json();
+  return sendRedirect(event, `/blog/${redirect}`, 301);
+});
+</code></pre>
+<p>If you export into <code>content/blogs</code>, keep <code>redirects.json</code> out of Nuxt Content's
+<code>include</code> pattern (the example above only matches <code>*.md</code>). Remove a redirect in
+the panel, under the post's slug in its settings, when you no longer want it.</p>
+<h2 id="3-rebuild-on-publish">3. Rebuild on publish</h2>
+<p>Create a deploy hook in your host (Vercel: <strong>Project → Settings → Git → Deploy
+Hooks</strong>) and give BurzBlog its URL through <code>BURZBLOG_DEPLOY_HOOK</code>. See
+<a href="self-hosting.html#2-install-the-service">self-hosting</a>.</p>
+<p>BurzBlog then POSTs to the hook a few seconds after published content changes:
+publishing, unpublishing, archiving a published post, or saving changes to a
+published post. Several saves in a row cause one rebuild. <strong>Settings → Your
+website</strong> shows the last request and has <strong>Rebuild now</strong>.</p>
+<p>The hook URL is treated as a secret: it is never shown in the panel or the API,
+and failures are reported without it.</p>
+<h3 id="scheduled-posts">Scheduled posts</h3>
+<p>A draft can be scheduled to publish itself later (<strong>Publish → Schedule…</strong> in
+the panel, or <code>burzblog schedule</code>). A scheduled post is still a draft: it is
+not in the export, and <strong>your website does not show it until its next build</strong>.
+When the time comes BurzBlog publishes the post and calls the deploy hook like
+a manual publish, so with a hook configured the site rebuilds a few seconds
+later. Without a hook, the post appears at your next build. Scheduling itself
+does not trigger a rebuild. If BurzBlog was stopped at the scheduled time, the
+post publishes when it starts again.</p>
+<h2 id="feeds-and-sitemap">Feeds and sitemap</h2>
+<p>BurzBlog makes an RSS feed, an Atom feed, a JSON Feed and a sitemap for your
+website to publish. Readers never contact BurzBlog, so the site copies the files
+at build time and serves them itself. Tell BurzBlog where the site lives:</p>
+<pre><code class="language-sh">BURZBLOG_SITE_URL=https://example.com
+BURZBLOG_SITE_TITLE=&quot;Example Blog&quot;
+BURZBLOG_SITE_DESCRIPTION=&quot;Notes on software&quot;
+BURZBLOG_POST_PATH=/blog/{slug}      # the default
+BURZBLOG_TAG_PATH=/blog/tags/{tag}   # optional: tag pages in the sitemap
+</code></pre>
+<p>Post links are <code>https://example.com/blog/&lt;slug&gt;</code>, so <code>--post-path</code> must match the
+route your site uses (the default fits a Nuxt Content layout with
+<code>content/blogs/&lt;slug&gt;.md</code> served at <code>/blog/&lt;slug&gt;</code>). Then either take the files
+from the archive you already download:</p>
+<pre><code class="language-sh">curl -fsSL -H &quot;Authorization: Bearer $BURZBLOG_TOKEN&quot; \
+  &quot;$BURZBLOG_SERVER/api/export.tar.gz&quot; | tar -xz -C content/blogs
+mv content/blogs/feed.* content/blogs/sitemap.xml public/
+</code></pre>
+<p>or fetch only what you need, which also lets you ask for a tag feed or more
+posts (<code>?limit=</code> up to 100, <code>?tag=</code>):</p>
+<pre><code class="language-sh">for f in feed.xml feed.atom feed.json sitemap.xml; do
+  curl -fsSL -H &quot;Authorization: Bearer $BURZBLOG_TOKEN&quot; &quot;$BURZBLOG_SERVER/api/content/$f&quot; -o &quot;public/$f&quot;
+done
+</code></pre>
+<p>Files in <code>public/</code> are served at <code>/feed.xml</code> and <code>/sitemap.xml</code> after
+<code>nuxt generate</code>. Reference them from your pages with
+<code>&lt;link rel=&quot;alternate&quot; type=&quot;application/rss+xml&quot; href=&quot;/feed.xml&quot;&gt;</code> and in
+<code>robots.txt</code> as <code>Sitemap: https://example.com/sitemap.xml</code>. Without a site URL
+the routes answer <code>409 site_url_missing</code> and the archive has no such files.
+Feed items hold each post as sanitized HTML; links inside a post are written as
+the author wrote them, so use absolute links in posts that readers will open
+from a feed reader. <strong>Settings → Your website</strong> shows whether the site URL is set.</p>
+<h2 id="previews-and-images">Previews and images</h2>
+<p>The panel's preview renders Markdown without raw HTML, like most static site
+generators' safe defaults, and loads images from their <code>https://</code> URLs. Your
+site's own renderer (for example Nuxt Content with MDC components) decides the
+final look; components the preview does not know appear as plain text there.</p>
+
+          <p class="doc-source"><a href="https://github.com/weburz/burzblog/blob/main/docs/publishing.md">Edit this page on GitHub</a></p>
+        </article>
+      </main>
+    </div>
+
+    <footer class="foot">
+      <div class="wrap foot-inner">
+        <p><span class="mark" aria-hidden="true"></span>BurzBlog is made by <a href="https://weburz.com">Weburz</a> and released under the Apache-2.0 license.</p>
+        <nav aria-label="Footer">
+          <a href="https://github.com/weburz/burzblog">Source</a>
+          <a href="https://github.com/weburz/burzblog/blob/main/CHANGELOG.md">Changelog</a>
+          <a href="security.html">Security</a>
+          <a href="https://github.com/weburz/burzblog/issues">Issues</a>
+        </nav>
+      </div>
+    </footer>
+  </body>
+</html>

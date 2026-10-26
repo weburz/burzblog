@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Running BurzBlog · BurzBlog docs</title>
+    <meta name="description" content="BurzBlog is one binary and one SQLite file. These steps run it under systemd on a Raspberry Pi or any Linux host, behind HTTPS." />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; img-src 'self'; style-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'"
+    />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#fafaf8" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#12171d" media="(prefers-color-scheme: dark)" />
+    <link rel="canonical" href="https://burzblog.weburz.com/docs/self-hosting.html" />
+    <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="../style.css" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="top">
+      <div class="wrap top-inner">
+        <a class="brand" href="../" aria-label="BurzBlog home"><span class="mark" aria-hidden="true"></span>BurzBlog</a>
+        <nav aria-label="Main">
+          <a href="./">Docs</a>
+          <a href="https://github.com/weburz/burzblog">GitHub</a>
+          <a class="nav-cta" href="../#install">Download</a>
+        </nav>
+      </div>
+    </header>
+
+    <div class="wrap docs">
+      <nav class="docs-nav" aria-label="Documentation">
+        <div>
+          <p class="docs-nav-title">Guides</p>
+          <ul>
+            <li><a href="self-hosting.html" aria-current="page">Running BurzBlog</a></li>
+            <li><a href="terminal.html">Writing from the terminal</a></li>
+            <li><a href="publishing.html">Connecting your website</a></li>
+            <li><a href="containers.html">Containers</a></li>
+          </ul>
+        </div>
+        <div>
+          <p class="docs-nav-title">Reference</p>
+          <ul>
+            <li><a href="api.html">HTTP API</a></li>
+            <li><a href="security.html">Security model</a></li>
+            <li><a href="architecture.html">Architecture</a></li>
+          </ul>
+        </div>
+      </nav>
+
+      <main id="main" class="docs-main">
+        <article class="doc">
+          <h1>Running BurzBlog</h1>
+          <nav class="doc-toc" aria-label="On this page">
+            <p>On this page</p>
+            <ul>
+              <li><a href="#1-get-the-binary">1. Get the binary</a></li>
+              <li><a href="#2-install-the-service">2. Install the service</a></li>
+              <li><a href="#3-https-in-front">3. HTTPS in front</a></li>
+              <li><a href="#settings">Settings</a></li>
+              <li><a href="#backups">Backups</a></li>
+              <li><a href="#upgrades">Upgrades</a></li>
+            </ul>
+          </nav>
+<p>BurzBlog is one binary and one SQLite file. These steps run it under systemd on
+a Raspberry Pi or any Linux host, behind HTTPS.</p>
+<h2 id="1-get-the-binary">1. Get the binary</h2>
+<p>Build it, or cross-compile for the Pi from another machine:</p>
+<pre><code class="language-sh">task build                 # bin/burzblog for this machine
+task release               # dist/ for linux/arm64, linux/arm (Pi 2/3 32-bit), amd64, macOS, Windows
+</code></pre>
+<p>Copy the right file to the host and name it <code>burzblog</code>. A 64-bit Raspberry Pi OS
+uses <code>linux-arm64</code>.</p>
+<h2 id="2-install-the-service">2. Install the service</h2>
+<pre><code class="language-sh">sudo useradd --system --home-dir /var/lib/burzblog --shell /usr/sbin/nologin burzblog
+sudo install -m 0755 burzblog /usr/local/bin/burzblog
+sudo install -m 0644 deploy/burzblog.service /etc/systemd/system/burzblog.service
+sudo systemctl edit burzblog
+</code></pre>
+<p>In the override, set the public address people will open:</p>
+<pre><code class="language-ini">[Service]
+Environment=BURZBLOG_ORIGIN=https://blog.example.com
+</code></pre>
+<p>The origin must match the address in the browser exactly (scheme, host and
+port). Browser requests from anywhere else are refused.</p>
+<p>To rebuild your website after publishing, put the deploy hook URL in a private
+file, because it is a secret:</p>
+<pre><code class="language-sh">sudo install -d -m 0755 /etc/burzblog
+echo 'BURZBLOG_DEPLOY_HOOK=https://api.vercel.com/v1/integrations/deploy/...' | sudo tee /etc/burzblog/env &gt;/dev/null
+sudo chmod 0600 /etc/burzblog/env
+</code></pre>
+<p>Start it and create the first account:</p>
+<pre><code class="language-sh">sudo systemctl enable --now burzblog
+journalctl -u burzblog -n 20
+</code></pre>
+<p>While the server has no accounts, it logs a one-time setup link on every start:</p>
+<pre><code class="language-text">msg=&quot;no accounts yet; open https://blog.example.com/setup#token=... to create the first one (valid for 60 minutes; restart to get a new link), or run: burzblog user add &lt;name&gt; --data /var/lib/burzblog&quot;
+</code></pre>
+<p>Open that link in your browser, choose a username and a password of at least 12
+characters, and you are signed in. The link works once and for 60 minutes; after
+that, or once any account exists, it is dead and <code>sudo systemctl restart burzblog</code> prints a new one if it is still needed. The token sits after the <code>#</code>,
+so browsers never send it to your reverse proxy, and the panel removes it from
+the address bar as soon as the page opens. Anyone who can read the service log
+can use the link, so open it before you share the logs.</p>
+<p>Prefer the terminal? Create the account on the host instead; that also ends
+first-run setup:</p>
+<pre><code class="language-sh">sudo -u burzblog burzblog user add ada --data /var/lib/burzblog
+</code></pre>
+<p>Later accounts are managed on the host only: <code>burzblog user add</code>, <code>user passwd</code>,
+<code>user role</code> and <code>user list</code>, always with <code>--data /var/lib/burzblog</code> and as the
+<code>burzblog</code> user. Passwords need at least 12 characters.
+<code>user passwd</code> also signs that account out of every browser.</p>
+<p>An account is an admin or an author. The account first-run setup creates is an
+admin, and so is the first account <code>user add</code> makes; later ones are authors
+unless you add <code>--role admin</code>. An author
+writes and publishes posts and manages their own password, two-factor sign-in
+and tokens; an admin can also delete posts, manage everyone's tokens, change
+settings, deploy, download backups and read the audit log (see
+<a href="security.html">security</a> for the full list). Change an account's role with
+<code>burzblog user role &lt;name&gt; admin|author --data /var/lib/burzblog</code>; the last
+admin cannot be demoted. <code>burzblog audit --data /var/lib/burzblog</code> prints the
+audit log on the host.</p>
+<p>If someone loses their authenticator app and recovery codes,
+<code>burzblog user 2fa-reset &lt;name&gt; --data /var/lib/burzblog</code> turns two-factor
+sign-in off for them and signs them out of every browser. Their terminal logins
+keep working; they can set two-factor up again in Settings.</p>
+<h2 id="3-https-in-front">3. HTTPS in front</h2>
+<p>BurzBlog listens on <code>127.0.0.1:8080</code> and does not terminate TLS. Put a reverse
+proxy in front:</p>
+<ul>
+<li><a href="https://github.com/weburz/burzblog/blob/main/deploy/Caddyfile">deploy/Caddyfile</a>: Caddy obtains certificates itself.</li>
+<li><a href="https://github.com/weburz/burzblog/blob/main/deploy/nginx.conf">deploy/nginx.conf</a>: nginx with your certificates.</li>
+</ul>
+<p>Both forward the original <code>Host</code> header and limit request bodies to 4 MB.
+<code>task proxy:lint</code> validates both files with pinned images.</p>
+<p>On a home network without a public address, a tunnel (for example Cloudflare
+Tunnel) to <code>127.0.0.1:8080</code> works the same way; set <code>BURZBLOG_ORIGIN</code> to the
+tunnel's public HTTPS address. Your website's build must be able to reach this
+address to download posts.</p>
+<h2 id="settings">Settings</h2>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Environment</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--addr</code></td>
+<td><code>BURZBLOG_ADDR</code></td>
+<td><code>127.0.0.1:8080</code></td>
+</tr>
+<tr>
+<td><code>--data</code></td>
+<td><code>BURZBLOG_DATA</code>, then systemd's <code>STATE_DIRECTORY</code></td>
+<td><code>./burzblog-data</code></td>
+</tr>
+<tr>
+<td><code>--origin</code></td>
+<td><code>BURZBLOG_ORIGIN</code></td>
+<td><code>http://&lt;addr&gt;</code></td>
+</tr>
+<tr>
+<td><code>--deploy-hook</code></td>
+<td><code>BURZBLOG_DEPLOY_HOOK</code></td>
+<td>none</td>
+</tr>
+<tr>
+<td><code>--check-updates</code></td>
+<td><code>BURZBLOG_CHECK_UPDATES</code> (<code>true</code> or <code>false</code>)</td>
+<td>off</td>
+</tr>
+<tr>
+<td><code>--site-url</code></td>
+<td><code>BURZBLOG_SITE_URL</code></td>
+<td>none (feeds and sitemap answer 409)</td>
+</tr>
+<tr>
+<td><code>--site-title</code></td>
+<td><code>BURZBLOG_SITE_TITLE</code></td>
+<td>the site URL's host</td>
+</tr>
+<tr>
+<td><code>--site-description</code></td>
+<td><code>BURZBLOG_SITE_DESCRIPTION</code></td>
+<td>the title</td>
+</tr>
+<tr>
+<td><code>--site-language</code></td>
+<td><code>BURZBLOG_SITE_LANGUAGE</code></td>
+<td><code>en</code></td>
+</tr>
+<tr>
+<td><code>--post-path</code></td>
+<td><code>BURZBLOG_POST_PATH</code></td>
+<td><code>/blog/{slug}</code></td>
+</tr>
+<tr>
+<td><code>--tag-path</code></td>
+<td><code>BURZBLOG_TAG_PATH</code></td>
+<td>none (no tag pages in the sitemap)</td>
+</tr>
+</tbody>
+</table>
+<p>Prefer the environment for the deploy hook so it does not show up in process
+listings.</p>
+<h3 id="update-checks">Update checks</h3>
+<p>BurzBlog contacts nobody unless you ask. With <code>--check-updates</code> (or
+<code>BURZBLOG_CHECK_UPDATES=true</code>) it looks for a newer release about 30 seconds
+after it starts and then every 24 hours. Admins see the result in Settings and
+as a dot on the Settings tab; authors do not, and the content API never
+includes it.</p>
+<p>Each check is one <code>GET</code> to
+<code>https://api.github.com/repos/weburz/burzblog/releases/latest</code>. The only thing
+it carries is a <code>User-Agent</code> such as <code>burzblog/1.2.0</code>, which holds your BurzBlog
+version. Nothing about your posts, accounts or the instance's address is sent,
+though GitHub sees your server's IP address as it would for any request. The
+check has a 10 second timeout, reads at most 1 MiB, is not retried before the
+next day and keeps its answer in memory only. If it fails, BurzBlog logs one
+warning and carries on. A development build (a version that is not
+<code>MAJOR.MINOR.PATCH</code>) never reports an update. Remove the flag and restart to
+stop the checks.</p>
+<p>When a newer version exists, upgrade with <code>sudo burzblog upgrade</code> and restart
+the service on a systemd host, or pull the new image and recreate the
+container.</p>
+<p>The <code>--site-*</code>, <code>--post-path</code> and <code>--tag-path</code> settings describe your public
+website (not BurzBlog's own address, <code>--origin</code>). They only build the links in
+the feeds and sitemap. <code>--site-url</code> is an address without a path, such as
+<code>https://example.com</code>; the paths must start with <code>/</code> and hold <code>{slug}</code> or
+<code>{tag}</code> once. They are not secret. BurzBlog refuses to start when one is
+invalid. See <a href="publishing.html#feeds-and-sitemap">publishing</a>.</p>
+<h2 id="backups">Backups</h2>
+<p>Everything lives in <code>burzblog.db</code> in the data directory: posts, every earlier
+version of every post, accounts and token digests. Back up a consistent copy
+while the server runs:</p>
+<pre><code class="language-sh">sudo -u burzblog sqlite3 /var/lib/burzblog/burzblog.db &quot;.backup '/var/lib/burzblog/backup.db'&quot;
+</code></pre>
+<p>Or stop the service and copy <code>burzblog.db</code> (the <code>-wal</code> and <code>-shm</code> files are
+folded in on a clean stop). To restore, stop the service, put the file back as
+<code>burzblog.db</code> owned by <code>burzblog</code> with mode <code>0600</code>, and start it.</p>
+<p>Uploaded images and PDFs are files in the <code>media</code> folder of the data directory,
+not in the database, so copy that folder too (<code>cp -a</code> keeps the owner and modes
+<code>0700</code>/<code>0600</code>); the database and <code>media/</code> together are the complete backup. The
+files have content-derived names, so putting them back restores every address.
+Uploads default to 10 MiB each (<code>--max-upload-mb</code>, <code>BURZBLOG_MAX_UPLOAD_MB</code>);
+raise the request-size limit of your reverse proxy to match (the example
+configs allow 12 MiB).</p>
+<p>For a plain-text copy of every post, drafts and archived ones included, use
+<strong>Settings → Backup</strong> in the panel or <code>burzblog backup [dir]</code>. It writes
+<code>&lt;status&gt;/&lt;slug&gt;.md</code> files, a <code>README.txt</code> and the uploaded files in <code>media/</code>;
+restore each post with <code>burzblog push</code>. It holds current posts only: revisions,
+accounts and tokens live only in the database, so the database file (with the
+<code>media</code> folder) remains the complete backup. To restore uploads, copy the files
+in <code>media/</code> back into the data directory's <code>media</code> folder.</p>
+<p>For a plain-text copy of your published writing, <code>burzblog export --out dir</code>
+writes every published post as a Markdown file.</p>
+<h2 id="upgrades">Upgrades</h2>
+<p>On a binary or systemd install, <code>burzblog upgrade</code> replaces the binary with the
+latest release:</p>
+<pre><code class="language-sh">burzblog upgrade --check      # exit 0 up to date, 7 update available
+sudo burzblog upgrade         # download, verify, replace
+sudo systemctl restart burzblog
+</code></pre>
+<p>It downloads <code>burzblog-&lt;version&gt;-&lt;os&gt;-&lt;arch&gt;</code> and <code>SHA256SUMS-&lt;version&gt;</code> from
+the GitHub release over https only (at most 200 MiB), refuses a file whose
+SHA-256 sum differs from the list, and swaps the binary in with a rename in the
+same directory, so a failure leaves the old binary in place. It writes to the
+directory of the running binary: if that is not writable it says so and
+suggests <code>sudo</code>. It never restarts the service and never runs what it
+downloaded. <code>--version vX.Y.Z</code> picks a release, <code>--force</code> allows a downgrade or
+a reinstall, and a development build (<code>dev</code>) only upgrades with <code>--version</code>.
+You can also replace the binary by hand (<code>sudo install -m 0755 burzblog /usr/local/bin/burzblog</code>).</p>
+<p>Containers are upgraded by pulling the new image
+(<code>docker compose pull &amp;&amp; docker compose up -d</code>); <code>burzblog upgrade</code> refuses to
+run when it finds <code>/.dockerenv</code>, <code>/run/.containerenv</code>, or <code>BURZBLOG_DATA=/data</code>
+with BurzBlog as process 1.</p>
+<h3 id="the-database-upgrades-itself-with-a-backup-first">The database upgrades itself, with a backup first</h3>
+<p>The schema is upgraded when the new binary starts. If the database is older
+than the binary, BurzBlog first writes a consistent copy of it (SQLite
+<code>VACUUM INTO</code>, safe while the file is in use) to</p>
+<pre><code class="language-text">&lt;data&gt;/backups/burzblog-schema&lt;N&gt;-&lt;UTC time&gt;.db
+</code></pre>
+<p>where <code>&lt;N&gt;</code> is the schema it had, logs the path, and then migrates. If the copy
+cannot be made (disk full, permissions on the data directory) it stops with an
+error and does not touch the database. A new database and one already current
+get no copy. The newest five of these files are kept and older ones are
+deleted; nothing else in <code>backups/</code> is touched. The folder is <code>0700</code> and the
+files <code>0600</code>. <code>burzblog backup</code> and <strong>Settings → Backup</strong> do not include it;
+if you back up the data directory itself, it is included.</p>
+<p>An older binary refuses to open a database written by a newer one, rather than
+damaging it. To go back to the older version after an upgrade:</p>
+<ol>
+<li>Stop the service: <code>sudo systemctl stop burzblog</code>.</li>
+<li>Delete <code>burzblog.db-wal</code> and <code>burzblog.db-shm</code> next to the database.</li>
+<li>Copy the backup over the database:
+<code>sudo -u burzblog cp /var/lib/burzblog/backups/burzblog-schema&lt;N&gt;-&lt;time&gt;.db /var/lib/burzblog/burzblog.db</code>
+(mode <code>0600</code>, owned by <code>burzblog</code>). Anything written since the upgrade is
+lost.</li>
+<li>Install the older binary and start the service.</li>
+</ol>
+<p>Uploads in <code>media/</code> are not touched by migrations, so they need no restoring.
+Take your own backup (see above) before an upgrade as well; the automatic copy
+sits on the same disk.</p>
+<p><code>burzblog upgrade</code> calls the GitHub API and downloads release files without
+credentials, so it works only while the releases are publicly downloadable. Its
+tests run against local test servers.</p>
+
+          <p class="doc-source"><a href="https://github.com/weburz/burzblog/blob/main/docs/self-hosting.md">Edit this page on GitHub</a></p>
+        </article>
+      </main>
+    </div>
+
+    <footer class="foot">
+      <div class="wrap foot-inner">
+        <p><span class="mark" aria-hidden="true"></span>BurzBlog is made by <a href="https://weburz.com">Weburz</a> and released under the Apache-2.0 license.</p>
+        <nav aria-label="Footer">
+          <a href="https://github.com/weburz/burzblog">Source</a>
+          <a href="https://github.com/weburz/burzblog/blob/main/CHANGELOG.md">Changelog</a>
+          <a href="security.html">Security</a>
+          <a href="https://github.com/weburz/burzblog/issues">Issues</a>
+        </nav>
+      </div>
+    </footer>
+  </body>
+</html>

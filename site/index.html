@@ -37,7 +37,7 @@
         <a class="brand" href="./" aria-label="BurzBlog home"><span class="mark" aria-hidden="true"></span>BurzBlog</a>
         <nav aria-label="Main">
           <a href="#how-it-works">How it works</a>
-          <a href="https://github.com/weburz/burzblog/tree/main/docs">Docs</a>
+          <a href="docs/">Docs</a>
           <a href="https://github.com/weburz/burzblog">GitHub</a>
           <a class="nav-cta" href="#install">Download</a>
         </nav>
@@ -56,7 +56,7 @@
             </p>
             <div class="actions">
               <a class="button primary" href="#install">Download BurzBlog 2.0</a>
-              <a class="button" href="https://github.com/weburz/burzblog/tree/main/docs">Read the guides</a>
+              <a class="button" href="docs/">Read the guides</a>
             </div>
             <p class="fine">Open source under Apache-2.0. Builds for Linux, Raspberry Pi, macOS and Windows.</p>
           </div>
@@ -136,7 +136,7 @@
               Signing in creates a token for that computer, listed in the panel's settings where you can revoke it.
               Plain <code>http://</code> is refused except on localhost.
             </p>
-            <p><a href="https://github.com/weburz/burzblog/blob/main/docs/terminal.md">Every terminal command</a></p>
+            <p><a href="docs/terminal.html">Every terminal command</a></p>
           </div>
         </div>
       </section>
@@ -188,7 +188,7 @@
 <span class="p">$</span> curl -fsSL -H "Authorization: Bearer $BURZBLOG_TOKEN" \
     https://blog.example.com/api/export.tar.gz | tar -xz -C content/blog</pre>
         </div>
-        <p><a href="https://github.com/weburz/burzblog/blob/main/docs/publishing.md">Connecting your website</a></p>
+        <p><a href="docs/publishing.html">Connecting your website</a></p>
       </section>
 
       <section class="band wrap" aria-labelledby="agents">
@@ -223,7 +223,7 @@
             </div>
             <p>
               The same version check applies, so an agent cannot quietly overwrite a person's edits.
-              <a href="https://github.com/weburz/burzblog/blob/main/docs/terminal.md#scripts-and-ai-agents">A safe edit loop for agents</a>
+              <a href="docs/terminal.html#scripts-and-ai-agents">A safe edit loop for agents</a>
             </p>
           </div>
         </div>
@@ -242,7 +242,7 @@
               <li>Passwords are hashed with Argon2id; browser changes need the right origin and a CSRF token.</li>
               <li>Upgrading is replacing one file and restarting the service.</li>
             </ul>
-            <p><a href="https://github.com/weburz/burzblog/blob/main/docs/self-hosting.md">Running BurzBlog</a></p>
+            <p><a href="docs/self-hosting.html">Running BurzBlog</a></p>
           </div>
           <div class="term">
             <pre><span class="p">$</span> sudo systemctl enable --now burzblog
@@ -321,7 +321,7 @@ Repeat it:
         <nav aria-label="Footer">
           <a href="https://github.com/weburz/burzblog">Source</a>
           <a href="https://github.com/weburz/burzblog/blob/main/CHANGELOG.md">Changelog</a>
-          <a href="https://github.com/weburz/burzblog/blob/main/docs/security.md">Security</a>
+          <a href="docs/security.html">Security</a>
           <a href="https://github.com/weburz/burzblog/issues">Issues</a>
         </nav>
       </div>

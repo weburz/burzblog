@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Documentation · BurzBlog docs</title>
+    <meta name="description" content="Guides for installing, writing with and connecting BurzBlog, and the reference for its API and security model." />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; img-src 'self'; style-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'"
+    />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#fafaf8" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#12171d" media="(prefers-color-scheme: dark)" />
+    <link rel="canonical" href="https://burzblog.weburz.com/docs/" />
+    <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="../style.css" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="top">
+      <div class="wrap top-inner">
+        <a class="brand" href="../" aria-label="BurzBlog home"><span class="mark" aria-hidden="true"></span>BurzBlog</a>
+        <nav aria-label="Main">
+          <a href="./" aria-current="page">Docs</a>
+          <a href="https://github.com/weburz/burzblog">GitHub</a>
+          <a class="nav-cta" href="../#install">Download</a>
+        </nav>
+      </div>
+    </header>
+
+    <div class="wrap docs">
+      <nav class="docs-nav" aria-label="Documentation">
+        <div>
+          <p class="docs-nav-title">Guides</p>
+          <ul>
+            <li><a href="self-hosting.html">Running BurzBlog</a></li>
+            <li><a href="terminal.html">Writing from the terminal</a></li>
+            <li><a href="publishing.html">Connecting your website</a></li>
+            <li><a href="containers.html">Containers</a></li>
+          </ul>
+        </div>
+        <div>
+          <p class="docs-nav-title">Reference</p>
+          <ul>
+            <li><a href="api.html">HTTP API</a></li>
+            <li><a href="security.html">Security model</a></li>
+            <li><a href="architecture.html">Architecture</a></li>
+          </ul>
+        </div>
+      </nav>
+
+      <main id="main" class="docs-main">
+        <h1>Documentation</h1>
+        <p class="lede">Guides for installing, writing with and connecting BurzBlog, and the reference for its API and security model.</p>
+        <h2>Guides</h2>
+        <ul class="docs-cards">
+          <li>
+            <a href="self-hosting.html">Running BurzBlog</a>
+            <p>BurzBlog is one binary and one SQLite file. These steps run it under systemd on a Raspberry Pi or any Linux host, behind HTTPS.</p>
+          </li>
+          <li>
+            <a href="terminal.html">Writing from the terminal</a>
+            <p>The burzblog binary is also the client. Posts always live on the server; files on your computer are working copies.</p>
+          </li>
+          <li>
+            <a href="publishing.html">Connecting your website</a>
+            <p>BurzBlog is where posts are written. Your website stays a separate project, built and hosted wherever you like. While it builds, it downloads the published posts from BurzBlog as Markdown files.</p>
+          </li>
+          <li>
+            <a href="containers.html">Containers</a>
+            <p>The plain binary under systemd is the simplest way to run BurzBlog (see self-hosting). If you prefer containers, the image holds the same single binary on a distroless base, under 20 MB.</p>
+          </li>
+        </ul>
+        <h2>Reference</h2>
+        <ul class="docs-cards">
+          <li>
+            <a href="api.html">HTTP API</a>
+            <p>Everything the panel, the CLI and the website do goes through this JSON API under /api. There are no unauthenticated content routes. The one public route outside /api serves uploaded files at /media/{name}; see Media.</p>
+          </li>
+          <li>
+            <a href="security.html">Security model</a>
+            <p>BurzBlog is a private writing tool for a few trusted authors. Readers never talk to it; they read the website your build produces.</p>
+          </li>
+          <li>
+            <a href="architecture.html">Architecture</a>
+            <p>BurzBlog is one Go binary, burzblog. It is the server, the browser panel it serves, and the terminal client:</p>
+          </li>
+        </ul>
+      </main>
+    </div>
+
+    <footer class="foot">
+      <div class="wrap foot-inner">
+        <p><span class="mark" aria-hidden="true"></span>BurzBlog is made by <a href="https://weburz.com">Weburz</a> and released under the Apache-2.0 license.</p>
+        <nav aria-label="Footer">
+          <a href="https://github.com/weburz/burzblog">Source</a>
+          <a href="https://github.com/weburz/burzblog/blob/main/CHANGELOG.md">Changelog</a>
+          <a href="security.html">Security</a>
+          <a href="https://github.com/weburz/burzblog/issues">Issues</a>
+        </nav>
+      </div>
+    </footer>
+  </body>
+</html>
