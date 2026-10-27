@@ -208,6 +208,9 @@ All notable changes are recorded here, following
   Node 20. Dependabot opens weekly, grouped version-update PRs for Go, the
   panel, GitHub Actions and the Docker base images.
   The image workflow runs its browser gates the same way before it builds.
+- `main` takes changes only through pull requests and the merge queue, with
+  the `go` and `web` checks required, a maintainer review (`.github/CODEOWNERS`)
+  and squash merges. Release tags (`v*`) cannot be moved or deleted.
 - `docs/architecture.md` describes how BurzBlog is built and replaces the
   older design documents. Documentation examples use `example.com`.
 - Build (export) tokens may now read published content through
