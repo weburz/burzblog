@@ -6,7 +6,28 @@ All notable changes are recorded here, following
 
 ## [Unreleased]
 
+### Added
+
+- Full snapshots: `burzblog snapshot create` writes the whole server to one
+  file while it runs (every post and earlier version, accounts, two-factor,
+  tokens, tag labels, the audit log and every upload), `snapshot verify`
+  checks one without restoring it, and `snapshot restore` puts one into a data
+  directory, for example on a new server. Snapshots can be encrypted with a
+  passphrase (scrypt and ChaCha20-Poly1305), `--keep N` prunes old ones, and
+  `-` streams through standard input and output, so another machine can pull
+  one over `ssh`. Restore checks every file and the database before changing
+  anything, refuses while a server runs, and moves a replaced blog aside
+  instead of deleting it.
+- **Settings → Backup** shows admins when the last full snapshot was made, and
+  warns when there is none or it is more than a week old.
+
 ### Changed
+
+- `burzblog serve` holds a shared lock on `<data>/burzblog.lock`, so a
+  restore cannot run under it.
+- The container guide no longer says Coolify's backups include the data
+  volume: they cover Coolify's own databases only. It now shows how to take
+  and restore snapshots of a container.
 
 - Releases are automatic: pushing a `vX.Y.Z` tag runs the Release workflow,
   which runs the gates, builds the binaries, publishes the image and creates

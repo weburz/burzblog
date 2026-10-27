@@ -135,7 +135,7 @@ Exit codes: 0 ok, 1 error, 2 usage, 3 conflict, 4 not found, 5 not signed in,
 		},
 	}
 	root.PersistentFlags().BoolVar(&a.asJSON, "json", false,
-		"print results (list, whoami, new, pull, push, diff, status, publish, unpublish, archive, restore, schedule, unschedule, backup, import, redirects, upgrade) and errors as JSON")
+		"print results (list, whoami, new, pull, push, diff, status, publish, unpublish, archive, restore, schedule, unschedule, backup, import, redirects, upgrade, snapshot) and errors as JSON")
 	root.AddGroup(
 		&cobra.Group{ID: "write", Title: "Writing:"},
 		&cobra.Group{ID: "account", Title: "Connecting:"},
@@ -157,7 +157,7 @@ Exit codes: 0 ok, 1 error, 2 usage, 3 conflict, 4 not found, 5 not signed in,
 		root.AddCommand(c)
 	}
 	root.AddCommand(a.healthCmd())
-	for _, c := range []*cobra.Command{a.serveCmd(), a.userCmd(), a.auditCmd(), a.upgradeCmd()} {
+	for _, c := range []*cobra.Command{a.serveCmd(), a.userCmd(), a.auditCmd(), a.snapshotCmd(), a.upgradeCmd()} {
 		c.GroupID = "host"
 		root.AddCommand(c)
 	}

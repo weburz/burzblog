@@ -101,3 +101,22 @@ func (s *Store) AuditLog(ctx context.Context, limit, offset int) ([]AuditEntry, 
 	}
 	return list, total, rows.Err()
 }
+
+// LastAudit returns the newest entry recording action. It returns ErrNotFound
+// when there is none.
+func (s *Store) LastAudit(ctx context.Context, action string) (*AuditEntry, error) {
+	var e AuditEntry
+	var at string
+	var user, token sql.NullInt64
+	err := s.db.QueryRowContext(ctx, `SELECT id, at, actor_user_id, actor_name, token_id, action, target, remote
+		FROM audit_log WHERE action = ? ORDER BY id DESC LIMIT 1`, action).
+		Scan(&e.ID, &at, &user, &e.ActorName, &token, &e.Action, &e.Target, &e.Remote)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read audit log: %w", err)
+	}
+	e.At, e.ActorUserID, e.TokenID = parseStamp(at), user.Int64, token.Int64
+	return &e, nil
+}

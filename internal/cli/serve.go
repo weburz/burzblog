@@ -112,7 +112,8 @@ public address:
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
 
-			st, err := store.Open(ctx, dir)
+			// Holds the shared lock, so a restore cannot run under the server.
+			st, err := store.OpenShared(ctx, dir)
 			if err != nil {
 				return err
 			}
@@ -255,7 +256,7 @@ func (a *App) userCmd() *cobra.Command {
 	cmd.PersistentFlags().StringVar(&data, "data", "", "data directory (default $BURZBLOG_DATA, $STATE_DIRECTORY or ./burzblog-data)")
 
 	open := func() (*store.Store, error) {
-		return store.Open(context.Background(), a.dataDir(data))
+		return store.OpenShared(context.Background(), a.dataDir(data))
 	}
 	newPassword := func(name string) (string, error) {
 		pw, err := a.secret("New password for " + name + ": ")

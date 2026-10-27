@@ -352,8 +352,9 @@ burzblog backup ~/backups/blog
 </code></pre>
 <p>Writes every post, drafts and archived ones too, to
 <code>&lt;dir&gt;/&lt;status&gt;/&lt;slug&gt;.md</code> with a <code>README.txt</code>. Restore a file with
-<code>burzblog push &lt;file&gt;.md</code>. History is not included; the database file is the
-complete backup (see <a href="self-hosting.html#backups">self-hosting</a>). The panel offers
+<code>burzblog push &lt;file&gt;.md</code>. History is not included; for everything, earlier
+versions and accounts too, run <code>burzblog snapshot create</code> on the server (see
+<a href="self-hosting.html#full-snapshots">self-hosting</a>). The panel offers
 the same download under <strong>Settings → Backup</strong>. Backups and <code>burzblog export</code>
 need an admin account: an author gets a &quot;needs an admin&quot; error (exit code <code>1</code>,
 JSON <code>error.code</code> <code>role</code>).</p>
@@ -411,7 +412,7 @@ or a human).</p>
 means one JSON document on standard output (one line). It is supported by
 <code>list</code>, <code>whoami</code>, <code>new</code>, <code>pull</code>, <code>push</code>, <code>diff</code>, <code>status</code>, <code>publish</code>,
 <code>unpublish</code>, <code>archive</code>, <code>restore</code>, <code>schedule</code>, <code>unschedule</code>, <code>backup</code>,
-<code>import</code>, <code>redirects</code> and <code>upgrade</code>. Other commands ignore it and print their usual text, but their
+<code>import</code>, <code>redirects</code>, <code>upgrade</code> and <code>snapshot</code>. Other commands ignore it and print their usual text, but their
 failures are still JSON. <code>new</code> never opens an editor with <code>--json</code>.</p>
 <table>
 <thead>
@@ -460,6 +461,10 @@ failures are still JSON. <code>new</code> never opens an editor with <code>--jso
 <tr>
 <td><code>upgrade</code></td>
 <td><code>{&quot;from&quot;,&quot;to&quot;,&quot;path&quot;,&quot;restart&quot;}</code>; with <code>--check</code> or when already current <code>{&quot;current&quot;,&quot;latest&quot;,&quot;updateAvailable&quot;}</code></td>
+</tr>
+<tr>
+<td><code>snapshot create</code>, <code>verify</code>, <code>restore</code></td>
+<td><code>{&quot;path&quot;,&quot;size&quot;,&quot;encrypted&quot;,&quot;createdAt&quot;,&quot;version&quot;,&quot;schema&quot;,&quot;posts&quot;,&quot;revisions&quot;,&quot;accounts&quot;,&quot;uploads&quot;,&quot;uploadBytes&quot;,&quot;missing&quot;,&quot;damaged&quot;}</code>; <code>create</code> adds <code>&quot;pruned&quot;</code> when <code>--keep</code> deleted older snapshots, <code>restore</code> adds <code>&quot;replaced&quot;</code> with <code>--force</code>; <code>path</code> and <code>size</code> appear only when <code>create</code> writes a file</td>
 </tr>
 </tbody>
 </table>

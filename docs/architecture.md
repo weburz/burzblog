@@ -43,6 +43,8 @@ internal/store/     SQLite (modernc.org/sqlite, no cgo): posts, revisions,
 internal/auth/      Argon2id passwords, sessions and CSRF, API tokens,
                     sign-in rate limiting, TOTP
 internal/media/     upload type detection and on-disk storage
+internal/snapshot/  full snapshots of the data directory: write, encrypt,
+                    verify and restore
 internal/render/    goldmark (CommonMark + GFM, no raw HTML) and a bluemonday
                     allowlist, with input and output limits
 internal/server/    net/http handlers: the JSON API, content API, feeds,
@@ -75,6 +77,8 @@ single cross-compile covers every platform.
   recorded in the database.
 
 A backup is the data directory: the database file and `media/`.
+`burzblog snapshot create` writes both to one file while the server runs, and
+`snapshot restore` puts them back (see [self-hosting](self-hosting.md#backups)).
 
 ## Access
 

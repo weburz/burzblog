@@ -277,8 +277,9 @@ burzblog backup ~/backups/blog
 
 Writes every post, drafts and archived ones too, to
 `<dir>/<status>/<slug>.md` with a `README.txt`. Restore a file with
-`burzblog push <file>.md`. History is not included; the database file is the
-complete backup (see [self-hosting](self-hosting.md#backups)). The panel offers
+`burzblog push <file>.md`. History is not included; for everything, earlier
+versions and accounts too, run `burzblog snapshot create` on the server (see
+[self-hosting](self-hosting.md#full-snapshots)). The panel offers
 the same download under **Settings → Backup**. Backups and `burzblog export`
 need an admin account: an author gets a "needs an admin" error (exit code `1`,
 JSON `error.code` `role`).
@@ -358,7 +359,7 @@ or a human).
 means one JSON document on standard output (one line). It is supported by
 `list`, `whoami`, `new`, `pull`, `push`, `diff`, `status`, `publish`,
 `unpublish`, `archive`, `restore`, `schedule`, `unschedule`, `backup`,
-`import`, `redirects` and `upgrade`. Other commands ignore it and print their usual text, but their
+`import`, `redirects`, `upgrade` and `snapshot`. Other commands ignore it and print their usual text, but their
 failures are still JSON. `new` never opens an editor with `--json`.
 
 | Command | Output |
@@ -373,6 +374,7 @@ failures are still JSON. `new` never opens an editor with `--json`.
 | `backup` | `{"dir","posts"}` |
 | `redirects` | `{"items":[{"from","to"}]}`; `items` is `[]` when there are none |
 | `upgrade` | `{"from","to","path","restart"}`; with `--check` or when already current `{"current","latest","updateAvailable"}` |
+| `snapshot create`, `verify`, `restore` | `{"path","size","encrypted","createdAt","version","schema","posts","revisions","accounts","uploads","uploadBytes","missing","damaged"}`; `create` adds `"pruned"` when `--keep` deleted older snapshots, `restore` adds `"replaced"` with `--force`; `path` and `size` appear only when `create` writes a file |
 
 The field names are the HTTP API's (see [api.md](api.md#posts)); bodies are
 never included. `publishedOn` is `null` until a post is published, and

@@ -75,14 +75,45 @@ Optional settings go in the environment variables of the resource:
 `BURZBLOG_SITE_URL` and `BURZBLOG_DEPLOY_HOOK` (uncomment them in the file; the
 hook is a secret, mark it as such), and `BURZBLOG_VERSION` to choose the image.
 
-The database lives in the `burzblog-data` named volume; include it in your
-Coolify backups. One instance idles at about 25 MB of memory, and the file
-limits it to 128 MB, which suits a personal blog; raise `mem_limit` for heavy
-imports.
+The database and uploads live in the `burzblog-data` named volume. Coolify's
+scheduled backups cover the databases it manages, not a Compose resource's
+volumes, so back the blog up yourself (see [Backups](#backups)). One instance
+idles at about 25 MB of memory, and the file limits it to 128 MB, which suits a
+personal blog; raise `mem_limit` for heavy imports.
 
 To update, set `BURZBLOG_VERSION` to the new `X.Y.Z` (or to `2` to follow the
 latest 2.x.y on every redeploy) and redeploy. The database is migrated when the
-new version starts and migrations are never undone, so take a backup first.
+new version starts and migrations are never undone, so take a snapshot first.
+
+## Backups
+
+The image has no shell, so run BurzBlog's own commands in the container. A
+snapshot holds everything: posts with every earlier version, accounts and
+uploads (see [self-hosting](self-hosting.md#full-snapshots)). Stream one out
+of the running container to the host, encrypted with a passphrase from the
+environment:
+
+```sh
+docker compose exec -T -e BURZBLOG_SNAPSHOT_PASSPHRASE burzblog \
+  /burzblog snapshot create - > blog-$(date +%F).tar.gz.enc
+```
+
+Run that from cron on another machine over `ssh`, so the copy is not on the
+server's disk. On a Coolify server, find the container with
+`docker ps --filter name=burzblog` and run `docker exec <container> /burzblog
+snapshot create -` the same way.
+
+To restore, stop the service and run the restore in a one-off container on the
+same volume, then start it again:
+
+```sh
+docker compose stop burzblog
+docker compose run --rm -T -e BURZBLOG_SNAPSHOT_PASSPHRASE burzblog snapshot restore - < blog.tar.gz.enc
+docker compose start burzblog
+```
+
+The root filesystem is read-only, so check a snapshot in the data volume:
+`docker compose run --rm -T burzblog snapshot verify - --work /data < blog.tar.gz.enc`.
 
 ## Checks
 

@@ -4,6 +4,7 @@ import type { Settings, Token } from "../types";
 import { errorMessage, request } from "../utils/api";
 import { MIN_PASSWORD, passwordStrength } from "../utils/password-strength";
 import { examplePostUrl, fetchCommand, siteFiles } from "../utils/site";
+import { snapshotState } from "../utils/backup";
 import { themeOptions } from "../utils/theme";
 import { editedLabel, exactTime } from "../utils/time";
 
@@ -24,6 +25,8 @@ const {
 const settings = ref<Settings | null>(null);
 const tokens = ref<Token[] | null>(null);
 const error = ref("");
+
+const snapshotStatus = computed(() => snapshotState(settings.value?.snapshot));
 
 const load = async () => {
   try {
@@ -467,11 +470,56 @@ const scopeUse = (t: Token) =>
       <div class="settings-aside">
         <h2 id="backup-heading" class="section-title">Backup</h2>
         <p class="muted">
-          One download with every post, including drafts and archived ones, as Markdown
-          files.
+          A full snapshot is the whole server in one file: every post and earlier version,
+          accounts and uploads. It is made on the server, and restores onto a new one.
         </p>
       </div>
       <div class="settings-main">
+        <div
+          v-if="settings"
+          class="deploy-card"
+          :data-state="snapshotStatus === 'ok' ? 'ok' : 'failed'"
+        >
+          <div>
+            <p class="deploy-title">
+              <UIcon
+                :name="
+                  snapshotStatus === 'ok'
+                    ? 'i-lucide-shield-check'
+                    : 'i-lucide-circle-alert'
+                "
+                class="size-4"
+              />
+              <template v-if="settings.snapshot"
+                >Last full snapshot
+                {{ editedLabel(settings.snapshot.at).toLowerCase() }}</template
+              >
+              <template v-else>No full snapshot yet</template>
+            </p>
+            <p v-if="settings.snapshot" class="muted">
+              <span class="mono">{{ settings.snapshot.file }}</span
+              >, {{ exactTime(settings.snapshot.at) }}.
+              <template v-if="snapshotStatus === 'stale'">
+                Everything written since then is lost if this server's disk is.
+              </template>
+            </p>
+            <p v-else class="muted">
+              If this server's disk is lost, every post, its history, the accounts and the
+              uploads go with it.
+            </p>
+            <p v-if="snapshotStatus !== 'ok'" class="muted">
+              Have whoever runs this server schedule
+              <span class="mono">burzblog snapshot create</span> and copy the file to
+              another machine; see
+              <a
+                href="https://github.com/weburz/burzblog/blob/main/docs/self-hosting.md#backups"
+                target="_blank"
+                rel="noopener noreferrer"
+                >Backups in the self-hosting guide</a
+              >. Only snapshots made with that command show here.
+            </p>
+          </div>
+        </div>
         <div>
           <UButton
             as="a"
@@ -485,14 +533,8 @@ const scopeUse = (t: Token) =>
           >
         </div>
         <p class="field-hint">
-          History is not included. The database file is the complete backup, with every
-          earlier version; see
-          <a
-            href="https://github.com/weburz/burzblog/blob/main/docs/self-hosting.md#backups"
-            target="_blank"
-            rel="noopener noreferrer"
-            >Backups in the self-hosting guide</a
-          >.
+          Every current post, drafts and archived ones included, as Markdown files with
+          the uploads. Earlier versions and accounts are only in a full snapshot.
         </p>
       </div>
     </section>

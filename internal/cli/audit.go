@@ -40,7 +40,7 @@ remove an entry. Admins can read the same list in the browser panel.`,
 			if limit < 1 || offset < 0 {
 				return usagef("the limit must be 1 or more and the offset 0 or more")
 			}
-			st, err := store.Open(context.Background(), a.dataDir(data))
+			st, err := store.OpenShared(context.Background(), a.dataDir(data))
 			if err != nil {
 				return err
 			}

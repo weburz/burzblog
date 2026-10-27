@@ -234,30 +234,106 @@ the feeds and sitemap. <code>--site-url</code> is an address without a path, suc
 <code>{tag}</code> once. They are not secret. BurzBlog refuses to start when one is
 invalid. See <a href="publishing.html#feeds-and-sitemap">publishing</a>.</p>
 <h2 id="backups">Backups</h2>
-<p>Everything lives in <code>burzblog.db</code> in the data directory: posts, every earlier
-version of every post, accounts and token digests. Back up a consistent copy
-while the server runs:</p>
-<pre><code class="language-sh">sudo -u burzblog sqlite3 /var/lib/burzblog/burzblog.db &quot;.backup '/var/lib/burzblog/backup.db'&quot;
+<p>Everything a server holds is in its data directory: <code>burzblog.db</code> (posts,
+every earlier version of every post, accounts with their password hashes,
+two-factor secrets and roles, token digests, tag labels and the audit log) and
+the <code>media</code> folder with the uploads. A disk that fails takes all of it with it,
+so keep a copy on another machine or in storage elsewhere.</p>
+<h3 id="full-snapshots">Full snapshots</h3>
+<p><code>burzblog snapshot create</code> writes everything to one file while BurzBlog keeps
+running: the database is copied consistently (SQLite <code>VACUUM INTO</code>), then every
+upload it records is added, with a manifest of sizes and SHA-256 checksums.
+It never upgrades the database, so a newly installed binary can snapshot a
+server that has not restarted onto it yet. Run it as the service user:</p>
+<pre><code class="language-sh">sudo -u burzblog burzblog snapshot create --data /var/lib/burzblog
+# ✓ Wrote /var/lib/burzblog/snapshots/burzblog-snapshot-20261027T031700.000Z.tar.gz (4.2 MB).
 </code></pre>
-<p>Or stop the service and copy <code>burzblog.db</code> (the <code>-wal</code> and <code>-shm</code> files are
-folded in on a clean stop). To restore, stop the service, put the file back as
-<code>burzblog.db</code> owned by <code>burzblog</code> with mode <code>0600</code>, and start it.</p>
-<p>Uploaded images and PDFs are files in the <code>media</code> folder of the data directory,
-not in the database, so copy that folder too (<code>cp -a</code> keeps the owner and modes
-<code>0700</code>/<code>0600</code>); the database and <code>media/</code> together are the complete backup. The
-files have content-derived names, so putting them back restores every address.
-Uploads default to 10 MiB each (<code>--max-upload-mb</code>, <code>BURZBLOG_MAX_UPLOAD_MB</code>);
+<p>Without a target it writes to the <code>snapshots</code> folder in the data directory. A
+target ending in <code>.gz</code> or <code>.enc</code> is the file to write; anything else is a
+folder, made when missing. <code>-</code> writes to standard output. <code>--keep N</code> deletes
+all but the newest N snapshots in the folder and touches no other file. An
+upload the database records but the <code>media</code> folder lacks is reported and
+skipped, so one lost file does not stop backups. Each snapshot is recorded in
+the audit log, and admins see the newest one under <strong>Settings → Backup</strong>, which
+warns when there is none or it is more than a week old.</p>
+<p>A snapshot is a plain <code>.tar.gz</code> you can open with <code>tar</code>, holding password
+hashes and two-factor secrets. <strong>Encrypt it when it leaves the server</strong>: put a
+passphrase of at least 12 characters in <code>BURZBLOG_SNAPSHOT_PASSPHRASE</code> or a
+file passed with <code>--passphrase-file</code> (or type one with <code>--encrypt</code>), and the
+snapshot is sealed with it and named <code>.tar.gz.enc</code> (see
+<a href="security.html#snapshots">security</a>). Encryption also proves on restore that
+nobody changed the file; a plain snapshot has checksums against damage, not
+against someone who can edit it. Keep the passphrase somewhere other than
+the server: without it nobody can restore the snapshot, including you.</p>
+<p>Make one every night with a systemd timer, keeping two weeks, encrypted:</p>
+<pre><code class="language-sh">sudo install -d -o burzblog -g burzblog -m 0700 /var/backups/burzblog
+sudo install -m 0600 -o burzblog -g burzblog /dev/null /etc/burzblog/snapshot-passphrase
+sudo -e /etc/burzblog/snapshot-passphrase     # one line: the passphrase
+</code></pre>
+<pre><code class="language-ini"># /etc/systemd/system/burzblog-snapshot.service
+[Unit]
+Description=BurzBlog snapshot
+
+[Service]
+Type=oneshot
+User=burzblog
+ExecStart=/usr/local/bin/burzblog snapshot create /var/backups/burzblog --keep 14 \
+  --data /var/lib/burzblog --passphrase-file /etc/burzblog/snapshot-passphrase
+</code></pre>
+<pre><code class="language-ini"># /etc/systemd/system/burzblog-snapshot.timer
+[Unit]
+Description=Nightly BurzBlog snapshot
+
+[Timer]
+OnCalendar=*-*-* 03:17:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+</code></pre>
+<pre><code class="language-sh">sudo systemctl daemon-reload
+sudo systemctl enable --now burzblog-snapshot.timer
+sudo systemctl start burzblog-snapshot.service   # one now, to check it works
+</code></pre>
+<p>That folder is still on the same disk. Copy it off with the tool you already
+use (<code>rclone</code>, <code>restic</code>, <code>rsync</code>), or pull snapshots from another machine
+instead, which needs nothing extra on the server:</p>
+<pre><code class="language-sh">ssh blog.example.com 'sudo -u burzblog burzblog snapshot create - --data /var/lib/burzblog' &gt; blog-$(date +%F).tar.gz
+</code></pre>
+<p>Check a copy now and then: <code>burzblog snapshot verify &lt;file&gt;</code> reads the whole
+snapshot, checks every checksum and the database's integrity, and reports what
+it holds, without restoring anything. It unpacks into the system's temporary
+folder (or <code>--work &lt;folder&gt;</code>), which needs room for the whole snapshot.</p>
+<h3 id="restoring">Restoring</h3>
+<p>On the new server, install BurzBlog as above, then restore before or instead
+of the first start, as the service user:</p>
+<pre><code class="language-sh">sudo systemctl stop burzblog
+sudo -u burzblog burzblog snapshot restore blog.tar.gz.enc --data /var/lib/burzblog \
+  --passphrase-file /etc/burzblog/snapshot-passphrase
+sudo systemctl start burzblog
+</code></pre>
+<p>Restore refuses while a server runs with the data directory. The whole
+snapshot is checked before anything changes, so a damaged one leaves the
+directory as it was. A directory that already holds a blog is refused; with
+<code>--force</code> its database and uploads are moved to
+<code>&lt;data&gt;/backups/replaced-&lt;UTC time&gt;/</code>, not deleted. Run as root, it gives the
+restored files to the owner of the data directory. Accounts, sessions,
+two-factor and tokens come back as they were, uploads keep their addresses,
+and a snapshot from an older BurzBlog is upgraded during the restore (with a
+backup first). Keep the same public address (<code>BURZBLOG_ORIGIN</code>): posts link
+to their uploads by full address.</p>
+<h3 id="other-copies">Other copies</h3>
+<p><strong>Settings → Backup → Download all posts</strong> and <code>burzblog backup [dir]</code> give a
+plain-text copy of every current post, drafts and archived ones included, as
+<code>&lt;status&gt;/&lt;slug&gt;.md</code> files with a <code>README.txt</code> and the uploads in <code>media/</code>.
+Restore a post with <code>burzblog push</code>. They hold current posts only: earlier
+versions, accounts and tokens are only in a snapshot. <code>burzblog export --out dir</code> writes every published post as a Markdown file.</p>
+<p>Without BurzBlog at hand, a stopped server's data directory is also a complete
+copy: <code>burzblog.db</code> (the <code>-wal</code> and <code>-shm</code> files are folded in on a clean stop)
+and <code>media/</code> (<code>cp -a</code> keeps the owner and modes <code>0600</code>/<code>0700</code>).</p>
+<p>Uploads default to 10 MiB each (<code>--max-upload-mb</code>, <code>BURZBLOG_MAX_UPLOAD_MB</code>);
 raise the request-size limit of your reverse proxy to match (the example
 configs allow 12 MiB).</p>
-<p>For a plain-text copy of every post, drafts and archived ones included, use
-<strong>Settings → Backup</strong> in the panel or <code>burzblog backup [dir]</code>. It writes
-<code>&lt;status&gt;/&lt;slug&gt;.md</code> files, a <code>README.txt</code> and the uploaded files in <code>media/</code>;
-restore each post with <code>burzblog push</code>. It holds current posts only: revisions,
-accounts and tokens live only in the database, so the database file (with the
-<code>media</code> folder) remains the complete backup. To restore uploads, copy the files
-in <code>media/</code> back into the data directory's <code>media</code> folder.</p>
-<p>For a plain-text copy of your published writing, <code>burzblog export --out dir</code>
-writes every published post as a Markdown file.</p>
 <h2 id="upgrades">Upgrades</h2>
 <p>On a binary or systemd install, <code>burzblog upgrade</code> replaces the binary with the
 latest release:</p>

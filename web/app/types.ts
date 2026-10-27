@@ -196,6 +196,14 @@ export interface Settings {
   version: string;
   deploy: DeployStatus;
   site: SiteSettings;
+  // The newest `burzblog snapshot create`, or null before the first.
+  snapshot: SnapshotInfo | null;
+}
+
+export interface SnapshotInfo {
+  at: string;
+  // The file name, or "to standard output", and ", encrypted" when it was.
+  file: string;
 }
 
 export interface UpdateInfo {

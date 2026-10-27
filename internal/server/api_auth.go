@@ -369,7 +369,22 @@ func (s *Server) settings(w http.ResponseWriter, r *http.Request) {
 		"version":  s.cfg.Version,
 		"deploy":   s.deploy.status(),
 		"site":     s.siteSettings(),
+		"snapshot": s.lastSnapshot(r),
 	})
+}
+
+// lastSnapshot is the newest `burzblog snapshot create` the audit log
+// records, or nil when there is none, so admins see how old their newest full
+// backup is.
+func (s *Server) lastSnapshot(r *http.Request) any {
+	e, err := s.store.LastAudit(r.Context(), "snapshot.create")
+	if err != nil {
+		if !errors.Is(err, store.ErrNotFound) {
+			s.log.Warn("read the last snapshot", "err", err)
+		}
+		return nil
+	}
+	return map[string]any{"at": e.At, "file": e.Target}
 }
 
 func (s *Server) triggerDeploy(w http.ResponseWriter, r *http.Request) {
