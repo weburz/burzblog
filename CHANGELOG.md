@@ -207,6 +207,7 @@ All notable changes are recorded here, following
   minutes. Every action is on a Node 24 release, ahead of GitHub retiring
   Node 20. Dependabot opens weekly, grouped version-update PRs for Go, the
   panel, GitHub Actions and the Docker base images.
+  The image workflow runs its browser gates the same way before it builds.
 - `docs/architecture.md` describes how BurzBlog is built and replaces the
   older design documents. Documentation examples use `example.com`.
 - Build (export) tokens may now read published content through
