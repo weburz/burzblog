@@ -6,6 +6,8 @@ All notable changes are recorded here, following
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-10-27
+
 ### Added
 
 - The website counts visits with Umami when the repository variable
@@ -27,8 +29,8 @@ All notable changes are recorded here, following
   [docs/containers.md](docs/containers.md#coolify).
 - `task image:publish` publishes a multi-arch (`linux/amd64`, `linux/arm64`)
   image to `ghcr.io/weburz/burzblog` as `X.Y.Z`, `X.Y`, `X` and `latest`, from a
-  clean `vX.Y.Z` tag; `--dry-run` builds without pushing. The dormant image
-  workflow does the same.
+  clean `vX.Y.Z` tag; `--dry-run` builds without pushing. The image
+  workflow does the same from a tag.
 - Opt-in update notice. With `--check-updates` (`BURZBLOG_CHECK_UPDATES=true`)
   the server checks GitHub for a newer release shortly after start and every
   24 hours; nothing is sent but a `GET` with the BurzBlog version in the
@@ -113,9 +115,8 @@ All notable changes are recorded here, following
   titles weigh most. Content API search results carry a plain-text `snippet`.
   Migration 5 builds the index for existing posts.
 - Two-factor sign-in (TOTP, RFC 6238) for panel accounts, off by default. Turn
-  it on in Settings (password, then a code from an authenticator app; setup shows
-  the key and an `otpauth://` link, no QR code yet) to get ten one-time recovery
-  codes. Sign-in then asks for a code after the password
+  it on in Settings (password, then a code from an authenticator app) to get ten
+  one-time recovery codes. Sign-in then asks for a code after the password
   (`POST /api/login/totp`), codes share the per-username failure limit, a used
   code cannot be replayed, and turning it off needs the password and a code.
   `burzblog login` asks for the code (`--code`, `BURZBLOG_TOTP`), existing
@@ -181,8 +182,8 @@ All notable changes are recorded here, following
   for the computer, checks it against the release's `SHA256SUMS-vX.Y.Z` file and
   never calls `sudo`; `BURZBLOG_VERSION` and `BURZBLOG_INSTALL_DIR` adjust it.
   `task install:test` runs it against a local fake release server.
-- The project website in `site/` (plain HTML, no build step), with a dormant
-  GitHub Pages workflow and `task site:serve` to preview it.
+- The project website in `site/` (plain HTML, no build step), published by a
+  GitHub Pages workflow, with `task site:serve` to preview it.
 - Public-repository files: `SECURITY.md`, `CODE_OF_CONDUCT.md`, issue and pull
   request templates, and a fuller `CONTRIBUTING.md`.
 
@@ -206,6 +207,10 @@ All notable changes are recorded here, following
   minutes. Every action is on a Node 24 release, ahead of GitHub retiring
   Node 20. Dependabot opens weekly, grouped version-update PRs for Go, the
   panel, GitHub Actions and the Docker base images.
+  The image workflow runs its browser gates the same way before it builds.
+- `main` takes changes only through pull requests and the merge queue, with
+  the `go` and `web` checks required, a maintainer review (`.github/CODEOWNERS`)
+  and squash merges. Release tags (`v*`) cannot be moved or deleted.
 - `docs/architecture.md` describes how BurzBlog is built and replaces the
   older design documents. Documentation examples use `example.com`.
 - Build (export) tokens may now read published content through
@@ -252,8 +257,8 @@ All notable changes are recorded here, following
   from its file name, and warns about it otherwise.
 - Terminal output replaces invisible Unicode format characters, such as
   right-to-left overrides, as well as control characters.
-- The website serves its own fonts and sets a strict Content Security Policy,
-  so visitors' browsers contact no third party.
+- The website serves its own fonts and sets a strict Content Security Policy;
+  the only other host it allows is the Umami server, when analytics is on.
 - Exports and backups read posts in batches, so a slow download does not hold
   a database connection.
 
