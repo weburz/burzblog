@@ -6,6 +6,13 @@ All notable changes are recorded here, following
 
 ## [Unreleased]
 
+### Changed
+
+- Releases are automatic: pushing a `vX.Y.Z` tag runs the Release workflow,
+  which runs the gates, builds the binaries, publishes the image and creates
+  the GitHub release with the CHANGELOG section as notes. It replaces the
+  manual image workflow; `task image:publish` stays as a fallback.
+
 ## [2.1.0] - 2026-10-27
 
 ### Added
