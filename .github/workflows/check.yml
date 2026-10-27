@@ -1,6 +1,8 @@
 name: Checks
 on:
   pull_request:
+  # The merge queue tests each queued PR on top of main before merging it.
+  merge_group:
   push:
     branches: [main]
   workflow_dispatch:
@@ -12,7 +14,8 @@ concurrency:
   group: checks-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# Runs on every pull request; `task check` runs the same gates locally.
+# Runs on every pull request and merge-queue entry; `task check` runs the same
+# gates locally. `go` and `web` are required checks for main.
 jobs:
   go:
     runs-on: ubuntu-24.04
