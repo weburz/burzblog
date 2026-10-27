@@ -42,7 +42,9 @@ Each release is published to `ghcr.io/weburz/burzblog` for `linux/amd64` and
 releases whenever the container is pulled again. Pulling without logging in
 needs the GHCR package to be public (package settings, Change visibility).
 
-A maintainer publishes from a clean checkout of the `vX.Y.Z` tag after
+Images are published by the release workflow when a `vX.Y.Z` tag is pushed
+(see [CONTRIBUTING.md](../CONTRIBUTING.md#releasing)). If GitHub Actions is
+unavailable, a maintainer can publish from a clean checkout of the tag after
 `docker login ghcr.io`:
 
 ```sh
@@ -51,8 +53,7 @@ task image:publish                # the same, then push the four tags
 ```
 
 The task refuses a dirty tree, a commit that is not exactly a `vX.Y.Z` tag and
-a version that already exists, and prints the pushed digest. The dormant
-`.github/workflows/image.yml` does the same on a tag.
+a version that already exists, and prints the pushed digest.
 
 ## Coolify
 

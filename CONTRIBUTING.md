@@ -74,5 +74,26 @@ and any limitations. GitHub Actions runs the same checks on every pull request;
 run `task check` locally first and record the result in the PR. Do not bypass
 reviews.
 
+## Releasing
+
+Versions follow [SemVer](https://semver.org/). To release:
+
+1. In a pull request, rename the `## [Unreleased]` section of `CHANGELOG.md` to
+   `## [X.Y.Z] - YYYY-MM-DD` (keep an empty `## [Unreleased]` above it) and
+   bump the version on the website's download links and in
+   `deploy/coolify.yaml`. Merge it.
+2. A maintainer tags the merge commit on `main` and pushes the tag:
+   `git tag -a vX.Y.Z -m "BurzBlog X.Y.Z" && git push origin vX.Y.Z`. Only
+   organization admins can create `v*` tags, and they cannot be moved or deleted.
+3. The Release workflow (`.github/workflows/release.yml`) does the rest:
+   - it runs the browser and Go gates;
+   - it builds the six binaries and `SHA256SUMS-vX.Y.Z`;
+   - it smoke-tests the image and publishes it to `ghcr.io/weburz/burzblog` as
+     `X.Y.Z`, `X.Y`, `X` and `latest`;
+   - it creates the GitHub release with the binaries and the CHANGELOG section
+     (`scripts/release-notes.sh`).
+
+Run the workflow by hand on `main` to test all of it without publishing.
+
 Contributions are accepted under the repository's Apache-2.0 license
 (`LICENSE`); there is no CLA and no sign-off requirement.

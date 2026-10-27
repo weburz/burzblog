@@ -1,6 +1,7 @@
 #!/bin/bash
 # Build, smoke-test and publish the multi-arch container image to GHCR from a
-# clean checkout of a vX.Y.Z tag. Mirrors .github/workflows/image.yml.
+# clean checkout of a vX.Y.Z tag; a fallback for the image step of
+# .github/workflows/release.yml, which publishes on tag pushes.
 # Tags pushed: X.Y.Z (never overwritten), X.Y, X and latest.
 # Requires Docker with buildx and `docker login ghcr.io`.
 # Usage: scripts/image-publish.sh [--dry-run]

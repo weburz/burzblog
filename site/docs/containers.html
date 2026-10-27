@@ -96,14 +96,15 @@ replacing the image never touches your posts;</li>
 <code>latest</code>. Pin <code>X.Y.Z</code> or a digest in production; a floating tag follows new
 releases whenever the container is pulled again. Pulling without logging in
 needs the GHCR package to be public (package settings, Change visibility).</p>
-<p>A maintainer publishes from a clean checkout of the <code>vX.Y.Z</code> tag after
+<p>Images are published by the release workflow when a <code>vX.Y.Z</code> tag is pushed
+(see <a href="https://github.com/weburz/burzblog/blob/main/CONTRIBUTING.md#releasing">CONTRIBUTING.md</a>). If GitHub Actions is
+unavailable, a maintainer can publish from a clean checkout of the tag after
 <code>docker login ghcr.io</code>:</p>
 <pre><code class="language-sh">task image:publish -- --dry-run   # smoke-test and build both platforms, push nothing
 task image:publish                # the same, then push the four tags
 </code></pre>
 <p>The task refuses a dirty tree, a commit that is not exactly a <code>vX.Y.Z</code> tag and
-a version that already exists, and prints the pushed digest. The dormant
-<code>.github/workflows/image.yml</code> does the same on a tag.</p>
+a version that already exists, and prints the pushed digest.</p>
 <h2 id="coolify">Coolify</h2>
 <p><a href="https://coolify.io">Coolify</a> is a self-hosted PaaS. Coolify's one-click
 service catalogue does not list BurzBlog yet, so deploy it as a custom
