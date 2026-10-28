@@ -174,7 +174,7 @@ func TestSnapshotRoundTrip(t *testing.T) {
 			}
 			pass := func() (string, error) { return passphrase, nil }
 
-			res, err := Verify(context.Background(), bytes.NewReader(data), pass, t.TempDir())
+			res, err := Verify(context.Background(), bytes.NewReader(data), pass, nil, t.TempDir())
 			if err != nil || res.Encrypted != (passphrase != "") || res.Manifest.Database.SHA256 != m.Database.SHA256 {
 				t.Fatalf("verify = %+v, %v", res, err)
 			}
@@ -302,7 +302,7 @@ func TestBadSnapshotLeavesTheBlogAlone(t *testing.T) {
 		"no manifest":         tarGz(t, map[string][]byte{store.FileName: []byte("x")}, nil),
 		"checksum mismatch":   swapDatabase(t, data, []byte("SQLite format 3\x00 but not really")),
 		"changed upload":      changeUpload(t, data),
-		"newer format":        withManifest(t, data, func(m *Manifest) { m.Format = 2 }),
+		"newer format":        withManifest(t, data, func(m *Manifest) { m.Format = 3 }),
 		"schema mismatch":     withManifest(t, data, func(m *Manifest) { m.Schema-- }),
 		"unlisted upload":     withManifest(t, data, func(m *Manifest) { m.Media = m.Media[1:] }),
 		"newer schema":        newerSchema(t, from),
@@ -317,7 +317,7 @@ func TestBadSnapshotLeavesTheBlogAlone(t *testing.T) {
 			if _, err := Restore(context.Background(), bytes.NewReader(snap), pass, victim.dir, RestoreOptions{Force: true}); err == nil {
 				t.Fatal("restored a bad snapshot")
 			}
-			if _, err := Verify(context.Background(), bytes.NewReader(snap), pass, t.TempDir()); err == nil {
+			if _, err := Verify(context.Background(), bytes.NewReader(snap), pass, nil, t.TempDir()); err == nil {
 				t.Error("verified a bad snapshot")
 			}
 			after, err := os.ReadFile(filepath.Join(victim.dir, store.FileName))
@@ -359,8 +359,8 @@ func TestSnapshotErrorsAreClear(t *testing.T) {
 	if _, err := Restore(ctx, bytes.NewReader(data[:len(data)/2]), nil, target(), RestoreOptions{}); !errors.Is(err, ErrDamaged) {
 		t.Errorf("cut short: %v", err)
 	}
-	newer := withManifest(t, data, func(m *Manifest) { m.Format = 2 })
-	if _, err := Restore(ctx, bytes.NewReader(newer), nil, target(), RestoreOptions{}); err == nil || !strings.Contains(err.Error(), "format 2") {
+	newer := withManifest(t, data, func(m *Manifest) { m.Format = 3 })
+	if _, err := Restore(ctx, bytes.NewReader(newer), nil, target(), RestoreOptions{}); err == nil || !strings.Contains(err.Error(), "format 3") {
 		t.Errorf("newer format: %v", err)
 	}
 	if _, err := Restore(ctx, bytes.NewReader(newerSchema(t, from)), nil, target(), RestoreOptions{}); err == nil || !strings.Contains(err.Error(), "upgrade BurzBlog") {

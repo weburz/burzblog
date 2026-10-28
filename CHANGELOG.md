@@ -20,6 +20,16 @@ All notable changes are recorded here, following
   instead of deleting it.
 - **Settings → Backup** shows admins when the last full snapshot was made, and
   warns when there is none or it is more than a week old.
+- Automatic snapshots: with `BURZBLOG_SNAPSHOT_EVERY` (such as `24h`) the
+  server makes snapshots on its own, to a folder or to S3-compatible storage
+  (`BURZBLOG_SNAPSHOT_TO=s3://bucket/prefix`, with the `BURZBLOG_S3_*`
+  settings), keeps the newest `BURZBLOG_SNAPSHOT_KEEP` and can ping a
+  heartbeat address after each one. In storage they are always encrypted, and
+  each upload is stored once beside them, so a night's snapshot sends only the
+  database and new uploads. Failures are logged, audited and shown in
+  Settings. `burzblog snapshot create`, `verify`, `restore` and the new `list`
+  work with `s3://` too. The S3 client is a small one on the standard
+  library, tested against AWS's signing examples and MinIO.
 
 ### Changed
 

@@ -77,7 +77,9 @@ unpublish, archive, restore, schedule and unschedule (including a scheduled
 post the server publishes itself, as actor `scheduler`); post deletion; tag label
 changes (`tag.label`); slug
 redirect removal; file uploads and deletions; a manual website rebuild; and
-backup downloads; full snapshots made and restored on the host. Changes made on
+backup downloads; full snapshots made and restored on the host, and automatic
+snapshots that worked (`snapshot.create`) or failed (`snapshot.fail`) as actor
+`scheduler`. Changes made on
 the host with `burzblog user` and `burzblog snapshot` are recorded as actor
 `host`. Failed sign-ins for names that do not exist are not recorded, so repeating them cannot grow the
 log; rate-limited attempts are not recorded either. A row is never updated or
@@ -284,7 +286,9 @@ is called only when you set one. Update checks are opt-in
 that holds the BurzBlog version, with a timeout and a response size cap, and
 nothing about posts, accounts or the instance address. The result is shown only
 to admins through `GET /api/updates`; failures never affect anything else. See
-[self-hosting](self-hosting.md#update-checks).
+[self-hosting](self-hosting.md#update-checks). Automatic snapshots, when set
+up, send encrypted snapshots to the storage you name and, optionally, a `GET`
+to your heartbeat address after each one.
 
 ## Snapshots
 
@@ -304,12 +308,15 @@ restores, so keep it where only you can write, or encrypt it.
 
 An encrypted snapshot (`BURZBLOG_SNAPSHOT_PASSPHRASE`, `--passphrase-file` or
 `--encrypt`) starts with a header holding the scrypt cost (N = 2^15, r = 8,
-p = 1, about 32 MiB), a random 16-byte salt and a 16-byte check value. scrypt
-turns the passphrase and salt into a 256-bit key for this file only, plus the
-check value, which tells a wrong passphrase apart from a damaged file without
-decrypting anything. The content is sealed in 64 KiB chunks with
-ChaCha20-Poly1305; each chunk's nonce is its number with a flag on the last
-one, and the header is authenticated with every chunk. A changed, reordered,
+p = 1, about 32 MiB), a random 16-byte salt, a 16-byte check value and a random
+16-byte file nonce. scrypt turns the passphrase and salt into a 256-bit master
+key and the check value, which tells a wrong passphrase apart from a damaged
+file without decrypting anything. Each file's key is HMAC-SHA256 of the master
+key and its file nonce, so the files one run seals under one salt (a remote
+snapshot, its manifest and its uploads) never share a key, and scrypt runs
+once per run. The content is sealed in 64 KiB chunks with ChaCha20-Poly1305;
+each chunk's nonce is its number with a flag on the last one, and the header
+is authenticated with every chunk. A changed, reordered,
 missing or extra chunk, a file cut short and an edited header all fail. A
 header asking for more than N = 2^16 with r = 8 and p = 1 (64 MiB, one pass)
 is refused before scrypt runs, so a crafted file cannot exhaust a small
@@ -329,6 +336,30 @@ exclusively, so it refuses while any of them runs, and they refuse to start
 during a restore. Restore keeps the lock until the restored database is
 upgraded and the restore is recorded. Replaced data is moved aside, never
 deleted. Restored files are synced to disk before they are renamed into place.
+
+**Snapshots in object storage** (`s3://`) must be encrypted. The bucket holds
+the snapshot, a copy of its manifest for pruning, and each upload once, all
+sealed as above; object names show only times and the uploads' content-derived
+names. An upload whose bytes no longer match its checksum is left out rather
+than stored under a name that promises other content. Restoring fetches every
+upload the manifest lists and checks it like the rest. Requests are signed with
+AWS Signature Version 4 over https (plain http only to a loopback address, for a
+local test server), carry the SHA-256 of their body, and are retried only on
+network errors and 5xx answers. The access key, secret, passphrase and
+heartbeat address are read from the environment (the secret and the
+passphrase also from a file) and never returned by the API, shown in the panel
+or logged; error messages carry the storage's
+error code and the bucket, not credentials. Give the key access to one bucket
+only.
+
+Someone who can write to the bucket cannot make a restore install their own
+data: only encrypted snapshots are listed and read from storage, every upload
+must be encrypted too and match the sealed manifest, a snapshot's sealed time
+must match the name it is stored under (so an older one copied over a newer
+name is refused), and names dated more than an hour ahead are ignored rather
+than taken as the newest. They can still delete snapshots, which makes the
+newest remaining one an older state; keep a copy elsewhere, or use the
+storage's object lock or versioning, if that matters to you.
 
 ## What is out of scope
 

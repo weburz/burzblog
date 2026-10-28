@@ -463,8 +463,12 @@ failures are still JSON. <code>new</code> never opens an editor with <code>--jso
 <td><code>{&quot;from&quot;,&quot;to&quot;,&quot;path&quot;,&quot;restart&quot;}</code>; with <code>--check</code> or when already current <code>{&quot;current&quot;,&quot;latest&quot;,&quot;updateAvailable&quot;}</code></td>
 </tr>
 <tr>
+<td><code>snapshot list</code></td>
+<td><code>{&quot;items&quot;:[{&quot;name&quot;,&quot;path&quot;,&quot;size&quot;}]}</code>, oldest first</td>
+</tr>
+<tr>
 <td><code>snapshot create</code>, <code>verify</code>, <code>restore</code></td>
-<td><code>{&quot;path&quot;,&quot;size&quot;,&quot;encrypted&quot;,&quot;createdAt&quot;,&quot;version&quot;,&quot;schema&quot;,&quot;posts&quot;,&quot;revisions&quot;,&quot;accounts&quot;,&quot;uploads&quot;,&quot;uploadBytes&quot;,&quot;missing&quot;,&quot;damaged&quot;}</code>; <code>create</code> adds <code>&quot;pruned&quot;</code> when <code>--keep</code> deleted older snapshots, <code>restore</code> adds <code>&quot;replaced&quot;</code> with <code>--force</code>; <code>path</code> and <code>size</code> appear only when <code>create</code> writes a file</td>
+<td><code>{&quot;path&quot;,&quot;size&quot;,&quot;encrypted&quot;,&quot;createdAt&quot;,&quot;version&quot;,&quot;schema&quot;,&quot;posts&quot;,&quot;revisions&quot;,&quot;accounts&quot;,&quot;uploads&quot;,&quot;uploadBytes&quot;,&quot;missing&quot;,&quot;damaged&quot;}</code>; <code>create</code> adds <code>&quot;pruned&quot;</code> when <code>--keep</code> deleted older snapshots, <code>restore</code> adds <code>&quot;replaced&quot;</code> with <code>--force</code>; <code>create</code> to <code>s3://</code> adds <code>&quot;sent&quot;</code>, the uploads it sent; <code>path</code> and <code>size</code> appear only when <code>create</code> writes a file</td>
 </tr>
 </tbody>
 </table>

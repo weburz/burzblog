@@ -142,3 +142,60 @@ func TestEncryptNeedsALongPassphrase(t *testing.T) {
 		t.Error("a 5-character passphrase was accepted")
 	}
 }
+
+func sealWith(t *testing.T, k *sealKey, plain []byte) []byte {
+	t.Helper()
+	var out bytes.Buffer
+	w, err := k.sealTo(&out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.Write(plain)
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return out.Bytes()
+}
+
+func TestFilesSealedTogetherNeverShareAKey(t *testing.T) {
+	k, err := newSealKey(testPassphrase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain := bytes.Repeat([]byte("same bytes "), 10000)
+	a, b := sealWith(t, k, plain), sealWith(t, k, plain)
+	h := headerSize()
+	if bytes.Equal(a[h:h+64], b[h:h+64]) {
+		t.Fatal("two files sealed in one run produced the same ciphertext: a key and nonce were reused")
+	}
+	// Chunk 0 of one file must not open inside the other.
+	swapped := append(append([]byte{}, a[:h]...), b[h:]...)
+	if _, err := unseal(swapped, testPassphrase); !errors.Is(err, ErrDamaged) {
+		t.Errorf("a chunk moved between files: %v", err)
+	}
+	// One passphrase derivation opens every file of the run.
+	ring := newKeyring(testPassphrase)
+	for _, f := range [][]byte{a, b, sealWith(t, k, nil)} {
+		r, err := ring.open(bufio.NewReader(bytes.NewReader(f)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := io.ReadAll(r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if ring.derived != 1 {
+		t.Errorf("scrypt ran %d times for three files of one run", ring.derived)
+	}
+	if _, err := newKeyring("not the passphrase").open(bufio.NewReader(bytes.NewReader(a))); !errors.Is(err, ErrPassphrase) {
+		t.Errorf("wrong passphrase through a keyring: %v", err)
+	}
+}
+
+func TestDecryptRefusesChangedFileNonce(t *testing.T) {
+	sealed := seal(t, []byte("hello"), 1)
+	sealed[headerSize()-1] ^= 1
+	if _, err := unseal(sealed, testPassphrase); !errors.Is(err, ErrDamaged) {
+		t.Errorf("changed file nonce: %v", err)
+	}
+}
