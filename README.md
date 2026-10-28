@@ -43,7 +43,7 @@
 | Image and PDF uploads | Scheduled publishing | Append-only audit log |
 | Full-text search | Redirects for renamed posts | Automatic upgrades of the database |
 | Revision history with restore | Deploy hook to rebuild your site | systemd, Docker or Coolify |
-| Light and dark themes, phone layout | Custom frontmatter kept as JSON | Encrypted full backups, one command |
+| Light and dark themes, phone layout | Custom frontmatter kept as JSON | Automatic encrypted backups to S3 |
 
 ## Install
 

@@ -133,6 +133,19 @@ personal blog; raise <code>mem_limit</code> for heavy imports.</p>
 latest 2.x.y on every redeploy) and redeploy. The database is migrated when the
 new version starts and migrations are never undone, so take a snapshot first.</p>
 <h2 id="backups">Backups</h2>
+<p>The simplest backup is automatic: set these in the environment (in Coolify,
+the resource's environment variables, marking the keys and the passphrase as
+secrets) and the server sends an encrypted snapshot to S3-compatible storage
+every day, sending each upload only once:</p>
+<pre><code class="language-sh">BURZBLOG_SNAPSHOT_EVERY=24h
+BURZBLOG_SNAPSHOT_TO=s3://example-backups/blog-name/   # one prefix per blog
+BURZBLOG_SNAPSHOT_PASSPHRASE=...                       # keep a copy off the server
+BURZBLOG_S3_ENDPOINT=https://&lt;account&gt;.r2.cloudflarestorage.com
+BURZBLOG_S3_ACCESS_KEY_ID=...
+BURZBLOG_S3_SECRET_ACCESS_KEY=...
+</code></pre>
+<p>See <a href="self-hosting.html#automatic-snapshots">automatic snapshots</a> for every
+setting. Several blogs can share one bucket with different prefixes.</p>
 <p>The image has no shell, so run BurzBlog's own commands in the container. A
 snapshot holds everything: posts with every earlier version, accounts and
 uploads (see <a href="self-hosting.html#full-snapshots">self-hosting</a>). Stream one out
@@ -150,6 +163,8 @@ same volume, then start it again:</p>
 docker compose run --rm -T -e BURZBLOG_SNAPSHOT_PASSPHRASE burzblog snapshot restore - &lt; blog.tar.gz.enc
 docker compose start burzblog
 </code></pre>
+<p>From the bucket instead, pass the same <code>BURZBLOG_S3_*</code> settings and the
+passphrase to the one-off container and restore <code>s3://example-backups/blog-name/</code>.</p>
 <p>The root filesystem is read-only, so check a snapshot in the data volume:
 <code>docker compose run --rm -T burzblog snapshot verify - --work /data &lt; blog.tar.gz.enc</code>.</p>
 <h2 id="checks">Checks</h2>

@@ -374,7 +374,8 @@ failures are still JSON. `new` never opens an editor with `--json`.
 | `backup` | `{"dir","posts"}` |
 | `redirects` | `{"items":[{"from","to"}]}`; `items` is `[]` when there are none |
 | `upgrade` | `{"from","to","path","restart"}`; with `--check` or when already current `{"current","latest","updateAvailable"}` |
-| `snapshot create`, `verify`, `restore` | `{"path","size","encrypted","createdAt","version","schema","posts","revisions","accounts","uploads","uploadBytes","missing","damaged"}`; `create` adds `"pruned"` when `--keep` deleted older snapshots, `restore` adds `"replaced"` with `--force`; `path` and `size` appear only when `create` writes a file |
+| `snapshot list` | `{"items":[{"name","path","size"}]}`, oldest first |
+| `snapshot create`, `verify`, `restore` | `{"path","size","encrypted","createdAt","version","schema","posts","revisions","accounts","uploads","uploadBytes","missing","damaged"}`; `create` adds `"pruned"` when `--keep` deleted older snapshots, `restore` adds `"replaced"` with `--force`; `create` to `s3://` adds `"sent"`, the uploads it sent; `path` and `size` appear only when `create` writes a file |
 
 The field names are the HTTP API's (see [api.md](api.md#posts)); bodies are
 never included. `publishedOn` is `null` until a post is published, and

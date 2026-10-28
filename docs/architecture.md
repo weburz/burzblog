@@ -44,7 +44,8 @@ internal/auth/      Argon2id passwords, sessions and CSRF, API tokens,
                     sign-in rate limiting, TOTP
 internal/media/     upload type detection and on-disk storage
 internal/snapshot/  full snapshots of the data directory: write, encrypt,
-                    verify and restore
+                    verify, restore, store in a bucket, the schedule
+internal/s3/        a small S3-compatible client (Signature Version 4)
 internal/render/    goldmark (CommonMark + GFM, no raw HTML) and a bluemonday
                     allowlist, with input and output limits
 internal/server/    net/http handlers: the JSON API, content API, feeds,

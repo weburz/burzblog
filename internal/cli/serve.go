@@ -20,6 +20,7 @@ import (
 	"github.com/weburz/burzblog/internal/auth"
 	"github.com/weburz/burzblog/internal/media"
 	"github.com/weburz/burzblog/internal/server"
+	"github.com/weburz/burzblog/internal/snapshot"
 	"github.com/weburz/burzblog/internal/store"
 )
 
@@ -41,7 +42,8 @@ const maxUploadMBLimit = 256
 func (a *App) serveCmd() *cobra.Command {
 	var addr, data, origin, hook string
 	var checkUpdates bool
-	var maxUploadMB int
+	var maxUploadMB, snapKeep int
+	var snapEvery, snapTo string
 	var cfg server.Config // holds the site settings until serving
 	cmd := &cobra.Command{
 		Use:   "serve",
@@ -126,6 +128,13 @@ public address:
 				return err
 			}
 			cfg.Origin, cfg.DeployHook, cfg.Panel, cfg.Version, cfg.Logger = origin, hook, a.Panel, a.Version, log
+			sched, err := a.snapshotSchedule(snapEvery, snapTo, snapKeep, cmd.Flags().Changed("snapshot-keep"), st, dir, log)
+			if err != nil {
+				return err
+			}
+			if sched != nil {
+				cfg.SnapshotSchedule = func() any { return sched.Status() }
+			}
 			srv, err := server.New(cfg, st, svc)
 			if err != nil {
 				return err
@@ -136,6 +145,15 @@ public address:
 
 			srv.StartScheduler(ctx)
 			srv.StartUpdateChecks(ctx)
+			// Closed when the schedule has stopped, so the store is not closed
+			// under a snapshot and its working copy is always removed.
+			schedDone := make(chan struct{})
+			if sched == nil {
+				close(schedDone)
+			} else {
+				go func() { sched.Run(ctx); close(schedDone) }()
+				log.Info("automatic snapshots are on", "every", sched.Every.String(), "to", sched.To.String(), "keep", sched.Keep)
+			}
 
 			ln, err := net.Listen("tcp", addr)
 			if err != nil {
@@ -168,12 +186,20 @@ public address:
 				log.Warn("shutdown", "err", err)
 			}
 			srv.Close(shutdown)
+			select {
+			case <-schedDone:
+			case <-shutdown.Done():
+				log.Warn("a snapshot was still being made at shutdown")
+			}
 			return nil
 		},
 	}
 	cmd.Flags().StringVar(&addr, "addr", "", "address to listen on (default 127.0.0.1:8080)")
 	cmd.Flags().StringVar(&data, "data", "", "directory for the database (default $BURZBLOG_DATA, $STATE_DIRECTORY or ./burzblog-data)")
 	cmd.Flags().IntVar(&maxUploadMB, "max-upload-mb", 0, "largest upload in MiB (default 10)")
+	cmd.Flags().StringVar(&snapEvery, "snapshot-every", "", "make a snapshot this often, such as 24h (default off; $BURZBLOG_SNAPSHOT_EVERY)")
+	cmd.Flags().StringVar(&snapTo, "snapshot-to", "", "folder or s3://bucket/prefix for automatic snapshots (default <data>/snapshots)")
+	cmd.Flags().IntVar(&snapKeep, "snapshot-keep", 14, "how many automatic snapshots to keep; 0 keeps all")
 	cmd.Flags().StringVar(&origin, "origin", "", "public URL people open, e.g. https://blog.example.com (default http://<addr>)")
 	cmd.Flags().StringVar(&hook, "deploy-hook", "", "URL to POST after published posts change; prefer BURZBLOG_DEPLOY_HOOK, it is a secret")
 	cmd.Flags().BoolVar(&checkUpdates, "check-updates", false, "look for a newer release on GitHub once a day (default off; sends nothing but a GET with the version); or BURZBLOG_CHECK_UPDATES=true")
@@ -463,4 +489,44 @@ manage the server.`,
 	}
 	cmd.AddCommand(add, passwd, reset2FA, setRole, list)
 	return cmd
+}
+
+// snapshotSchedule builds the automatic snapshots from the flags and
+// BURZBLOG_SNAPSHOT_* settings, or returns nil when they are off.
+func (a *App) snapshotSchedule(every, to string, keep int, keepSet bool, st *store.Store, dir string, log *slog.Logger) (*snapshot.Schedule, error) {
+	every = firstOf(every, a.Getenv("BURZBLOG_SNAPSHOT_EVERY"))
+	if every == "" || every == "0" || every == "off" {
+		return nil, nil
+	}
+	d, err := time.ParseDuration(every)
+	if err != nil {
+		return nil, fmt.Errorf("BURZBLOG_SNAPSHOT_EVERY must be a duration such as 24h or 6h, got %q", every)
+	}
+	if v := a.Getenv("BURZBLOG_SNAPSHOT_KEEP"); v != "" && !keepSet {
+		if keep, err = strconv.Atoi(v); err != nil {
+			return nil, fmt.Errorf("BURZBLOG_SNAPSHOT_KEEP must be a whole number, got %q", v)
+		}
+	}
+	to = firstOf(to, a.Getenv("BURZBLOG_SNAPSHOT_TO"), filepath.Join(dir, "snapshots"))
+	pass, err := a.snapshotPassphrase("")
+	if err != nil {
+		return nil, err
+	}
+	var dest snapshot.Destination = snapshot.Folder(to)
+	if isRemote(to) {
+		r, name, err := a.remote(to)
+		if err != nil {
+			return nil, err
+		}
+		if name != "" {
+			return nil, fmt.Errorf("BURZBLOG_SNAPSHOT_TO names a bucket and prefix (s3://bucket/prefix), not one snapshot")
+		}
+		dest = r
+	}
+	s := &snapshot.Schedule{Every: d, Keep: keep, To: dest, Passphrase: pass,
+		Heartbeat: a.Getenv("BURZBLOG_SNAPSHOT_HEARTBEAT"), Version: a.Version, Store: st, DataDir: dir, Log: log}
+	if err := s.Check(); err != nil {
+		return nil, err
+	}
+	return s, nil
 }

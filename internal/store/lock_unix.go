@@ -12,11 +12,11 @@ import (
 
 // lockDir takes an advisory flock on LockFile without waiting. The kernel
 // drops it when the process ends, however it ends.
-func lockDir(dir string, exclusive bool) (func(), error) {
+func lockDir(dir, name string, exclusive bool) (func(), error) {
 	// Read-only and world-readable: flock needs no write access, so a lock
 	// file a root restore created still opens for the service user. It holds
 	// nothing.
-	f, err := os.OpenFile(filepath.Join(dir, LockFile), os.O_RDONLY|os.O_CREATE, 0o644)
+	f, err := os.OpenFile(filepath.Join(dir, name), os.O_RDONLY|os.O_CREATE, 0o644)
 	if err != nil {
 		return nil, fmt.Errorf("lock the data directory: %w", err)
 	}

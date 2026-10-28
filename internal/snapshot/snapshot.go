@@ -1,5 +1,5 @@
-// Package snapshot writes and restores the complete state of a BurzBlog
-// server: a consistent copy of the database (posts, every revision, accounts,
+// Package snapshot writes and restores the complete state of one blog, its
+// data directory: a consistent copy of the database (posts, every revision, accounts,
 // two-factor secrets, token digests, tag labels, the audit log) and every
 // uploaded file. It knows nothing about HTTP.
 //
@@ -33,8 +33,13 @@ import (
 	"github.com/weburz/burzblog/internal/store"
 )
 
-// FormatVersion is the snapshot layout this BurzBlog writes and reads.
-const FormatVersion = 1
+// FormatVersion is the layout of a snapshot that carries its uploads.
+// RemoteFormat is one stored in a bucket, whose uploads are stored once each
+// beside it (see remote.go) and only listed in its manifest.
+const (
+	FormatVersion = 1
+	RemoteFormat  = 2
+)
 
 const (
 	manifestName = "manifest.json"
@@ -102,13 +107,68 @@ type Options struct {
 	Now func() time.Time
 }
 
-// Create writes a snapshot of the server whose database is st and whose data
+// Create writes a snapshot of the blog whose database is st and whose data
 // directory is dataDir to w. It is safe while a server runs: the database is
 // copied with VACUUM INTO first, and the uploads the copy records are added
 // after it. Uploads are never changed once stored, so the two agree. A file
 // the database records but storage lacks is listed in Missing, not fatal, so
 // one lost file cannot stop every later backup.
 func Create(ctx context.Context, st *store.Store, dataDir string, w io.Writer, opt Options) (*Manifest, error) {
+	snap, cleanup, err := prepare(ctx, st, dataDir, opt)
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
+	var key *sealKey
+	if opt.Passphrase != "" {
+		if key, err = newSealKey(opt.Passphrase); err != nil {
+			return nil, err
+		}
+	}
+	m := snap.manifest(FormatVersion)
+	dir := filepath.Join(dataDir, media.DirName)
+	err = writeArchive(w, key, m, snap.db, func(tw *tar.Writer) error {
+		for _, rec := range snap.sum.Media {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			if !media.ValidName(rec.FileName) {
+				m.Missing = append(m.Missing, rec.FileName)
+				continue
+			}
+			f, err := addFile(tw, mediaPrefix+rec.FileName, filepath.Join(dir, rec.FileName), rec.CreatedAt)
+			if errors.Is(err, fs.ErrNotExist) {
+				m.Missing = append(m.Missing, rec.FileName)
+				continue
+			}
+			if err != nil {
+				return fmt.Errorf("add upload %s: %w", rec.FileName, err)
+			}
+			if f.SHA256 != rec.SHA256 {
+				m.Damaged = append(m.Damaged, rec.FileName)
+			}
+			m.Media = append(m.Media, f)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// prepared is a consistent copy of the database, about to be archived.
+type prepared struct {
+	db      string // the copy
+	work    string // its working folder in the data directory
+	sum     *store.FileSummary
+	at      time.Time
+	version string
+}
+
+// prepare copies the database into a working folder in dataDir and checks
+// the copy. cleanup removes the folder.
+func prepare(ctx context.Context, st *store.Store, dataDir string, opt Options) (*prepared, func(), error) {
 	now := time.Now
 	if opt.Now != nil {
 		now = opt.Now
@@ -116,83 +176,73 @@ func Create(ctx context.Context, st *store.Store, dataDir string, w io.Writer, o
 	sweep(dataDir, ".snapshot-")
 	work, err := os.MkdirTemp(dataDir, ".snapshot-")
 	if err != nil {
-		return nil, fmt.Errorf("make a working folder in the data directory: %w", err)
+		return nil, nil, fmt.Errorf("make a working folder in the data directory: %w", err)
 	}
-	defer os.RemoveAll(work)
+	cleanup := func() { os.RemoveAll(work) }
 	dbCopy := filepath.Join(work, store.FileName)
 	if err := st.CopyTo(ctx, dbCopy); err != nil {
-		return nil, fmt.Errorf("copy the database (is the disk full?): %w", err)
+		cleanup()
+		return nil, nil, fmt.Errorf("copy the database (is the disk full?): %w", err)
 	}
 	sum, err := store.InspectFile(ctx, dbCopy)
 	if err != nil {
-		return nil, fmt.Errorf("check the database copy: %w", err)
+		cleanup()
+		return nil, nil, fmt.Errorf("check the database copy: %w", err)
 	}
-	m := &Manifest{
-		Format: FormatVersion, CreatedAt: now().UTC(), Version: opt.Version, Schema: sum.Schema,
-		Posts: sum.Posts, Revisions: sum.Revisions, Accounts: sum.Accounts, Media: []File{},
-	}
+	return &prepared{db: dbCopy, work: work, sum: sum, at: now().UTC(), version: opt.Version}, cleanup, nil
+}
 
+func (p *prepared) manifest(format int) *Manifest {
+	return &Manifest{
+		Format: format, CreatedAt: p.at, Version: p.version, Schema: p.sum.Schema,
+		Posts: p.sum.Posts, Revisions: p.sum.Revisions, Accounts: p.sum.Accounts, Media: []File{},
+	}
+}
+
+// writeArchive writes the gzipped tar, sealed when key is set: the database
+// at dbPath, what addMedia adds, then m as the manifest, which addMedia may
+// still fill in.
+func writeArchive(w io.Writer, key *sealKey, m *Manifest, dbPath string, addMedia func(*tar.Writer) error) error {
 	out := w
 	var sealer io.WriteCloser
-	if opt.Passphrase != "" {
-		if sealer, err = encryptTo(w, opt.Passphrase); err != nil {
-			return nil, err
+	if key != nil {
+		var err error
+		if sealer, err = key.sealTo(w); err != nil {
+			return err
 		}
 		out = sealer
 	}
 	gz := gzip.NewWriter(out)
 	tw := tar.NewWriter(gz)
-
-	if m.Database, err = addFile(tw, store.FileName, dbCopy, m.CreatedAt); err != nil {
-		return nil, fmt.Errorf("add the database: %w", err)
+	var err error
+	if m.Database, err = addFile(tw, store.FileName, dbPath, m.CreatedAt); err != nil {
+		return fmt.Errorf("add the database: %w", err)
 	}
-	dir := filepath.Join(dataDir, media.DirName)
-	for _, rec := range sum.Media {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-		if !media.ValidName(rec.FileName) {
-			m.Missing = append(m.Missing, rec.FileName)
-			continue
-		}
-		f, err := addFile(tw, mediaPrefix+rec.FileName, filepath.Join(dir, rec.FileName), rec.CreatedAt)
-		if errors.Is(err, fs.ErrNotExist) {
-			m.Missing = append(m.Missing, rec.FileName)
-			continue
-		}
-		if err != nil {
-			return nil, fmt.Errorf("add upload %s: %w", rec.FileName, err)
-		}
-		if f.SHA256 != rec.SHA256 {
-			m.Damaged = append(m.Damaged, rec.FileName)
-		}
-		m.Media = append(m.Media, f)
+	if err := addMedia(tw); err != nil {
+		return err
 	}
-
 	manifest, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
-		return nil, err
+		return err
 	}
 	hdr := &tar.Header{Name: manifestName, Mode: 0o600, Size: int64(len(manifest)), ModTime: m.CreatedAt,
 		Typeflag: tar.TypeReg, Format: tar.FormatPAX}
 	if err := tw.WriteHeader(hdr); err != nil {
-		return nil, err
+		return err
 	}
 	if _, err := tw.Write(manifest); err != nil {
-		return nil, err
+		return err
 	}
 	if err := tw.Close(); err != nil {
-		return nil, err
+		return err
 	}
 	if err := gz.Close(); err != nil {
-		return nil, err
+		return err
 	}
 	if sealer != nil {
-		if err := sealer.Close(); err != nil {
-			return nil, err
-		}
+		return sealer.Close()
 	}
-	return m, nil
+	return nil
 }
 
 // addFile adds the file at path to tw as name and returns its size and
@@ -238,15 +288,15 @@ type Result struct {
 // Verify reads a whole snapshot into a temporary folder inside workDir,
 // checks every file against the manifest and the database with SQLite's
 // integrity check, and removes the folder again. A snapshot that verifies
-// restores.
-func Verify(ctx context.Context, r io.Reader, pass PassphraseFunc, workDir string) (*Result, error) {
+// restores. src gives the uploads of a remote snapshot; nil for a file.
+func Verify(ctx context.Context, r io.Reader, pass PassphraseFunc, src MediaSource, workDir string) (*Result, error) {
 	sweep(workDir, ".verify-")
 	stage, err := os.MkdirTemp(workDir, ".verify-")
 	if err != nil {
 		return nil, fmt.Errorf("make a working folder in %s: %w", workDir, err)
 	}
 	defer os.RemoveAll(stage)
-	return unpack(ctx, r, pass, stage)
+	return unpack(ctx, r, pass, src, stage)
 }
 
 // RestoreOptions control Restore.
@@ -260,6 +310,8 @@ type RestoreOptions struct {
 	// lock, so nothing else opens the database before it, for example to
 	// upgrade it and record the restore in the audit log.
 	Finish func(dataDir string, m *Manifest) error
+	// Media gives the uploads of a remote snapshot; nil for a file.
+	Media MediaSource
 }
 
 // Restore puts a snapshot into dataDir. It refuses while a server runs on the
@@ -300,7 +352,7 @@ func Restore(ctx context.Context, r io.Reader, pass PassphraseFunc, dataDir stri
 		return nil, fmt.Errorf("make a working folder in the data directory: %w", err)
 	}
 	defer os.RemoveAll(stage)
-	res, err := unpack(ctx, r, pass, stage)
+	res, err := unpack(ctx, r, pass, opt.Media, stage)
 	if err != nil {
 		return nil, err
 	}
@@ -425,23 +477,42 @@ func holdsBlog(dataDir string) (bool, error) {
 	return len(entries) > 0, nil
 }
 
-// open returns the plain content of a snapshot, decrypting it when needed.
-func open(r io.Reader, pass PassphraseFunc) (io.Reader, bool, error) {
+// opener decrypts the snapshot and, for a remote one, its uploads, asking
+// for the passphrase once and deriving each key once.
+type openers struct {
+	pass PassphraseFunc
+	ring *keyring
+}
+
+func (o *openers) keyring() (*keyring, error) {
+	if o.ring != nil {
+		return o.ring, nil
+	}
+	if o.pass == nil {
+		return nil, ErrNeedPassphrase
+	}
+	p, err := o.pass()
+	if err != nil {
+		return nil, err
+	}
+	if p == "" {
+		return nil, ErrNeedPassphrase
+	}
+	o.ring = newKeyring(p)
+	return o.ring, nil
+}
+
+// open returns the plain content of r, decrypting it when needed.
+func (o *openers) open(r io.Reader) (io.Reader, bool, error) {
 	br := bufio.NewReaderSize(r, 64<<10)
 	if !isEncrypted(br) {
 		return br, false, nil
 	}
-	if pass == nil {
-		return nil, true, ErrNeedPassphrase
-	}
-	p, err := pass()
+	ring, err := o.keyring()
 	if err != nil {
 		return nil, true, err
 	}
-	if p == "" {
-		return nil, true, ErrNeedPassphrase
-	}
-	plain, err := decryptFrom(br, p)
+	plain, err := ring.open(br)
 	return plain, true, err
 }
 
@@ -449,8 +520,9 @@ func open(r io.Reader, pass PassphraseFunc) (io.Reader, bool, error) {
 // only the names a snapshot holds, each once, every size and checksum as the
 // manifest says, and a database that passes SQLite's integrity check at a
 // schema this BurzBlog can run.
-func unpack(ctx context.Context, r io.Reader, pass PassphraseFunc, stage string) (*Result, error) {
-	plain, encrypted, err := open(r, pass)
+func unpack(ctx context.Context, r io.Reader, pass PassphraseFunc, src MediaSource, stage string) (*Result, error) {
+	keys := &openers{pass: pass}
+	plain, encrypted, err := keys.open(r)
 	if err != nil {
 		return nil, err
 	}
@@ -532,9 +604,40 @@ func unpack(ctx context.Context, r io.Reader, pass PassphraseFunc, stage string)
 		}
 		return nil, fmt.Errorf("%w: the manifest is missing", ErrDamaged)
 	}
-	if m.Format != FormatVersion {
-		return nil, fmt.Errorf("the snapshot has format %d; this BurzBlog reads format %d, so restore it with the BurzBlog version that made it (%s) or newer",
-			m.Format, FormatVersion, m.Version)
+	if m.Format != FormatVersion && m.Format != RemoteFormat {
+		return nil, fmt.Errorf("the snapshot has format %d; this BurzBlog reads formats %d and %d, so restore it with the BurzBlog version that made it (%s) or newer",
+			m.Format, FormatVersion, RemoteFormat, m.Version)
+	}
+	if src != nil {
+		// Only ever stored by BurzBlog, encrypted, under its own time.
+		if !encrypted {
+			return nil, fmt.Errorf("the snapshot in the storage: %w", ErrNotSealed)
+		}
+		if m.Format != RemoteFormat {
+			return nil, fmt.Errorf("%w: it is not a stored snapshot", ErrDamaged)
+		}
+		if want := Name(m.CreatedAt, true); want != src.Snapshot() {
+			return nil, fmt.Errorf("%w: it is stored as %s but was made as %s; an older snapshot may have been copied over a newer one",
+				ErrDamaged, src.Snapshot(), want)
+		}
+	}
+	if m.Format == RemoteFormat {
+		if src == nil {
+			return nil, errors.New("this snapshot keeps its uploads in the storage it came from; restore it from there (burzblog snapshot restore s3://...)")
+		}
+		for _, f := range m.Media {
+			if !strings.HasPrefix(f.Name, mediaPrefix) || !media.ValidName(strings.TrimPrefix(f.Name, mediaPrefix)) {
+				return nil, fmt.Errorf("%w: the manifest lists %q wrongly", ErrDamaged, f.Name)
+			}
+			if _, dup := got[f.Name]; dup {
+				return nil, fmt.Errorf("%w: the manifest lists %q twice", ErrDamaged, f.Name)
+			}
+			g, err := fetchMedia(ctx, src, keys, f.Name, filepath.Join(stage, media.DirName, strings.TrimPrefix(f.Name, mediaPrefix)))
+			if err != nil {
+				return nil, err
+			}
+			got[f.Name] = g
+		}
 	}
 
 	want := map[string]File{store.FileName: {Name: store.FileName, Size: m.Database.Size, SHA256: m.Database.SHA256}}
@@ -643,3 +746,6 @@ func Prune(dir string, keep int) ([]string, error) {
 	}
 	return deleted, nil
 }
+
+// IsName reports whether s is a snapshot file name that Name makes.
+func IsName(s string) bool { return nameRE.MatchString(s) }

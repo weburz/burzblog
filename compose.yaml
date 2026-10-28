@@ -18,8 +18,19 @@ services:
       BURZBLOG_ORIGIN: "${BURZBLOG_ORIGIN:?Set BURZBLOG_ORIGIN to the exact public URL}"
       # Optional: a deploy hook URL to rebuild your site after publishing.
       BURZBLOG_DEPLOY_HOOK: ${BURZBLOG_DEPLOY_HOOK:-}
+      # Optional: automatic encrypted snapshots, e.g. daily to S3-compatible
+      # storage. See docs/self-hosting.md#automatic-snapshots.
+      BURZBLOG_SNAPSHOT_EVERY: ${BURZBLOG_SNAPSHOT_EVERY:-}
+      BURZBLOG_SNAPSHOT_TO: ${BURZBLOG_SNAPSHOT_TO:-}
+      BURZBLOG_SNAPSHOT_KEEP: ${BURZBLOG_SNAPSHOT_KEEP:-}
+      BURZBLOG_SNAPSHOT_PASSPHRASE: ${BURZBLOG_SNAPSHOT_PASSPHRASE:-}
+      BURZBLOG_SNAPSHOT_HEARTBEAT: ${BURZBLOG_SNAPSHOT_HEARTBEAT:-}
+      BURZBLOG_S3_ENDPOINT: ${BURZBLOG_S3_ENDPOINT:-}
+      BURZBLOG_S3_REGION: ${BURZBLOG_S3_REGION:-}
+      BURZBLOG_S3_ACCESS_KEY_ID: ${BURZBLOG_S3_ACCESS_KEY_ID:-}
+      BURZBLOG_S3_SECRET_ACCESS_KEY: ${BURZBLOG_S3_SECRET_ACCESS_KEY:-}
     volumes:
-      # The SQLite database (posts, accounts, tokens). Back it up.
+      # The SQLite database (posts, accounts, tokens) and uploads. Back it up.
       - type: bind
         source: ${BURZBLOG_DATA_DIR:-./data}
         target: /data
