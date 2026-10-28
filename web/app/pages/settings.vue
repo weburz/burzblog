@@ -472,8 +472,9 @@ const scopeUse = (t: Token) =>
       <div class="settings-aside">
         <h2 id="backup-heading" class="section-title">Backup</h2>
         <p class="muted">
-          A full snapshot is the whole server in one file: every post and earlier version,
-          accounts and uploads. It is made on the server, and restores onto a new one.
+          A full snapshot is this whole blog in one file: every post and earlier version,
+          accounts and uploads. Nothing else on the machine is included. It restores onto
+          a new server.
         </p>
       </div>
       <div class="settings-main">

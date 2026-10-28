@@ -61,11 +61,14 @@ func (a *App) snapshotCmd() *cobra.Command {
 	var data, passFile string
 	cmd := &cobra.Command{
 		Use:   "snapshot",
-		Short: "Back up or restore the whole server: posts, history, accounts, uploads (run on the host)",
-		Long: `A snapshot is one file with everything the server holds: every post and every
-earlier version of it, accounts with their passwords, two-factor and roles,
-tokens, tag labels, the audit log and every uploaded file. It is made while
-BurzBlog runs and restores onto a new server with the same addresses.
+		Short: "Back up or restore this blog: posts, history, accounts, uploads (run on the host)",
+		Long: `A snapshot is one file with the whole blog: every post and every earlier
+version of it, accounts with their passwords, two-factor and roles, tokens,
+tag labels, the audit log and every uploaded file. That is the blog's data
+directory and nothing else: not the operating system, other apps or other
+blogs on the machine, nor BurzBlog's settings (environment variables). It is
+made while BurzBlog runs and restores onto a new server with the same
+addresses.
 
 A snapshot on the server's own disk is lost with that disk: copy it to another
 machine or to storage elsewhere. Snapshots hold password hashes and two-factor
@@ -125,8 +128,8 @@ restored, by anyone.`,
 	var keep int
 	create := &cobra.Command{
 		Use:   "create [file | folder | - | s3://bucket/prefix]",
-		Short: "Write a snapshot of the whole server, safely while it runs",
-		Long: `Writes a snapshot of the server to a file. A target ending in .gz or .enc is
+		Short: "Write a snapshot of the whole blog, safely while it runs",
+		Long: `Writes a snapshot of the blog to a file. A target ending in .gz or .enc is
 the file to write. Anything else is a folder, made when missing; given one, or
 nothing (the snapshots folder in the data directory), it names the file
 burzblog-snapshot-<UTC time>.tar.gz, with .enc added when encrypted; - writes

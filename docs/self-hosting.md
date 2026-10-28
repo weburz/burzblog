@@ -159,11 +159,17 @@ invalid. See [publishing](publishing.md#feeds-and-sitemap).
 
 ## Backups
 
-Everything a server holds is in its data directory: `burzblog.db` (posts,
+Everything a blog holds is in its data directory: `burzblog.db` (posts,
 every earlier version of every post, accounts with their password hashes,
 two-factor secrets and roles, token digests, tag labels and the audit log) and
 the `media` folder with the uploads. A disk that fails takes all of it with it,
 so keep a copy on another machine or in storage elsewhere.
+
+A snapshot is that data directory and nothing else. It does not include the
+operating system, other apps or other BurzBlog instances on the machine, or
+BurzBlog's settings (the environment variables or systemd override, such as
+the origin and the deploy hook); keep those wherever you keep your server
+configuration. Each blog on a machine is backed up on its own.
 
 ### Full snapshots
 

@@ -234,11 +234,16 @@ the feeds and sitemap. <code>--site-url</code> is an address without a path, suc
 <code>{tag}</code> once. They are not secret. BurzBlog refuses to start when one is
 invalid. See <a href="publishing.html#feeds-and-sitemap">publishing</a>.</p>
 <h2 id="backups">Backups</h2>
-<p>Everything a server holds is in its data directory: <code>burzblog.db</code> (posts,
+<p>Everything a blog holds is in its data directory: <code>burzblog.db</code> (posts,
 every earlier version of every post, accounts with their password hashes,
 two-factor secrets and roles, token digests, tag labels and the audit log) and
 the <code>media</code> folder with the uploads. A disk that fails takes all of it with it,
 so keep a copy on another machine or in storage elsewhere.</p>
+<p>A snapshot is that data directory and nothing else. It does not include the
+operating system, other apps or other BurzBlog instances on the machine, or
+BurzBlog's settings (the environment variables or systemd override, such as
+the origin and the deploy hook); keep those wherever you keep your server
+configuration. Each blog on a machine is backed up on its own.</p>
 <h3 id="full-snapshots">Full snapshots</h3>
 <p><code>burzblog snapshot create</code> writes everything to one file while BurzBlog keeps
 running: the database is copied consistently (SQLite <code>VACUUM INTO</code>), then every

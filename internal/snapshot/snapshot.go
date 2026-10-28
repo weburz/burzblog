@@ -1,5 +1,5 @@
-// Package snapshot writes and restores the complete state of a BurzBlog
-// server: a consistent copy of the database (posts, every revision, accounts,
+// Package snapshot writes and restores the complete state of one blog, its
+// data directory: a consistent copy of the database (posts, every revision, accounts,
 // two-factor secrets, token digests, tag labels, the audit log) and every
 // uploaded file. It knows nothing about HTTP.
 //
@@ -107,7 +107,7 @@ type Options struct {
 	Now func() time.Time
 }
 
-// Create writes a snapshot of the server whose database is st and whose data
+// Create writes a snapshot of the blog whose database is st and whose data
 // directory is dataDir to w. It is safe while a server runs: the database is
 // copied with VACUUM INTO first, and the uploads the copy records are added
 // after it. Uploads are never changed once stored, so the two agree. A file
