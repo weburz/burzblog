@@ -101,6 +101,8 @@ internal/store/     SQLite (modernc.org/sqlite, no cgo): posts, revisions,
 internal/auth/      Argon2id passwords, sessions and CSRF, API tokens,
                     sign-in rate limiting, TOTP
 internal/media/     upload type detection and on-disk storage
+internal/snapshot/  full snapshots of the data directory: write, encrypt,
+                    verify and restore
 internal/render/    goldmark (CommonMark + GFM, no raw HTML) and a bluemonday
                     allowlist, with input and output limits
 internal/server/    net/http handlers: the JSON API, content API, feeds,
@@ -130,7 +132,9 @@ SHA-256, passwords as Argon2id, recovery codes as SHA-256.</li>
 <li><strong>Uploads</strong> are files under <code>&lt;data&gt;/media/</code>, named by their content hash and
 recorded in the database.</li>
 </ul>
-<p>A backup is the data directory: the database file and <code>media/</code>.</p>
+<p>A backup is the data directory: the database file and <code>media/</code>.
+<code>burzblog snapshot create</code> writes both to one file while the server runs, and
+<code>snapshot restore</code> puts them back (see <a href="self-hosting.html#backups">self-hosting</a>).</p>
 <h2 id="access">Access</h2>
 <ul>
 <li>The browser uses an HttpOnly, SameSite=Strict session cookie. Every change

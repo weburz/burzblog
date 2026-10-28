@@ -36,6 +36,8 @@ type Store struct {
 	db   *sql.DB
 	path string
 	now  func() time.Time
+	// unlock releases the data directory lock OpenShared took, if any.
+	unlock func()
 }
 
 // FileName is the database file inside the data directory.
@@ -54,6 +56,54 @@ func Open(ctx context.Context, dir string) (*Store, error) {
 // OpenPath opens the database at an explicit path. ":memory:" is not
 // supported because each pooled connection would see a different database.
 func OpenPath(ctx context.Context, path string) (*Store, error) {
+	return openPath(ctx, path, true)
+}
+
+// ErrRestoring means a snapshot is being restored into the data directory.
+var ErrRestoring = errors.New("a snapshot is being restored into the data directory; try again when it has finished")
+
+// OpenShared is Open for a process working on a data directory a server may
+// use too (the server itself, and the host's commands): it holds the shared
+// lock until Close, so a restore cannot run meanwhile, and it fails with
+// ErrRestoring while one does.
+func OpenShared(ctx context.Context, dir string) (*Store, error) {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, fmt.Errorf("create data directory: %w", err)
+	}
+	return lockedOpen(dir, func() (*Store, error) { return Open(ctx, dir) })
+}
+
+// OpenExisting opens the database in dir without creating or migrating it,
+// holding the shared lock like OpenShared. It is for work that must not change
+// the schema under a running server, such as a snapshot taken by a newer
+// binary before the server restarted. It refuses a missing database and one
+// newer than this BurzBlog.
+func OpenExisting(ctx context.Context, dir string) (*Store, error) {
+	path := filepath.Join(dir, FileName)
+	if _, err := os.Stat(path); err != nil {
+		return nil, fmt.Errorf("open database: %w", err)
+	}
+	return lockedOpen(dir, func() (*Store, error) { return openPath(ctx, path, false) })
+}
+
+func lockedOpen(dir string, open func() (*Store, error)) (*Store, error) {
+	unlock, err := LockShared(dir)
+	if errors.Is(err, ErrInUse) {
+		return nil, ErrRestoring
+	}
+	if err != nil {
+		return nil, err
+	}
+	s, err := open()
+	if err != nil {
+		unlock()
+		return nil, err
+	}
+	s.unlock = unlock
+	return s, nil
+}
+
+func openPath(ctx context.Context, path string, migrate bool) (*Store, error) {
 	q := url.Values{}
 	for _, p := range []string{"busy_timeout(10000)", "journal_mode(WAL)", "foreign_keys(1)", "synchronous(NORMAL)"} {
 		q.Add("_pragma", p)
@@ -65,7 +115,12 @@ func OpenPath(ctx context.Context, path string) (*Store, error) {
 	}
 	db.SetMaxOpenConns(4)
 	s := &Store{db: db, path: path, now: func() time.Time { return time.Now().UTC() }}
-	if err := s.migrate(ctx); err != nil {
+	if migrate {
+		err = s.migrate(ctx)
+	} else {
+		err = s.checkSchema(ctx)
+	}
+	if err != nil {
 		db.Close()
 		return nil, err
 	}
@@ -79,9 +134,14 @@ func OpenPath(ctx context.Context, path string) (*Store, error) {
 	return s, nil
 }
 
-// Close releases the database.
+// Close releases the database, and the data directory lock if it holds one.
 func (s *Store) Close() error {
-	return s.db.Close()
+	err := s.db.Close()
+	if s.unlock != nil {
+		s.unlock()
+		s.unlock = nil
+	}
+	return err
 }
 
 // Now returns the store's current time.
@@ -424,13 +484,33 @@ func backfillFeatured(ctx context.Context, tx *sql.Tx) error {
 	return nil
 }
 
-func (s *Store) migrate(ctx context.Context) error {
+// schema reads the database's schema version, refusing one newer than this
+// BurzBlog.
+func (s *Store) schema(ctx context.Context) (int, error) {
 	var version int
 	if err := s.db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
-		return fmt.Errorf("read schema version: %w", err)
+		return 0, fmt.Errorf("read schema version: %w", err)
 	}
 	if version > len(migrations) {
-		return fmt.Errorf("database schema %d is newer than this BurzBlog (%d); upgrade BurzBlog", version, len(migrations))
+		return 0, fmt.Errorf("database schema %d is newer than this BurzBlog (%d); upgrade BurzBlog", version, len(migrations))
+	}
+	return version, nil
+}
+
+// checkSchema accepts a database at any schema this BurzBlog knows, without
+// changing it.
+func (s *Store) checkSchema(ctx context.Context) error {
+	version, err := s.schema(ctx)
+	if err == nil && version == 0 {
+		err = errors.New("the database has no BurzBlog schema yet")
+	}
+	return err
+}
+
+func (s *Store) migrate(ctx context.Context) error {
+	version, err := s.schema(ctx)
+	if err != nil {
+		return err
 	}
 	// A database with no schema yet is new and has nothing to lose.
 	if version > 0 && version < len(migrations) {

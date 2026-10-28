@@ -57,6 +57,7 @@
             <p>On this page</p>
             <ul>
               <li><a href="#what-is-protected-and-how">What is protected, and how</a></li>
+              <li><a href="#snapshots">Snapshots</a></li>
               <li><a href="#what-is-out-of-scope">What is out of scope</a></li>
               <li><a href="#reporting-a-vulnerability">Reporting a vulnerability</a></li>
             </ul>
@@ -237,8 +238,9 @@ unpublish, archive, restore, schedule and unschedule (including a scheduled
 post the server publishes itself, as actor <code>scheduler</code>); post deletion; tag label
 changes (<code>tag.label</code>); slug
 redirect removal; file uploads and deletions; a manual website rebuild; and
-backup downloads. Changes made on the host with <code>burzblog user</code> are recorded as
-actor <code>host</code>. Failed sign-ins for names that do not exist are not recorded, so repeating them cannot grow the
+backup downloads; full snapshots made and restored on the host. Changes made on
+the host with <code>burzblog user</code> and <code>burzblog snapshot</code> are recorded as actor
+<code>host</code>. Failed sign-ins for names that do not exist are not recorded, so repeating them cannot grow the
 log; rate-limited attempts are not recorded either. A row is never updated or
 deleted: database triggers refuse both and ids are never reused, so the log
 only grows (an entry is roughly 150 bytes). Anyone with the database file can of
@@ -412,7 +414,8 @@ token that scheduled it was revoked: revoking access does not cancel a
 schedule. Unschedule the post to stop it.</p>
 <p><strong>Data at rest.</strong> One SQLite file, created <code>0600</code> in a <code>0700</code> directory. Revisions
 keep every earlier version of every post; they are only removed when an archived
-post is deleted on purpose.</p>
+post is deleted on purpose. Snapshots can be encrypted (see
+<a href="#snapshots">Snapshots</a>); the live database is not.</p>
 <p><strong>Deploy hook.</strong> The URL is secret: it is read from the environment, never
 returned by the API, and left out of error messages.</p>
 <p><strong>Outbound requests.</strong> BurzBlog makes none of its own accord. The deploy hook
@@ -422,6 +425,45 @@ that holds the BurzBlog version, with a timeout and a response size cap, and
 nothing about posts, accounts or the instance address. The result is shown only
 to admins through <code>GET /api/updates</code>; failures never affect anything else. See
 <a href="self-hosting.html#update-checks">self-hosting</a>.</p>
+<h2 id="snapshots">Snapshots</h2>
+<p><code>burzblog snapshot</code> runs on the host only: there is no HTTP route that makes,
+downloads or restores one, so the API cannot hand out password hashes or
+two-factor secrets. Admins see only the time and file name of the newest
+snapshot.</p>
+<p>A snapshot holds the whole database, password hashes and two-factor secrets
+included, so it needs the care the database does. It is written <code>0600</code> through
+a temporary file and renamed into place. Its working copy of the database goes
+in a <code>0700</code> folder in the data directory and is removed when the command ends,
+also on Ctrl-C or a service stop; one left by a killed run is removed by the
+next run a day later, as are half-written <code>.partial</code> files. A plain snapshot is
+not authenticated: anyone who can change the file controls the accounts it
+restores, so keep it where only you can write, or encrypt it.</p>
+<p>An encrypted snapshot (<code>BURZBLOG_SNAPSHOT_PASSPHRASE</code>, <code>--passphrase-file</code> or
+<code>--encrypt</code>) starts with a header holding the scrypt cost (N = 2^15, r = 8,
+p = 1, about 32 MiB), a random 16-byte salt and a 16-byte check value. scrypt
+turns the passphrase and salt into a 256-bit key for this file only, plus the
+check value, which tells a wrong passphrase apart from a damaged file without
+decrypting anything. The content is sealed in 64 KiB chunks with
+ChaCha20-Poly1305; each chunk's nonce is its number with a flag on the last
+one, and the header is authenticated with every chunk. A changed, reordered,
+missing or extra chunk, a file cut short and an edited header all fail. A
+header asking for more than N = 2^16 with r = 8 and p = 1 (64 MiB, one pass)
+is refused before scrypt runs, so a crafted file cannot exhaust a small
+server's memory. Passphrases need at least 12 characters;
+they are read from the environment, a file or a terminal, never from a command
+line argument that other users could see. Nothing can restore an encrypted
+snapshot without its passphrase.</p>
+<p>Restoring checks the whole snapshot before it changes anything: only a
+database, uploads with valid names and the manifest are accepted, each once,
+as regular files, so no entry can write outside the data directory; every size
+and SHA-256 checksum must match the manifest, the database must pass SQLite's
+integrity check, and its schema must not be newer than the binary's. A running
+server, and every host command that opens the database, holds a shared lock on
+<code>&lt;data&gt;/burzblog.lock</code> (on Linux, macOS and the BSDs); restore needs it
+exclusively, so it refuses while any of them runs, and they refuse to start
+during a restore. Restore keeps the lock until the restored database is
+upgraded and the restore is recorded. Replaced data is moved aside, never
+deleted. Restored files are synced to disk before they are renamed into place.</p>
 <h2 id="what-is-out-of-scope">What is out of scope</h2>
 <ul>
 <li><strong>Per-post ownership.</strong> Any author can edit, publish and archive any post;

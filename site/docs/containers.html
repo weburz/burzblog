@@ -59,6 +59,7 @@
               <li><a href="#build-and-run-with-compose">Build and run with Compose</a></li>
               <li><a href="#published-images">Published images</a></li>
               <li><a href="#coolify">Coolify</a></li>
+              <li><a href="#backups">Backups</a></li>
               <li><a href="#checks">Checks</a></li>
             </ul>
           </nav>
@@ -123,13 +124,34 @@ create the first account (restart the service for a new link).</li>
 <p>Optional settings go in the environment variables of the resource:
 <code>BURZBLOG_SITE_URL</code> and <code>BURZBLOG_DEPLOY_HOOK</code> (uncomment them in the file; the
 hook is a secret, mark it as such), and <code>BURZBLOG_VERSION</code> to choose the image.</p>
-<p>The database lives in the <code>burzblog-data</code> named volume; include it in your
-Coolify backups. One instance idles at about 25 MB of memory, and the file
-limits it to 128 MB, which suits a personal blog; raise <code>mem_limit</code> for heavy
-imports.</p>
+<p>The database and uploads live in the <code>burzblog-data</code> named volume. Coolify's
+scheduled backups cover the databases it manages, not a Compose resource's
+volumes, so back the blog up yourself (see <a href="#backups">Backups</a>). One instance
+idles at about 25 MB of memory, and the file limits it to 128 MB, which suits a
+personal blog; raise <code>mem_limit</code> for heavy imports.</p>
 <p>To update, set <code>BURZBLOG_VERSION</code> to the new <code>X.Y.Z</code> (or to <code>2</code> to follow the
 latest 2.x.y on every redeploy) and redeploy. The database is migrated when the
-new version starts and migrations are never undone, so take a backup first.</p>
+new version starts and migrations are never undone, so take a snapshot first.</p>
+<h2 id="backups">Backups</h2>
+<p>The image has no shell, so run BurzBlog's own commands in the container. A
+snapshot holds everything: posts with every earlier version, accounts and
+uploads (see <a href="self-hosting.html#full-snapshots">self-hosting</a>). Stream one out
+of the running container to the host, encrypted with a passphrase from the
+environment:</p>
+<pre><code class="language-sh">docker compose exec -T -e BURZBLOG_SNAPSHOT_PASSPHRASE burzblog \
+  /burzblog snapshot create - &gt; blog-$(date +%F).tar.gz.enc
+</code></pre>
+<p>Run that from cron on another machine over <code>ssh</code>, so the copy is not on the
+server's disk. On a Coolify server, find the container with
+<code>docker ps --filter name=burzblog</code> and run <code>docker exec &lt;container&gt; /burzblog snapshot create -</code> the same way.</p>
+<p>To restore, stop the service and run the restore in a one-off container on the
+same volume, then start it again:</p>
+<pre><code class="language-sh">docker compose stop burzblog
+docker compose run --rm -T -e BURZBLOG_SNAPSHOT_PASSPHRASE burzblog snapshot restore - &lt; blog.tar.gz.enc
+docker compose start burzblog
+</code></pre>
+<p>The root filesystem is read-only, so check a snapshot in the data volume:
+<code>docker compose run --rm -T burzblog snapshot verify - --work /data &lt; blog.tar.gz.enc</code>.</p>
 <h2 id="checks">Checks</h2>
 <p><code>task docker:check</code> lints the Dockerfile with Hadolint, validates the Caddy and
 nginx examples, builds the image and runs <code>scripts/docker-smoke.sh</code>. The smoke

@@ -1,3 +1,5 @@
+import { execFileSync } from "node:child_process";
+import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { apiAs, signIn, unique } from "./helpers";
 
@@ -121,6 +123,28 @@ test("Download all posts saves a dated backup archive", async ({ page }) => {
   expect(download.suggestedFilename()).toMatch(
     /^burzblog-backup-\d{4}-\d{2}-\d{2}\.tar\.gz$/,
   );
+});
+
+test("Settings warns until a full snapshot exists, then shows the newest", async ({
+  page,
+}) => {
+  await signIn(page);
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
+  const backup = page.getByRole("region", { name: "Backup" });
+  await expect(backup).toContainText("No full snapshot yet");
+
+  // The host runs the command against the server's data while it serves.
+  const root = test.info().config.metadata.fixtureRoot as string;
+  execFileSync(join(root, "burzblog"), [
+    "snapshot",
+    "create",
+    join(root, "snapshots"),
+    "--data",
+    join(root, "data"),
+  ]);
+  await page.reload();
+  await expect(backup).toContainText("Last full snapshot just now");
+  await expect(backup).toContainText(/burzblog-snapshot-\d{8}T\d{6}\.\d{3}Z\.tar\.gz/);
 });
 
 test("the shortcuts switch turns off single-key shortcuts", async ({ page }) => {

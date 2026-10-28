@@ -77,8 +77,9 @@ unpublish, archive, restore, schedule and unschedule (including a scheduled
 post the server publishes itself, as actor `scheduler`); post deletion; tag label
 changes (`tag.label`); slug
 redirect removal; file uploads and deletions; a manual website rebuild; and
-backup downloads. Changes made on the host with `burzblog user` are recorded as
-actor `host`. Failed sign-ins for names that do not exist are not recorded, so repeating them cannot grow the
+backup downloads; full snapshots made and restored on the host. Changes made on
+the host with `burzblog user` and `burzblog snapshot` are recorded as actor
+`host`. Failed sign-ins for names that do not exist are not recorded, so repeating them cannot grow the
 log; rate-limited attempts are not recorded either. A row is never updated or
 deleted: database triggers refuse both and ids are never reused, so the log
 only grows (an entry is roughly 150 bytes). Anyone with the database file can of
@@ -271,7 +272,8 @@ schedule. Unschedule the post to stop it.
 
 **Data at rest.** One SQLite file, created `0600` in a `0700` directory. Revisions
 keep every earlier version of every post; they are only removed when an archived
-post is deleted on purpose.
+post is deleted on purpose. Snapshots can be encrypted (see
+[Snapshots](#snapshots)); the live database is not.
 
 **Deploy hook.** The URL is secret: it is read from the environment, never
 returned by the API, and left out of error messages.
@@ -283,6 +285,50 @@ that holds the BurzBlog version, with a timeout and a response size cap, and
 nothing about posts, accounts or the instance address. The result is shown only
 to admins through `GET /api/updates`; failures never affect anything else. See
 [self-hosting](self-hosting.md#update-checks).
+
+## Snapshots
+
+`burzblog snapshot` runs on the host only: there is no HTTP route that makes,
+downloads or restores one, so the API cannot hand out password hashes or
+two-factor secrets. Admins see only the time and file name of the newest
+snapshot.
+
+A snapshot holds the whole database, password hashes and two-factor secrets
+included, so it needs the care the database does. It is written `0600` through
+a temporary file and renamed into place. Its working copy of the database goes
+in a `0700` folder in the data directory and is removed when the command ends,
+also on Ctrl-C or a service stop; one left by a killed run is removed by the
+next run a day later, as are half-written `.partial` files. A plain snapshot is
+not authenticated: anyone who can change the file controls the accounts it
+restores, so keep it where only you can write, or encrypt it.
+
+An encrypted snapshot (`BURZBLOG_SNAPSHOT_PASSPHRASE`, `--passphrase-file` or
+`--encrypt`) starts with a header holding the scrypt cost (N = 2^15, r = 8,
+p = 1, about 32 MiB), a random 16-byte salt and a 16-byte check value. scrypt
+turns the passphrase and salt into a 256-bit key for this file only, plus the
+check value, which tells a wrong passphrase apart from a damaged file without
+decrypting anything. The content is sealed in 64 KiB chunks with
+ChaCha20-Poly1305; each chunk's nonce is its number with a flag on the last
+one, and the header is authenticated with every chunk. A changed, reordered,
+missing or extra chunk, a file cut short and an edited header all fail. A
+header asking for more than N = 2^16 with r = 8 and p = 1 (64 MiB, one pass)
+is refused before scrypt runs, so a crafted file cannot exhaust a small
+server's memory. Passphrases need at least 12 characters;
+they are read from the environment, a file or a terminal, never from a command
+line argument that other users could see. Nothing can restore an encrypted
+snapshot without its passphrase.
+
+Restoring checks the whole snapshot before it changes anything: only a
+database, uploads with valid names and the manifest are accepted, each once,
+as regular files, so no entry can write outside the data directory; every size
+and SHA-256 checksum must match the manifest, the database must pass SQLite's
+integrity check, and its schema must not be newer than the binary's. A running
+server, and every host command that opens the database, holds a shared lock on
+`<data>/burzblog.lock` (on Linux, macOS and the BSDs); restore needs it
+exclusively, so it refuses while any of them runs, and they refuse to start
+during a restore. Restore keeps the lock until the restored database is
+upgraded and the restore is recorded. Replaced data is moved aside, never
+deleted. Restored files are synced to disk before they are renamed into place.
 
 ## What is out of scope
 

@@ -38,13 +38,7 @@ func (s *Store) backupBeforeMigrating(ctx context.Context, version int) error {
 	}
 	name := fmt.Sprintf("burzblog-schema%d-%s.db", version, s.now().UTC().Format("20060102T150405.000Z"))
 	dest := filepath.Join(dir, name)
-	quoted := "'" + strings.ReplaceAll(dest, "'", "''") + "'"
-	if _, err := s.db.ExecContext(ctx, "VACUUM INTO "+quoted); err != nil {
-		os.Remove(dest)
-		return backupError(dest, err)
-	}
-	if err := os.Chmod(dest, 0o600); err != nil {
-		os.Remove(dest)
+	if err := s.CopyTo(ctx, dest); err != nil {
 		return backupError(dest, err)
 	}
 	slog.Info("database backed up before upgrading its schema",
@@ -81,4 +75,21 @@ func pruneBackups(dir string) {
 		}
 		names = names[1:]
 	}
+}
+
+// CopyTo writes a consistent copy of the database to dest, which must not
+// exist, readable only by its owner. It uses VACUUM INTO, which is safe while
+// this and other processes keep writing, where a plain file copy of a database
+// in WAL mode is not.
+func (s *Store) CopyTo(ctx context.Context, dest string) error {
+	quoted := "'" + strings.ReplaceAll(dest, "'", "''") + "'"
+	if _, err := s.db.ExecContext(ctx, "VACUUM INTO "+quoted); err != nil {
+		os.Remove(dest)
+		return err
+	}
+	if err := os.Chmod(dest, 0o600); err != nil {
+		os.Remove(dest)
+		return err
+	}
+	return nil
 }
