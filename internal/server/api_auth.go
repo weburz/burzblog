@@ -370,7 +370,17 @@ func (s *Server) settings(w http.ResponseWriter, r *http.Request) {
 		"deploy":   s.deploy.status(),
 		"site":     s.siteSettings(),
 		"snapshot": s.lastSnapshot(r),
+		"schedule": s.snapshotSchedule(),
 	})
+}
+
+// snapshotSchedule is the state of the automatic snapshots, or nil when
+// they are off.
+func (s *Server) snapshotSchedule() any {
+	if s.cfg.SnapshotSchedule == nil {
+		return nil
+	}
+	return s.cfg.SnapshotSchedule()
 }
 
 // lastSnapshot is the newest `burzblog snapshot create` the audit log

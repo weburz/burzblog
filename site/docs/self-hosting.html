@@ -234,11 +234,16 @@ the feeds and sitemap. <code>--site-url</code> is an address without a path, suc
 <code>{tag}</code> once. They are not secret. BurzBlog refuses to start when one is
 invalid. See <a href="publishing.html#feeds-and-sitemap">publishing</a>.</p>
 <h2 id="backups">Backups</h2>
-<p>Everything a server holds is in its data directory: <code>burzblog.db</code> (posts,
+<p>Everything a blog holds is in its data directory: <code>burzblog.db</code> (posts,
 every earlier version of every post, accounts with their password hashes,
 two-factor secrets and roles, token digests, tag labels and the audit log) and
 the <code>media</code> folder with the uploads. A disk that fails takes all of it with it,
 so keep a copy on another machine or in storage elsewhere.</p>
+<p>A snapshot is that data directory and nothing else. It does not include the
+operating system, other apps or other BurzBlog instances on the machine, or
+BurzBlog's settings (the environment variables or systemd override, such as
+the origin and the deploy hook); keep those wherever you keep your server
+configuration. Each blog on a machine is backed up on its own.</p>
 <h3 id="full-snapshots">Full snapshots</h3>
 <p><code>burzblog snapshot create</code> writes everything to one file while BurzBlog keeps
 running: the database is copied consistently (SQLite <code>VACUUM INTO</code>), then every
@@ -304,6 +309,79 @@ instead, which needs nothing extra on the server:</p>
 snapshot, checks every checksum and the database's integrity, and reports what
 it holds, without restoring anything. It unpacks into the system's temporary
 folder (or <code>--work &lt;folder&gt;</code>), which needs room for the whole snapshot.</p>
+<h3 id="automatic-snapshots">Automatic snapshots</h3>
+<p>The server can make snapshots on its own and send them off the machine, to a
+folder or to S3-compatible object storage (AWS S3, Cloudflare R2, Backblaze
+B2, Hetzner Object Storage, MinIO and others). Set it in the service override
+(<code>sudo systemctl edit burzblog</code>), or the environment of the container:</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>BURZBLOG_SNAPSHOT_EVERY</code></td>
+<td>How often, such as <code>24h</code> or <code>6h</code> (at least <code>1h</code>). Unset, automatic snapshots are off.</td>
+</tr>
+<tr>
+<td><code>BURZBLOG_SNAPSHOT_TO</code></td>
+<td>A folder, or <code>s3://&lt;bucket&gt;/&lt;prefix&gt;</code>, one prefix per blog. Default <code>&lt;data&gt;/snapshots</code>.</td>
+</tr>
+<tr>
+<td><code>BURZBLOG_SNAPSHOT_KEEP</code></td>
+<td>How many to keep, default <code>14</code>; <code>0</code> keeps all.</td>
+</tr>
+<tr>
+<td><code>BURZBLOG_SNAPSHOT_PASSPHRASE</code> or <code>BURZBLOG_SNAPSHOT_PASSPHRASE_FILE</code></td>
+<td>The passphrase, or a file holding it (Docker and systemd secrets). Required for object storage.</td>
+</tr>
+<tr>
+<td><code>BURZBLOG_SNAPSHOT_HEARTBEAT</code></td>
+<td>Optional https address to <code>GET</code> after every snapshot that worked, for a monitor such as healthchecks.io that alerts you when the pings stop.</td>
+</tr>
+<tr>
+<td><code>BURZBLOG_S3_ENDPOINT</code></td>
+<td>The storage's https address: <code>https://&lt;account&gt;.r2.cloudflarestorage.com</code>, <code>https://s3.&lt;region&gt;.amazonaws.com</code>, <code>https://s3.&lt;region&gt;.backblazeb2.com</code>, <code>https://&lt;region&gt;.your-objectstorage.com</code>.</td>
+</tr>
+<tr>
+<td><code>BURZBLOG_S3_ACCESS_KEY_ID</code>, <code>BURZBLOG_S3_SECRET_ACCESS_KEY</code> (or <code>BURZBLOG_S3_SECRET_ACCESS_KEY_FILE</code>)</td>
+<td>A key for the bucket. Give it read, write, list and delete on that bucket only. Without delete, snapshots are stored but old ones stay, and Settings says so.</td>
+</tr>
+<tr>
+<td><code>BURZBLOG_S3_REGION</code></td>
+<td>The signing region, default <code>us-east-1</code> (right for R2 and MinIO); set your bucket's region on AWS and B2.</td>
+</tr>
+<tr>
+<td><code>BURZBLOG_S3_VIRTUAL_HOSTED</code></td>
+<td><code>true</code> to put the bucket in the host name instead of the path, for services that need it.</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-ini">[Service]
+Environment=BURZBLOG_SNAPSHOT_EVERY=24h
+Environment=BURZBLOG_SNAPSHOT_TO=s3://example-backups/blog/
+# The S3 key and the passphrase, in a file of mode 0600.
+EnvironmentFile=/etc/burzblog/snapshot.env
+</code></pre>
+<p>The first snapshot is made a minute after the server starts when none is
+recent, then one every interval after the newest, whether the schedule or
+<code>burzblog snapshot create</code> made it. A failure is logged, recorded in the audit
+log (<code>snapshot.fail</code>), shown to admins under <strong>Settings → Backup</strong>, and tried
+again within the hour; the heartbeat is only sent for one that worked.</p>
+<p>In object storage each upload is stored once, encrypted, beside the
+snapshots (<code>&lt;prefix&gt;media/</code>), named by its content, so after the first night
+a snapshot sends the database and only the uploads that are new. Keeping N
+deletes older snapshots and then, a day later, the uploads that no kept
+snapshot needs. Use one prefix per blog: two servers writing to the same
+prefix would prune each other's snapshots. On one server a scheduled snapshot
+and one made by hand wait for each other.
+Storage keys, the passphrase and the heartbeat address are never shown in the
+panel or written to the log. <code>burzblog snapshot create s3://&lt;bucket&gt;/&lt;prefix&gt;</code>
+makes one by hand with the same settings, and <code>burzblog snapshot list</code> shows
+what is there.</p>
 <h3 id="restoring">Restoring</h3>
 <p>On the new server, install BurzBlog as above, then restore before or instead
 of the first start, as the service user:</p>
@@ -311,6 +389,13 @@ of the first start, as the service user:</p>
 sudo -u burzblog burzblog snapshot restore blog.tar.gz.enc --data /var/lib/burzblog \
   --passphrase-file /etc/burzblog/snapshot-passphrase
 sudo systemctl start burzblog
+</code></pre>
+<p>From object storage, give the bucket and prefix for the newest snapshot, or a
+full key from <code>burzblog snapshot list</code> for another, with the same <code>BURZBLOG_S3_*</code>
+settings:</p>
+<pre><code class="language-sh">sudo -u burzblog env BURZBLOG_S3_ENDPOINT=... BURZBLOG_S3_ACCESS_KEY_ID=... BURZBLOG_S3_SECRET_ACCESS_KEY=... \
+  burzblog snapshot restore s3://example-backups/blog/ --data /var/lib/burzblog \
+  --passphrase-file /etc/burzblog/snapshot-passphrase
 </code></pre>
 <p>Restore refuses while a server runs with the data directory. The whole
 snapshot is checked before anything changes, so a damaged one leaves the

@@ -4,7 +4,7 @@ import type { Settings, Token } from "../types";
 import { errorMessage, request } from "../utils/api";
 import { MIN_PASSWORD, passwordStrength } from "../utils/password-strength";
 import { examplePostUrl, fetchCommand, siteFiles } from "../utils/site";
-import { snapshotState } from "../utils/backup";
+import { everyLabel, snapshotState } from "../utils/backup";
 import { themeOptions } from "../utils/theme";
 import { editedLabel, exactTime } from "../utils/time";
 
@@ -26,7 +26,9 @@ const settings = ref<Settings | null>(null);
 const tokens = ref<Token[] | null>(null);
 const error = ref("");
 
-const snapshotStatus = computed(() => snapshotState(settings.value?.snapshot));
+const snapshotStatus = computed(() =>
+  snapshotState(settings.value?.snapshot, Date.now(), settings.value?.schedule),
+);
 
 const load = async () => {
   try {
@@ -470,8 +472,9 @@ const scopeUse = (t: Token) =>
       <div class="settings-aside">
         <h2 id="backup-heading" class="section-title">Backup</h2>
         <p class="muted">
-          A full snapshot is the whole server in one file: every post and earlier version,
-          accounts and uploads. It is made on the server, and restores onto a new one.
+          A full snapshot is this whole blog in one file: every post and earlier version,
+          accounts and uploads. Nothing else on the machine is included. It restores onto
+          a new server.
         </p>
       </div>
       <div class="settings-main">
@@ -490,11 +493,18 @@ const scopeUse = (t: Token) =>
                 "
                 class="size-4"
               />
-              <template v-if="settings.snapshot"
+              <template v-if="snapshotStatus === 'failed'"
+                >The last automatic snapshot failed
+                {{ editedLabel(settings.schedule!.lastErrorAt!).toLowerCase() }}</template
+              >
+              <template v-else-if="settings.snapshot"
                 >Last full snapshot
                 {{ editedLabel(settings.snapshot.at).toLowerCase() }}</template
               >
               <template v-else>No full snapshot yet</template>
+            </p>
+            <p v-if="snapshotStatus === 'failed'" class="field-error">
+              {{ settings.schedule!.lastError }}
             </p>
             <p v-if="settings.snapshot" class="muted">
               <span class="mono">{{ settings.snapshot.file }}</span
@@ -507,16 +517,34 @@ const scopeUse = (t: Token) =>
               If this server's disk is lost, every post, its history, the accounts and the
               uploads go with it.
             </p>
-            <p v-if="snapshotStatus !== 'ok'" class="muted">
-              Have whoever runs this server schedule
-              <span class="mono">burzblog snapshot create</span> and copy the file to
-              another machine; see
+            <p
+              v-if="snapshotStatus !== 'failed' && settings.schedule?.warning"
+              class="field-error"
+            >
+              It was stored, but: {{ settings.schedule.warning }}
+            </p>
+            <p v-if="settings.schedule" class="muted">
+              Automatic {{ everyLabel(settings.schedule.everySeconds) }} to
+              <span class="mono">{{ settings.schedule.to }}</span
+              >{{ settings.schedule.keep ? `, keeping ${settings.schedule.keep}` : ""
+              }}{{ settings.schedule.encrypted ? ", encrypted" : ", not encrypted" }}.
+              <template v-if="settings.schedule.running">Making one now.</template>
+              <template v-else-if="settings.schedule.nextAt"
+                >Next {{ exactTime(settings.schedule.nextAt) }}.</template
+              >
+            </p>
+            <p v-else-if="snapshotStatus !== 'ok'" class="muted">
+              Have whoever runs this server turn on automatic snapshots (<span
+                class="mono"
+                >BURZBLOG_SNAPSHOT_EVERY=24h</span
+              >, to a folder or S3-compatible storage) or schedule
+              <span class="mono">burzblog snapshot create</span>; see
               <a
                 href="https://github.com/weburz/burzblog/blob/main/docs/self-hosting.md#backups"
                 target="_blank"
                 rel="noopener noreferrer"
                 >Backups in the self-hosting guide</a
-              >. Only snapshots made with that command show here.
+              >. Only snapshots BurzBlog makes show here.
             </p>
           </div>
         </div>

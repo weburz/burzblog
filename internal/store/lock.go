@@ -14,11 +14,21 @@ var ErrInUse = errors.New("the data directory is in use")
 // server runs. Several servers may hold it; a restore cannot start meanwhile.
 // It returns ErrInUse while a restore runs.
 func LockShared(dir string) (unlock func(), err error) {
-	return lockDir(dir, false)
+	return lockDir(dir, LockFile, false)
 }
 
 // LockExclusive takes the lock a restore needs: no server may run. It returns
 // ErrInUse while a server runs on the directory.
 func LockExclusive(dir string) (unlock func(), err error) {
-	return lockDir(dir, true)
+	return lockDir(dir, LockFile, true)
+}
+
+// SnapshotLockFile is held while a snapshot is made and old ones pruned, so
+// a scheduled run and one started by hand never prune under each other.
+const SnapshotLockFile = "burzblog-snapshot.lock"
+
+// LockSnapshots takes the snapshot lock without waiting. It returns ErrInUse
+// while another snapshot is being made with this data directory.
+func LockSnapshots(dir string) (unlock func(), err error) {
+	return lockDir(dir, SnapshotLockFile, true)
 }
