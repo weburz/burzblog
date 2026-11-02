@@ -6,6 +6,8 @@ All notable changes are recorded here, following
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-11-02
+
 ### Added
 
 - Full snapshots: `burzblog snapshot create` writes the whole blog (its data
@@ -38,11 +40,12 @@ All notable changes are recorded here, following
 - The container guide no longer says Coolify's backups include the data
   volume: they cover Coolify's own databases only. It now shows how to take
   and restore snapshots of a container.
-
 - Releases are automatic: pushing a `vX.Y.Z` tag runs the Release workflow,
   which runs the gates, builds the binaries, publishes the image and creates
   the GitHub release with the CHANGELOG section as notes. It replaces the
   manual image workflow; `task image:publish` stays as a fallback.
+- The image builds the panel on Node.js 26, and the panel moves to Nuxt
+  4.6.3 and Vitest 5 with its other dependency updates.
 
 ## [2.1.0] - 2026-10-27
 
