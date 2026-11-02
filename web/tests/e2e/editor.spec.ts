@@ -141,8 +141,14 @@ test("writing in the browser and the terminal never loses work", async ({
     .getByRole("button", { name: "Save and publish" })
     .click();
   await expect(page.getByRole("button", { name: "Publish", exact: true })).toHaveCount(0);
-  const published = await request.get(`/api/posts/${slug}`, { headers: auth });
-  expect((await published.json()).status).toBe("published");
+  // The button goes while the save is still running, so wait for the server.
+  await expect
+    .poll(
+      async () =>
+        (await (await request.get(`/api/posts/${slug}`, { headers: auth })).json())
+          .status,
+    )
+    .toBe("published");
   const exported = await request.get("/api/export.tar.gz", { headers: auth });
   expect(exported.status()).toBe(200);
   expect(gunzipSync(await exported.body()).toString("latin1")).toContain(`${slug}.md`);
