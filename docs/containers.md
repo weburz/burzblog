@@ -87,6 +87,23 @@ new version starts and migrations are never undone, so take a snapshot first.
 
 ## Backups
 
+The simplest backup is automatic: set these in the environment (in Coolify,
+the resource's environment variables, marking the keys and the passphrase as
+secrets) and the server sends an encrypted snapshot to S3-compatible storage
+every day, sending each upload only once:
+
+```sh
+BURZBLOG_SNAPSHOT_EVERY=24h
+BURZBLOG_SNAPSHOT_TO=s3://example-backups/blog-name/   # one prefix per blog
+BURZBLOG_SNAPSHOT_PASSPHRASE=...                       # keep a copy off the server
+BURZBLOG_S3_ENDPOINT=https://<account>.r2.cloudflarestorage.com
+BURZBLOG_S3_ACCESS_KEY_ID=...
+BURZBLOG_S3_SECRET_ACCESS_KEY=...
+```
+
+See [automatic snapshots](self-hosting.md#automatic-snapshots) for every
+setting. Several blogs can share one bucket with different prefixes.
+
 The image has no shell, so run BurzBlog's own commands in the container. A
 snapshot holds everything: posts with every earlier version, accounts and
 uploads (see [self-hosting](self-hosting.md#full-snapshots)). Stream one out
@@ -111,6 +128,9 @@ docker compose stop burzblog
 docker compose run --rm -T -e BURZBLOG_SNAPSHOT_PASSPHRASE burzblog snapshot restore - < blog.tar.gz.enc
 docker compose start burzblog
 ```
+
+From the bucket instead, pass the same `BURZBLOG_S3_*` settings and the
+passphrase to the one-off container and restore `s3://example-backups/blog-name/`.
 
 The root filesystem is read-only, so check a snapshot in the data volume:
 `docker compose run --rm -T burzblog snapshot verify - --work /data < blog.tar.gz.enc`.

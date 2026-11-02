@@ -3,34 +3,41 @@ package snapshot
 import (
 	"bufio"
 	"crypto/cipher"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 
 	"golang.org/x/crypto/chacha20poly1305"
 	"golang.org/x/crypto/scrypt"
 )
 
-// An encrypted snapshot is the plain snapshot sealed with a key derived from
-// a passphrase:
+// An encrypted file (a snapshot, or one upload stored beside remote
+// snapshots) is the plain file sealed with a key derived from a passphrase:
 //
-//	magic | log2(N) r p | salt (16) | check (16) | chunk | chunk | ...
+//	magic | log2(N) r p | salt (16) | check (16) | file nonce (16) | chunk | ...
 //
-// scrypt stretches the passphrase with a random salt into a key used for this
-// file only, and a check value that tells a wrong passphrase apart from a
-// damaged file. The content is cut into 64 KiB chunks, each sealed with
-// ChaCha20-Poly1305 under a nonce made of the chunk's number and a flag on the
-// last one, with the header as associated data (the STREAM construction). So
-// changing, reordering or dropping a chunk, cutting the file short or editing
-// the header all fail to decrypt.
+// scrypt stretches the passphrase with a random salt into a master key and a
+// check value that tells a wrong passphrase apart from a damaged file. One
+// run may seal many files under the same salt, deriving the slow master key
+// once; each file then has its own key, HMAC-SHA256(master, file nonce) with
+// a random file nonce, so no two files ever share a key. The content is cut
+// into 64 KiB chunks, each sealed with ChaCha20-Poly1305 under a nonce made
+// of the chunk's number and a flag on the last one, with the header as
+// associated data (the STREAM construction). So changing, reordering or
+// dropping a chunk, cutting the file short or editing the header all fail to
+// decrypt.
 const (
 	encMagic  = "BURZBLOG ENCRYPTED SNAPSHOT 1\n"
 	chunkSize = 64 << 10
 	saltSize  = 16
 	checkSize = 16
+	nonceSize = 16
 	// scrypt cost for new files: 32 MiB of memory, under a second on a
 	// Raspberry Pi 4, and small enough for a 128 MB container.
 	writeLogN = 15
@@ -51,7 +58,7 @@ var (
 	ErrNeedPassphrase = errors.New("the snapshot is encrypted; give its passphrase")
 )
 
-func headerSize() int { return len(encMagic) + 3 + saltSize + checkSize }
+func headerSize() int { return len(encMagic) + 3 + saltSize + checkSize + nonceSize }
 
 // deriveKeys stretches passphrase into the content key and the check value.
 func deriveKeys(passphrase string, salt []byte, logN, r, p int) (key, check []byte, err error) {
@@ -62,26 +69,64 @@ func deriveKeys(passphrase string, salt []byte, logN, r, p int) (key, check []by
 	return out[:chacha20poly1305.KeySize], out[chacha20poly1305.KeySize:], nil
 }
 
-// encryptTo returns a writer that seals what is written to it into w. Close
-// writes the last chunk; without it the file cannot be decrypted.
-func encryptTo(w io.Writer, passphrase string) (io.WriteCloser, error) {
+// sealKey is a master key for sealing files in one run: the salt and the
+// check value go in each file's header, with a fresh file nonce per file.
+type sealKey struct {
+	prefix []byte // magic, cost, salt and check value
+	master []byte
+}
+
+// newSealKey derives a master key from passphrase with a new random salt.
+func newSealKey(passphrase string) (*sealKey, error) {
 	if len(passphrase) < MinPassphrase {
 		return nil, fmt.Errorf("the passphrase must be at least %d characters", MinPassphrase)
 	}
-	header := make([]byte, 0, headerSize())
-	header = append(header, encMagic...)
-	header = append(header, writeLogN, writeR, writeP)
 	salt := make([]byte, saltSize)
 	if _, err := rand.Read(salt); err != nil {
 		return nil, err
 	}
-	header = append(header, salt...)
-	key, check, err := deriveKeys(passphrase, salt, writeLogN, writeR, writeP)
+	master, check, err := deriveKeys(passphrase, salt, writeLogN, writeR, writeP)
 	if err != nil {
 		return nil, err
 	}
-	header = append(header, check...)
-	aead, err := chacha20poly1305.New(key)
+	prefix := make([]byte, 0, headerSize())
+	prefix = append(prefix, encMagic...)
+	prefix = append(prefix, writeLogN, writeR, writeP)
+	prefix = append(prefix, salt...)
+	prefix = append(prefix, check...)
+	return &sealKey{prefix: prefix, master: master}, nil
+}
+
+// fileAEAD is the cipher for the file whose nonce is fileNonce.
+func fileAEAD(master, fileNonce []byte) (cipher.AEAD, error) {
+	return chacha20poly1305.New(hmacSum(master, fileNonce))
+}
+
+func hmacSum(key, data []byte) []byte {
+	h := hmac.New(sha256.New, key)
+	h.Write(data)
+	return h.Sum(nil)
+}
+
+// encryptTo seals one file with its own salt; see sealWith.
+func encryptTo(w io.Writer, passphrase string) (io.WriteCloser, error) {
+	k, err := newSealKey(passphrase)
+	if err != nil {
+		return nil, err
+	}
+	return k.sealTo(w)
+}
+
+// sealTo returns a writer that seals what is written to it into w under a new
+// file key. Close writes the last chunk; without it the file cannot be
+// decrypted.
+func (k *sealKey) sealTo(w io.Writer) (io.WriteCloser, error) {
+	fileNonce := make([]byte, nonceSize)
+	if _, err := rand.Read(fileNonce); err != nil {
+		return nil, err
+	}
+	header := append(append(make([]byte, 0, headerSize()), k.prefix...), fileNonce...)
+	aead, err := fileAEAD(k.master, fileNonce)
 	if err != nil {
 		return nil, err
 	}
@@ -153,12 +198,35 @@ func isEncrypted(r *bufio.Reader) bool {
 	return string(head) == encMagic
 }
 
-// decryptFrom reads the header from r, checks passphrase against it and
-// returns the plain content. Reads fail with ErrDamaged if anything was
-// changed or cut off.
+// keyring opens encrypted files with one passphrase, deriving each salt's
+// master key once however many files share it.
+type keyring struct {
+	passphrase string
+	mu         sync.Mutex
+	masters    map[string]derivedKey // by cost and salt
+	derived    int                   // scrypt runs, for tests
+}
+
+type derivedKey struct{ master, check []byte }
+
+func newKeyring(passphrase string) *keyring {
+	return &keyring{passphrase: passphrase, masters: map[string]derivedKey{}}
+}
+
+// decryptFrom opens one file with passphrase; see keyring.open.
 func decryptFrom(r *bufio.Reader, passphrase string) (io.Reader, error) {
+	return newKeyring(passphrase).open(r)
+}
+
+// open reads the header from r, checks the passphrase against it and returns
+// the plain content. Reads fail with ErrDamaged if anything was changed or
+// cut off.
+func (k *keyring) open(r *bufio.Reader) (io.Reader, error) {
 	header := make([]byte, headerSize())
 	if _, err := io.ReadFull(r, header); err != nil {
+		return nil, ErrDamaged
+	}
+	if string(header[:len(encMagic)]) != encMagic {
 		return nil, ErrDamaged
 	}
 	params := header[len(encMagic):]
@@ -170,14 +238,27 @@ func decryptFrom(r *bufio.Reader, passphrase string) (io.Reader, error) {
 		return nil, fmt.Errorf("%w: unknown key settings", ErrDamaged)
 	}
 	salt := params[3 : 3+saltSize]
-	key, check, err := deriveKeys(passphrase, salt, logN, cr, cp)
-	if err != nil {
-		return nil, err
+	check := params[3+saltSize : 3+saltSize+checkSize]
+	fileNonce := params[3+saltSize+checkSize:]
+
+	id := string(params[:3+saltSize])
+	k.mu.Lock()
+	dk, ok := k.masters[id]
+	k.mu.Unlock()
+	if !ok {
+		master, want, err := deriveKeys(k.passphrase, salt, logN, cr, cp)
+		if err != nil {
+			return nil, err
+		}
+		dk = derivedKey{master: master, check: want}
+		k.mu.Lock()
+		k.masters[id], k.derived = dk, k.derived+1
+		k.mu.Unlock()
 	}
-	if subtle.ConstantTimeCompare(check, params[3+saltSize:]) != 1 {
+	if subtle.ConstantTimeCompare(dk.check, check) != 1 {
 		return nil, ErrPassphrase
 	}
-	aead, err := chacha20poly1305.New(key)
+	aead, err := fileAEAD(dk.master, fileNonce)
 	if err != nil {
 		return nil, err
 	}

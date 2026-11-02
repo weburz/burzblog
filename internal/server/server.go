@@ -52,6 +52,9 @@ type Config struct {
 	// Version is reported by /healthz.
 	Version string
 	Logger  *slog.Logger
+	// SnapshotSchedule reports the automatic snapshots to admins; nil when
+	// they are off.
+	SnapshotSchedule func() any
 
 	// updateURL replaces the release address in tests.
 	updateURL string

@@ -40,6 +40,8 @@ type snapshotLine struct {
 	Damaged     []string  `json:"damaged"`
 	Pruned      []string  `json:"pruned,omitempty"`
 	Replaced    string    `json:"replaced,omitempty"`
+	// Sent is how many uploads a snapshot to object storage sent.
+	Sent *int `json:"sent,omitempty"`
 }
 
 func newSnapshotLine(m *snapshot.Manifest, encrypted bool) snapshotLine {
@@ -59,11 +61,14 @@ func (a *App) snapshotCmd() *cobra.Command {
 	var data, passFile string
 	cmd := &cobra.Command{
 		Use:   "snapshot",
-		Short: "Back up or restore the whole server: posts, history, accounts, uploads (run on the host)",
-		Long: `A snapshot is one file with everything the server holds: every post and every
-earlier version of it, accounts with their passwords, two-factor and roles,
-tokens, tag labels, the audit log and every uploaded file. It is made while
-BurzBlog runs and restores onto a new server with the same addresses.
+		Short: "Back up or restore this blog: posts, history, accounts, uploads (run on the host)",
+		Long: `A snapshot is one file with the whole blog: every post and every earlier
+version of it, accounts with their passwords, two-factor and roles, tokens,
+tag labels, the audit log and every uploaded file. That is the blog's data
+directory and nothing else: not the operating system, other apps or other
+blogs on the machine, nor BurzBlog's settings (environment variables). It is
+made while BurzBlog runs and restores onto a new server with the same
+addresses.
 
 A snapshot on the server's own disk is lost with that disk: copy it to another
 machine or to storage elsewhere. Snapshots hold password hashes and two-factor
@@ -82,20 +87,7 @@ restored, by anyone.`,
 
 	// givenPassphrase is the passphrase from --passphrase-file or the
 	// environment, or "" when neither is set.
-	givenPassphrase := func() (string, error) {
-		if passFile != "" {
-			b, err := os.ReadFile(passFile)
-			if err != nil {
-				return "", fmt.Errorf("read the passphrase file: %w", err)
-			}
-			p := strings.TrimRight(string(b), "\r\n")
-			if p == "" {
-				return "", fmt.Errorf("the passphrase file %s is empty", passFile)
-			}
-			return p, nil
-		}
-		return a.Getenv("BURZBLOG_SNAPSHOT_PASSPHRASE"), nil
-	}
+	givenPassphrase := func() (string, error) { return a.snapshotPassphrase(passFile) }
 	// askPassphrase returns a PassphraseFunc for reading a snapshot: the given
 	// passphrase, else one typed at the terminal unless the snapshot itself
 	// comes from standard input.
@@ -111,28 +103,45 @@ restored, by anyone.`,
 			return a.secret("Passphrase: ")
 		}
 	}
-	openSnapshot := func(name string) (io.ReadCloser, error) {
+	// openSnapshot opens a snapshot file, standard input (-) or one in a
+	// bucket (s3://bucket/prefix/, the newest, or .../snapshots/<name>); a
+	// bucket's snapshot comes with its uploads' source.
+	openSnapshot := func(ctx context.Context, name string) (io.ReadCloser, snapshot.MediaSource, error) {
 		if name == "-" {
-			return io.NopCloser(a.In), nil
+			return io.NopCloser(a.In), nil, nil
+		}
+		if isRemote(name) {
+			r, snap, err := a.remote(name)
+			if err != nil {
+				return nil, nil, err
+			}
+			return r.Open(ctx, snap)
 		}
 		f, err := os.Open(name)
 		if err != nil {
-			return nil, fmt.Errorf("open the snapshot: %w", err)
+			return nil, nil, fmt.Errorf("open the snapshot: %w", err)
 		}
-		return f, nil
+		return f, nil, nil
 	}
 
 	var encrypt bool
 	var keep int
 	create := &cobra.Command{
-		Use:   "create [file | folder | -]",
-		Short: "Write a snapshot of the whole server, safely while it runs",
-		Long: `Writes a snapshot of the server to a file. A target ending in .gz or .enc is
+		Use:   "create [file | folder | - | s3://bucket/prefix]",
+		Short: "Write a snapshot of the whole blog, safely while it runs",
+		Long: `Writes a snapshot of the blog to a file. A target ending in .gz or .enc is
 the file to write. Anything else is a folder, made when missing; given one, or
 nothing (the snapshots folder in the data directory), it names the file
 burzblog-snapshot-<UTC time>.tar.gz, with .enc added when encrypted; - writes
 to standard output. --keep N then deletes all but the newest N snapshots in
 that folder, touching no other file.
+
+To s3://bucket/prefix it stores the snapshot in S3-compatible storage (AWS,
+Cloudflare R2, Backblaze B2, MinIO and others) with the BURZBLOG_S3_ENDPOINT,
+BURZBLOG_S3_REGION, BURZBLOG_S3_ACCESS_KEY_ID and BURZBLOG_S3_SECRET_ACCESS_KEY
+settings. It must be encrypted. Each upload is stored once beside the
+snapshots, so later snapshots send only new ones; --keep N deletes older
+snapshots there and the uploads none of the kept ones needs.
 
 The database is copied consistently while BurzBlog keeps running and writing.
 An upload the database records but the media folder lacks is listed and
@@ -181,6 +190,9 @@ systemd timer, then copy the file off the server.`,
 			if _, err := os.Stat(filepath.Join(dir, store.FileName)); errors.Is(err, fs.ErrNotExist) {
 				return fmt.Errorf("there is no BurzBlog database in %s; pass the data directory with --data", dir)
 			}
+			if isRemote(target) {
+				return a.createRemote(dir, target, keep, pass)
+			}
 			now := time.Now().UTC()
 			path, inFolder := "", false
 			if !toStdout {
@@ -207,6 +219,14 @@ systemd timer, then copy the file off the server.`,
 			// under the server that is running.
 			ctx, stop := interruptible()
 			defer stop()
+			unlock, err := store.LockSnapshots(dir)
+			if errors.Is(err, store.ErrInUse) {
+				return conflictf("%v", snapshot.ErrBusy)
+			}
+			if err != nil {
+				return err
+			}
+			defer unlock()
 			st, err := store.OpenExisting(ctx, dir)
 			if err != nil {
 				return err
@@ -223,7 +243,7 @@ systemd timer, then copy the file off the server.`,
 				if inFolder {
 					snapshot.SweepPartial(target)
 				}
-				if m, size, err = writeSnapshot(ctx, st, dir, path, opts); err != nil {
+				if m, size, err = snapshot.WriteFile(ctx, st, dir, path, opts); err != nil {
 					return err
 				}
 			}
@@ -275,7 +295,7 @@ systemd timer, then copy the file off the server.`,
 
 	var work string
 	verify := &cobra.Command{
-		Use:   "verify <file | ->",
+		Use:   "verify <file | - | s3://bucket/prefix[/snapshots/<name>]>",
 		Short: "Check that a snapshot is complete and would restore",
 		Long: `Reads the whole snapshot, checks every file against its checksum and the
 database with SQLite's integrity check, and reports what it holds. Nothing is
@@ -285,17 +305,17 @@ afterwards. In a container with a read-only root, pass --work /data.`,
 		Example: `  burzblog snapshot verify /mnt/backup/burzblog-snapshot-20261027T031700.000Z.tar.gz`,
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			r, err := openSnapshot(args[0])
-			if err != nil {
-				return err
-			}
-			defer r.Close()
 			if work == "" {
 				work = os.TempDir()
 			}
 			ctx, stop := interruptible()
 			defer stop()
-			res, err := snapshot.Verify(ctx, r, askPassphrase(args[0] == "-"), work)
+			r, src, err := openSnapshot(ctx, args[0])
+			if err != nil {
+				return err
+			}
+			defer r.Close()
+			res, err := snapshot.Verify(ctx, r, askPassphrase(args[0] == "-"), src, work)
 			if err != nil {
 				return snapshotError(err)
 			}
@@ -312,7 +332,7 @@ afterwards. In a container with a read-only root, pass --work /data.`,
 
 	var force bool
 	restore := &cobra.Command{
-		Use:   "restore <file | ->",
+		Use:   "restore <file | - | s3://bucket/prefix[/snapshots/<name>]>",
 		Short: "Restore a snapshot into the data directory (stop BurzBlog first)",
 		Long: `Restores a snapshot into the data directory, for example on a new server after
 the old one was lost. Stop BurzBlog first: restore refuses while a server runs
@@ -325,8 +345,12 @@ with --force its database and uploads are moved to
 the server runs as; when run as root, the restored files are given to the
 owner of the data directory.
 
-An older snapshot's database is upgraded when BurzBlog next starts, with a
-backup first. A snapshot from a newer BurzBlog needs that version or newer.`,
+An older snapshot's database is upgraded during the restore, with a backup
+first. A snapshot from a newer BurzBlog needs that version or newer.
+
+From object storage, give the bucket and prefix for the newest snapshot, or
+the full key of one (see burzblog snapshot list); the BURZBLOG_S3_* settings
+must be set, as for create.`,
 		Example: `  sudo systemctl stop burzblog
   sudo -u burzblog burzblog snapshot restore blog.tar.gz --data /var/lib/burzblog
   sudo systemctl start burzblog
@@ -337,13 +361,13 @@ backup first. A snapshot from a newer BurzBlog needs that version or newer.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := a.dataDir(data)
-			r, err := openSnapshot(args[0])
+			ctx, stop := interruptible()
+			defer stop()
+			r, src, err := openSnapshot(ctx, args[0])
 			if err != nil {
 				return err
 			}
 			defer r.Close()
-			ctx, stop := interruptible()
-			defer stop()
 			// Upgrade an older database and record the restore while the
 			// lock still keeps a server or another command out.
 			finish := func(dir string, m *snapshot.Manifest) error {
@@ -354,7 +378,7 @@ backup first. A snapshot from a newer BurzBlog needs that version or newer.`,
 				defer st.Close()
 				return hostAudit(st, "snapshot.restore", fmt.Sprintf("made %s by %s", m.CreatedAt.Format(time.RFC3339), m.Version))
 			}
-			res, err := snapshot.Restore(ctx, r, askPassphrase(args[0] == "-"), dir, snapshot.RestoreOptions{Force: force, Finish: finish})
+			res, err := snapshot.Restore(ctx, r, askPassphrase(args[0] == "-"), dir, snapshot.RestoreOptions{Force: force, Finish: finish, Media: src})
 			if errors.Is(err, snapshot.ErrServerRunning) {
 				return conflictf("BurzBlog is running with %s; stop it first (systemctl stop burzblog, docker compose stop burzblog), then restore", dir)
 			}
@@ -382,7 +406,57 @@ backup first. A snapshot from a newer BurzBlog needs that version or newer.`,
 	}
 	restore.Flags().BoolVar(&force, "force", false, "replace a blog already in the data directory (it is moved aside, not deleted)")
 
-	cmd.AddCommand(create, verify, restore)
+	list := &cobra.Command{
+		Use:   "list <folder | s3://bucket/prefix>",
+		Short: "List the snapshots in a folder or in object storage, oldest first",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, stop := interruptible()
+			defer stop()
+			type item struct {
+				Name string `json:"name"`
+				Path string `json:"path"`
+				Size int64  `json:"size"`
+			}
+			items := []item{}
+			if isRemote(args[0]) {
+				r, _, err := a.remote(args[0])
+				if err != nil {
+					return err
+				}
+				stored, err := r.List(ctx)
+				if err != nil {
+					return err
+				}
+				for _, s := range stored {
+					items = append(items, item{Name: s.Name, Path: "s3://" + strings.TrimPrefix(r.Label, "s3://") + "snapshots/" + s.Name, Size: s.Size})
+				}
+			} else {
+				entries, err := os.ReadDir(args[0])
+				if err != nil {
+					return err
+				}
+				for _, e := range entries {
+					if info, err := e.Info(); err == nil && info.Mode().IsRegular() && snapshot.IsName(e.Name()) {
+						items = append(items, item{Name: e.Name(), Path: filepath.Join(args[0], e.Name()), Size: info.Size()})
+					}
+				}
+			}
+			if a.asJSON {
+				return a.emit(map[string]any{"items": items})
+			}
+			if len(items) == 0 {
+				fmt.Fprintf(a.Out, "No snapshots in %s.\n", args[0])
+				return nil
+			}
+			for _, it := range items {
+				fmt.Fprintf(a.Out, "%s  %s\n", it.Path, a.paint(dim, sizeText(it.Size)))
+			}
+			return nil
+		},
+	}
+
+	cmd.AddCommand(create, verify, restore, list)
 	return cmd
 }
 
@@ -398,45 +472,6 @@ func interruptible() (context.Context, context.CancelFunc) {
 // mistyped folder never becomes a file named like it.
 func snapshotFileName(target string) bool {
 	return strings.HasSuffix(target, ".gz") || strings.HasSuffix(target, ".enc")
-}
-
-// writeSnapshot writes a snapshot to path through a temporary file in the
-// same folder, so path only ever holds a complete snapshot.
-func writeSnapshot(ctx context.Context, st *store.Store, dataDir, path string, opts snapshot.Options) (*snapshot.Manifest, int64, error) {
-	tmp := path + ".partial"
-	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-	if err != nil {
-		return nil, 0, fmt.Errorf("write the snapshot: %w", err)
-	}
-	fail := func(err error) (*snapshot.Manifest, int64, error) {
-		f.Close()
-		os.Remove(tmp)
-		return nil, 0, err
-	}
-	m, err := snapshot.Create(ctx, st, dataDir, f, opts)
-	if err != nil {
-		return fail(err)
-	}
-	if err := f.Sync(); err != nil {
-		return fail(fmt.Errorf("write the snapshot: %w", err))
-	}
-	info, err := f.Stat()
-	if err != nil {
-		return fail(err)
-	}
-	if err := f.Close(); err != nil {
-		os.Remove(tmp)
-		return nil, 0, fmt.Errorf("write the snapshot: %w", err)
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
-		return nil, 0, fmt.Errorf("write the snapshot: %w", err)
-	}
-	if d, err := os.Open(filepath.Dir(path)); err == nil {
-		d.Sync() // keep the rename across a power cut; not possible on Windows
-		d.Close()
-	}
-	return m, info.Size(), nil
 }
 
 func (a *App) printSnapshotSummary(w io.Writer, m *snapshot.Manifest, encrypted bool) {
@@ -487,4 +522,55 @@ func sizeText(n int64) string {
 		return fmt.Sprintf("%.0f KB", float64(n)/(1<<10))
 	}
 	return fmt.Sprintf("%d bytes", n)
+}
+
+// createRemote stores a snapshot in object storage.
+func (a *App) createRemote(dir, target string, keep int, pass string) error {
+	r, name, err := a.remote(target)
+	if err != nil {
+		return err
+	}
+	if name != "" {
+		return usagef("give the bucket and prefix (s3://bucket/prefix), not a snapshot name: names are chosen by time")
+	}
+	if pass == "" {
+		return usagef("snapshots stored off the server must be encrypted: set BURZBLOG_SNAPSHOT_PASSPHRASE or pass --passphrase-file")
+	}
+	ctx, stop := interruptible()
+	defer stop()
+	st, err := store.OpenExisting(ctx, dir)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	res, err := snapshot.CreateRemote(ctx, st, dir, r, keep, snapshot.Options{Passphrase: pass, Version: a.Version})
+	if errors.Is(err, snapshot.ErrBusy) {
+		return conflictf("%v", err)
+	}
+	if res == nil {
+		return err
+	}
+	auditErr := hostAudit(st, "snapshot.create", r.String()+"snapshots/"+filepath.Base(res.Key)+", encrypted")
+	if auditErr != nil {
+		fmt.Fprintf(a.Err, "%s %v\n", a.paint(yellow, "warning:"), auditErr)
+	}
+	if res.PruneWarning != "" {
+		fmt.Fprintf(a.Err, "%s %s\n", a.paint(yellow, "warning:"), res.PruneWarning)
+	}
+	if err != nil {
+		return err
+	}
+	if a.asJSON {
+		l := newSnapshotLine(res.Manifest, true)
+		l.Path, l.Size, l.Pruned = r.String()+"snapshots/"+filepath.Base(res.Key), res.Size, res.Pruned
+		l.Sent = &res.Sent
+		return a.emit(l)
+	}
+	fmt.Fprintf(a.Out, "%s Stored %ssnapshots/%s (%s).\n", a.paint(green, "✓"), r, filepath.Base(res.Key), sizeText(res.Size))
+	a.printSnapshotSummary(a.Out, res.Manifest, true)
+	fmt.Fprintf(a.Out, "  Sent %s (%s); the rest were stored already.\n", count(res.Sent, "new upload", "new uploads"), sizeText(res.SentBytes))
+	if len(res.Pruned) > 0 {
+		fmt.Fprintf(a.Out, "  Deleted %s.\n", count(len(res.Pruned), "older snapshot", "older snapshots"))
+	}
+	return nil
 }

@@ -198,6 +198,23 @@ export interface Settings {
   site: SiteSettings;
   // The newest `burzblog snapshot create`, or null before the first.
   snapshot: SnapshotInfo | null;
+  // Automatic snapshots, or null when they are off.
+  schedule: SnapshotSchedule | null;
+}
+
+export interface SnapshotSchedule {
+  everySeconds: number;
+  // A folder or s3://bucket/prefix/, never with credentials.
+  to: string;
+  keep: number;
+  encrypted: boolean;
+  heartbeat: boolean;
+  nextAt: string | null;
+  running: boolean;
+  lastError?: string;
+  lastErrorAt?: string;
+  // A problem of a snapshot that still worked, such as old ones not deleted.
+  warning?: string;
 }
 
 export interface SnapshotInfo {
