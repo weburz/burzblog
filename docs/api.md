@@ -122,6 +122,13 @@ Single-line fields reject control characters, tabs included, like `title`.
 | `GET /api/posts/{slug}/revisions` | `{items, current}`: earlier versions, newest first, without bodies; see below |
 | `GET /api/posts/{slug}/revisions/{v}` | one earlier version in full |
 | `POST /api/posts/{slug}/revisions/{v}/restore` | `{version}` → saves that content as a new version |
+
+`PUT /api/posts/{slug}` also accepts `autosave: true` for a save the client
+made on its own while the writer typed. It is checked against `version` and
+raises it like any save, but consecutive autosaves by the same account
+within 30 minutes of each other share one revision: each replaces the one
+the previous autosave left. A save without the flag always keeps its own
+revision, and is never folded. The browser panel autosaves drafts.
 | `POST /api/preview` | `{markdown}` → `{html}`, sanitized; see [preview limits](#preview-limits) |
 
 Each revision in the list carries `version`, `savedAt`, `savedBy` and a state:
