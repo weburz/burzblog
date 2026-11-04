@@ -192,6 +192,47 @@ test("the image dialog rejects unsafe addresses and inserts a valid image", asyn
   await expect(body).toHaveValue("![A photo](https://example.com/photo.png)");
 });
 
+test("a file dropped on the body is uploaded and linked where the caret is", async ({
+  page,
+  request,
+}) => {
+  const api = await apiAs(request);
+  const slug = `drop-${unique()}`;
+  await api.createPost(slug, "Drop check", "Intro\n");
+
+  await signIn(page);
+  await openPost(page, slug);
+  const body = page.getByLabel("Post body in Markdown");
+  await body.focus();
+  await page.keyboard.press("End");
+  // A real 1×1 PNG, so the server accepts it; a text file is refused and
+  // must leave nothing behind.
+  const png =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+  const dataTransfer = await page.evaluateHandle(
+    ({ png: encoded }) => {
+      const dt = new DataTransfer();
+      const bytes = Uint8Array.from(atob(encoded), (c) => c.charCodeAt(0));
+      dt.items.add(new File([bytes], "dot.png", { type: "image/png" }));
+      dt.items.add(new File(["not an image"], "notes.txt", { type: "text/plain" }));
+      return dt;
+    },
+    { png },
+  );
+  await body.dispatchEvent("drop", { dataTransfer });
+  await expect(body).toHaveValue(
+    /^Intro\n!\[dot\]\(http:\/\/[^)]+\/media\/[a-z0-9]+\.png\)$/,
+    {
+      timeout: 10_000,
+    },
+  );
+  await expect(body).not.toHaveValue(/Uploading/);
+  await expect(body).not.toHaveValue(/notes\.txt/);
+  await expect(page.getByText("Could not upload").first()).toBeVisible();
+  const url = (await body.inputValue()).match(/\(([^)]+)\)/)?.[1] ?? "";
+  expect((await request.get(url)).status()).toBe(200);
+});
+
 test("focus mode toggles with Ctrl+Shift+F and leaves with Esc", async ({
   page,
   request,

@@ -6,6 +6,9 @@ import {
   horizontalRule,
   image,
   imageUrlError,
+  insertPlaceholders,
+  replacePlaceholder,
+  uploadPlaceholder,
   indentList,
   keepIndent,
   lengthLabel,
@@ -259,5 +262,69 @@ describe("indentList", () => {
   });
   it("returns null when there is nothing to outdent", () => {
     expect(indentList("- a", 3, 3, true)).toBeNull();
+  });
+});
+
+describe("upload placeholders", () => {
+  it("names the file and keeps uploads apart", () => {
+    expect(uploadPlaceholder("photo [1] (a).png", 3)).toBe(
+      "![Uploading photo 1 a.png…](uploading-3)",
+    );
+    expect(uploadPlaceholder("   ", 4)).toBe("![Uploading file…](uploading-4)");
+  });
+
+  it("inserts placeholders on their own lines and puts the caret after them", () => {
+    const edit = insertPlaceholders("abc", 1, 2, [
+      "![x](uploading-1)",
+      "![y](uploading-2)",
+    ]);
+    expect(edit.text).toBe("a\n![x](uploading-1)\n![y](uploading-2)\nc");
+    expect(edit.start).toBe(edit.text.length - 2);
+    expect(edit.end).toBe(edit.start);
+    expect(insertPlaceholders("", 0, 0, ["![x](uploading-1)"]).text).toBe(
+      "![x](uploading-1)",
+    );
+    expect(insertPlaceholders("line\n", 5, 5, ["![x](uploading-1)"]).text).toBe(
+      "line\n![x](uploading-1)",
+    );
+  });
+
+  it("replaces a placeholder without moving a caret that sits elsewhere", () => {
+    const source = "one\n![Uploading a.png…](uploading-1)\ntwo";
+    const done = replacePlaceholder(
+      source,
+      "![Uploading a.png…](uploading-1)",
+      "![a](/media/a.png)",
+      2,
+      2,
+    );
+    expect(done).toEqual({ text: "one\n![a](/media/a.png)\ntwo", start: 2, end: 2 });
+    const after = replacePlaceholder(
+      source,
+      "![Uploading a.png…](uploading-1)",
+      "![a](/media/a.png)",
+      source.length,
+      source.length,
+    );
+    expect(after?.start).toBe("one\n![a](/media/a.png)\ntwo".length);
+  });
+
+  it("removes a failed upload with its line", () => {
+    const source = "one\n![Uploading a.png…](uploading-1)\ntwo";
+    expect(
+      replacePlaceholder(source, "![Uploading a.png…](uploading-1)", "", 0, 0)?.text,
+    ).toBe("one\ntwo");
+    expect(
+      replacePlaceholder(
+        "one\n![Uploading a.png…](uploading-1)",
+        "![Uploading a.png…](uploading-1)",
+        "",
+        0,
+        0,
+      )?.text,
+    ).toBe("one");
+    expect(
+      replacePlaceholder("gone", "![Uploading a.png…](uploading-1)", "", 0, 0),
+    ).toBeNull();
   });
 });
