@@ -330,12 +330,15 @@ the time a draft publishes itself (UTC, RFC 3339), or <code>null</code>; see
 <td><code>POST /api/posts/{slug}/revisions/{v}/restore</code></td>
 <td><code>{version}</code> → saves that content as a new version</td>
 </tr>
-<tr>
-<td><code>POST /api/preview</code></td>
-<td><code>{markdown}</code> → <code>{html}</code>, sanitized; see <a href="#preview-limits">preview limits</a></td>
-</tr>
 </tbody>
 </table>
+<p><code>PUT /api/posts/{slug}</code> also accepts <code>autosave: true</code> for a save the client
+made on its own while the writer typed. It is checked against <code>version</code> and
+raises it like any save, but consecutive autosaves by the same account
+within 30 minutes of each other share one revision: each replaces the one
+the previous autosave left. A save without the flag always keeps its own
+revision, and is never folded. The browser panel autosaves drafts.
+| <code>POST /api/preview</code> | <code>{markdown}</code> → <code>{html}</code>, sanitized; see <a href="#preview-limits">preview limits</a> |</p>
 <p>Each revision in the list carries <code>version</code>, <code>savedAt</code>, <code>savedBy</code> and a state:
 <code>slug</code>, <code>title</code>, <code>status</code>, <code>words</code> (the body's word count) and the digests
 <code>descriptionDigest</code>, <code>coverDigest</code> and <code>settingsDigest</code> (extra, dates, tags,

@@ -341,6 +341,12 @@ var migrations = []string{
 		updated_at TEXT NOT NULL,
 		updated_by TEXT NOT NULL DEFAULT ''
 	);`,
+	// Autosaves. A post remembers whether its content came from an autosave,
+	// and so does each revision, so consecutive autosaves by one writer can
+	// be folded into one revision (see AutosavePost) while explicit saves
+	// are always kept.
+	`ALTER TABLE posts ADD COLUMN autosaved INTEGER NOT NULL DEFAULT 0 CHECK (autosaved IN (0, 1));
+	ALTER TABLE revisions ADD COLUMN autosaved INTEGER NOT NULL DEFAULT 0;`,
 }
 
 // migrationSteps run in the migration's transaction after its SQL, for work

@@ -405,6 +405,26 @@ func (s *Store) ListPosts(ctx context.Context, f Filter) ([]Summary, Counts, err
 // version. On ErrConflict the current post is returned too.
 func (s *Store) UpdatePost(ctx context.Context, slug string, version int64, by string,
 	change func(*post.Post) error) (*post.Post, error) {
+	return s.updatePost(ctx, slug, version, by, false, change)
+}
+
+// AutosaveWindow is the pause that ends a writing session. While a writer's
+// autosaves follow one another within it, each replaces the revision the
+// previous autosave left, so History shows one entry per session; a longer
+// pause leaves the last autosave in place as a checkpoint.
+const AutosaveWindow = 30 * time.Minute
+
+// AutosavePost is UpdatePost for a save the editor made on its own. It keeps
+// the version check and the revision, but folds the previous revision into
+// this one when that revision was also an autosave by the same writer, within
+// AutosaveWindow. A revision an explicit save produced is never folded.
+func (s *Store) AutosavePost(ctx context.Context, slug string, version int64, by string,
+	change func(*post.Post) error) (*post.Post, error) {
+	return s.updatePost(ctx, slug, version, by, true, change)
+}
+
+func (s *Store) updatePost(ctx context.Context, slug string, version int64, by string, autosave bool,
+	change func(*post.Post) error) (*post.Post, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("begin update: %w", err)
@@ -463,27 +483,39 @@ func (s *Store) UpdatePost(ctx context.Context, slug string, version int64, by s
 	if current.Tags == nil {
 		oldTags = []byte("[]")
 	}
+	// Whether the content being replaced came from an autosave travels with
+	// it into the revision, so a later autosave knows what it may fold.
+	var wasAutosaved bool
+	if err := tx.QueryRowContext(ctx, "SELECT autosaved FROM posts WHERE id = ?", current.ID).Scan(&wasAutosaved); err != nil {
+		return nil, fmt.Errorf("keep revision: %w", err)
+	}
+	if autosave && wasAutosaved && current.UpdatedBy == by {
+		if err := foldAutosave(ctx, tx, current, s.now()); err != nil {
+			return nil, err
+		}
+	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO revisions
 		(post_id, version, slug, title, description, status, body, cover_url, cover_alt, extra,
-		 published_on, updated_on, saved_at, saved_by, words, tags, author, seo_title, seo_description, canonical_url, featured)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 published_on, updated_on, saved_at, saved_by, words, tags, author, seo_title, seo_description, canonical_url, featured,
+		 autosaved)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		current.ID, current.Version, current.Slug, current.Title, current.Description, string(current.Status),
 		current.Body, current.CoverURL, current.CoverAlt, current.Extra, nullTime(current.PublishedOn),
 		nullTime(current.UpdatedOn), current.UpdatedAt.Format(time.RFC3339Nano), current.UpdatedBy, post.CountWords(current.Body),
 		string(oldTags), current.Author, current.SEOTitle, current.SEODescription, current.CanonicalURL,
-		current.Featured); err != nil {
+		current.Featured, wasAutosaved); err != nil {
 		return nil, fmt.Errorf("keep revision: %w", err)
 	}
 	updated, err := scanPost(tx.QueryRowContext(ctx, `UPDATE posts SET
 		slug = ?, title = ?, description = ?, status = ?, body = ?, cover_url = ?, cover_alt = ?, extra = ?,
 		published_on = ?, updated_on = ?, publish_at = ?, publish_by = ?, updated_at = ?, updated_by = ?,
 		words = ?, author = ?, seo_title = ?, seo_description = ?, canonical_url = ?, featured = ?,
-		version = version + 1
+		autosaved = ?, version = version + 1
 		WHERE id = ? RETURNING `+postColumns,
 		next.Slug, next.Title, next.Description, string(next.Status), next.Body, next.CoverURL, next.CoverAlt,
 		next.Extra, nullTime(next.PublishedOn), nullTime(next.UpdatedOn), nullTime(next.PublishAt), next.PublishBy,
 		now, by, post.CountWords(next.Body), next.Author, next.SEOTitle, next.SEODescription, next.CanonicalURL,
-		next.Featured, current.ID))
+		next.Featured, autosave, current.ID))
 	if err != nil {
 		return nil, err
 	}
@@ -598,6 +630,32 @@ type Revision struct {
 
 // Revisions lists a post's earlier versions, newest first, without bodies but
 // with word counts.
+// foldAutosave removes the revision the previous autosave left, when it is by
+// the same writer and was saved less than AutosaveWindow ago. That revision's
+// content was itself an autosave of the same session; the revision about to
+// be written (the current content) takes its place. A revision from an
+// explicit save, or one older than the window, is kept.
+func foldAutosave(ctx context.Context, tx *sql.Tx, current *post.Post, now time.Time) error {
+	var saved string
+	err := tx.QueryRowContext(ctx, `SELECT saved_at FROM revisions
+		WHERE post_id = ? AND version = ? AND autosaved = 1 AND saved_by = ?`,
+		current.ID, current.Version-1, current.UpdatedBy).Scan(&saved)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("fold autosave: %w", err)
+	}
+	if now.Sub(parseStamp(saved)) >= AutosaveWindow {
+		return nil
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM revisions WHERE post_id = ? AND version = ?",
+		current.ID, current.Version-1); err != nil {
+		return fmt.Errorf("fold autosave: %w", err)
+	}
+	return nil
+}
+
 func (s *Store) Revisions(ctx context.Context, slug string) ([]Revision, error) {
 	p, err := s.GetPost(ctx, slug)
 	if err != nil {

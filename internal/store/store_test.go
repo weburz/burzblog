@@ -424,3 +424,103 @@ func TestLoginAttemptsPruned(t *testing.T) {
 		t.Error("live row was pruned: limit no longer enforced")
 	}
 }
+
+func TestAutosaveFoldsRevisionsWithinASession(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+	clock := time.Date(2026, 11, 4, 10, 0, 0, 0, time.UTC)
+	s.SetClock(func() time.Time { return clock })
+	tick := func(d time.Duration) { clock = clock.Add(d) }
+	body := func(text string) func(*post.Post) error {
+		return func(p *post.Post) error { p.Body = text; return nil }
+	}
+	p, err := s.CreatePost(ctx, &post.Post{Slug: "a", Title: "A", Body: "start"}, "ada")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tick(time.Minute)
+	if p, err = s.UpdatePost(ctx, "a", p.Version, "ada", body("explicit")); err != nil {
+		t.Fatal(err)
+	}
+	// Three autosaves in one session: only the state before the session and
+	// the latest autosave survive.
+	for i, text := range []string{"auto one", "auto two", "auto three"} {
+		tick(2 * time.Minute)
+		if p, err = s.AutosavePost(ctx, "a", p.Version, "ada", body(text)); err != nil {
+			t.Fatalf("autosave %d: %v", i, err)
+		}
+	}
+	if p.Version != 5 || p.Body != "auto three" {
+		t.Fatalf("after autosaves: %+v", p)
+	}
+	versions := func() []int64 {
+		revs, err := s.Revisions(ctx, "a")
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := []int64{}
+		for _, r := range revs {
+			out = append(out, r.Version)
+		}
+		return out
+	}
+	if got := versions(); fmt.Sprint(got) != "[4 2 1]" {
+		t.Fatalf("revisions after a session = %v, want [4 2 1]", got)
+	}
+	if rev, err := s.Revision(ctx, "a", 2); err != nil || rev.Post.Body != "explicit" {
+		t.Fatalf("explicit save kept: %+v %v", rev, err)
+	}
+	if _, err := s.Revision(ctx, "a", 3); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("folded revision still there: %v", err)
+	}
+
+	// An explicit save keeps the autosaved content it replaces, and the
+	// next autosave does not fold it.
+	tick(time.Minute)
+	if p, err = s.UpdatePost(ctx, "a", p.Version, "ada", body("explicit two")); err != nil {
+		t.Fatal(err)
+	}
+	tick(time.Minute)
+	if p, err = s.AutosavePost(ctx, "a", p.Version, "ada", body("auto four")); err != nil {
+		t.Fatal(err)
+	}
+	tick(time.Minute)
+	if p, err = s.AutosavePost(ctx, "a", p.Version, "ada", body("auto five")); err != nil {
+		t.Fatal(err)
+	}
+	if got := versions(); fmt.Sprint(got) != "[7 6 5 4 2 1]" {
+		t.Fatalf("revisions after an explicit save = %v, want [7 6 5 4 2 1]", got)
+	}
+
+	// Another writer's autosave never folds the first writer's.
+	tick(time.Minute)
+	if p, err = s.AutosavePost(ctx, "a", p.Version, "grace", body("grace one")); err != nil {
+		t.Fatal(err)
+	}
+	tick(time.Minute)
+	if p, err = s.AutosavePost(ctx, "a", p.Version, "grace", body("grace two")); err != nil {
+		t.Fatal(err)
+	}
+	if got := versions(); fmt.Sprint(got) != "[9 8 7 6 5 4 2 1]" {
+		t.Fatalf("revisions after a second writer = %v, want [9 8 7 6 5 4 2 1]", got)
+	}
+
+	// A pause longer than the window ends the session: the state before
+	// the pause (version 10) stays as a checkpoint, and the new session
+	// folds from there on.
+	tick(AutosaveWindow + time.Second)
+	if p, err = s.AutosavePost(ctx, "a", p.Version, "grace", body("grace three")); err != nil {
+		t.Fatal(err)
+	}
+	tick(time.Minute)
+	if p, err = s.AutosavePost(ctx, "a", p.Version, "grace", body("grace four")); err != nil {
+		t.Fatal(err)
+	}
+	tick(time.Minute)
+	if _, err = s.AutosavePost(ctx, "a", p.Version, "grace", body("grace five")); err != nil {
+		t.Fatal(err)
+	}
+	if got := versions(); fmt.Sprint(got) != "[12 10 9 8 7 6 5 4 2 1]" {
+		t.Fatalf("revisions after a long pause = %v, want [12 10 9 8 7 6 5 4 2 1]", got)
+	}
+}

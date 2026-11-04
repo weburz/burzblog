@@ -47,6 +47,8 @@ const confirm = reactive({
   run: () => {},
 });
 const justSaved = ref(false);
+// "Saved" shows for a moment after each save; a quick next save restarts it.
+let savedFlash: ReturnType<typeof setTimeout> | undefined;
 // Dialogs opened from the More menu give focus back to its button when they close.
 const moreButton = ref<{ $el: HTMLElement } | null>(null);
 const menuOpener = ref<HTMLElement | null>(null);
@@ -217,9 +219,13 @@ const discardBackup = () => {
   recovered.value = null;
 };
 
-const save = async (overwriteVersion?: number): Promise<boolean> => {
+// auto marks a save the editor makes by itself (see autosave below): the
+// server folds a run of those into one revision.
+let autosaveTimer: ReturnType<typeof setTimeout> | undefined;
+const save = async (overwriteVersion?: number, auto = false): Promise<boolean> => {
   if (!post.value || !draft.value || saving.value) return false;
   if (!dirty.value && overwriteVersion === undefined) return true;
+  clearTimeout(autosaveTimer);
   saving.value = true;
   saveError.value = "";
   const from = post.value.slug;
@@ -228,6 +234,7 @@ const save = async (overwriteVersion?: number): Promise<boolean> => {
     const saved = await request<Post>(`/api/posts/${encodeURIComponent(from)}`, "PUT", {
       version: overwriteVersion ?? post.value.version,
       ...sent,
+      ...(auto ? { autosave: true } : {}),
     });
     clearBackup(from);
     conflict.value = null;
@@ -241,7 +248,8 @@ const save = async (overwriteVersion?: number): Promise<boolean> => {
       await navigateTo(`/posts/${saved.slug}`, { replace: true });
     }
     justSaved.value = true;
-    setTimeout(() => (justSaved.value = false), 2400);
+    clearTimeout(savedFlash);
+    savedFlash = setTimeout(() => (justSaved.value = false), 2400);
     return true;
   } catch (cause) {
     if (cause instanceof ApiError && cause.code === "conflict" && cause.current) {
@@ -258,6 +266,46 @@ const save = async (overwriteVersion?: number): Promise<boolean> => {
 };
 
 const keepMine = () => conflict.value && save(conflict.value.version);
+
+// Drafts save themselves a moment after typing stops, so nothing depends on
+// Ctrl+S. Published posts keep the explicit Save: a live post should not
+// change under the writer's hands. A rename, a conflict or a backup still on
+// offer also waits for the writer; a failed autosave shows as "Not saved" and
+// tries again on the next change.
+const autosaveDelay = 2000;
+const autosaves = computed(
+  () =>
+    post.value?.status === "draft" &&
+    draft.value?.slug === post.value.slug &&
+    !conflict.value &&
+    !recovered.value,
+);
+watch(
+  draft,
+  () => {
+    clearTimeout(autosaveTimer);
+    if (!autosaves.value || !dirty.value) return;
+    autosaveTimer = setTimeout(() => void save(undefined, true), autosaveDelay);
+  },
+  { deep: true },
+);
+// Switching tabs or closing the page flushes a pending autosave.
+const flushAutosave = () => {
+  if (autosaveTimer === undefined || !autosaves.value || !dirty.value) return;
+  clearTimeout(autosaveTimer);
+  autosaveTimer = undefined;
+  void save(undefined, true);
+};
+const onHidden = () => document.visibilityState === "hidden" && flushAutosave();
+onMounted(() => {
+  document.addEventListener("visibilitychange", onHidden);
+  window.addEventListener("pagehide", flushAutosave);
+});
+onUnmounted(() => {
+  clearTimeout(autosaveTimer);
+  document.removeEventListener("visibilitychange", onHidden);
+  window.removeEventListener("pagehide", flushAutosave);
+});
 const useTheirs = () => {
   if (!conflict.value) return;
   clearBackup(conflict.value.slug);

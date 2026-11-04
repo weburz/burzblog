@@ -28,29 +28,63 @@ test("writing in the browser and the terminal never loses work", async ({
     "A quieter writing workflow",
   );
 
-  // The server trims the title; the editor must not stay "unsaved" after.
+  // A draft saves itself once typing stops; nobody presses Save. The server
+  // trims the title, and the editor must not stay "unsaved" after. "Saved"
+  // flashes right after each save, before the quiet "Saved just now".
+  const autosaved = async () => {
+    await expect(
+      page.getByRole("status").filter({ hasText: "Unsaved changes" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("status").filter({ hasText: /^\s*Saved\s*$/ }),
+    ).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+  };
   await page.getByLabel("Title", { exact: true }).fill("A quieter writing workflow ");
   await body.fill("# Hello\n\nWritten in the browser.\n");
-  await expect(
-    page.getByRole("status").filter({ hasText: "Unsaved changes" }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(page.getByRole("status").filter({ hasText: /^\s*Saved/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+  await autosaved();
   await page.reload();
   await expect(body).toHaveValue("# Hello\n\nWritten in the browser.\n");
   await expect(page).toHaveTitle("A quieter writing workflow · BurzBlog");
+  // A run of autosaves is one entry in History, not one per pause.
+  await body.fill("# Hello\n\nWritten in the browser, again.\n");
+  await autosaved();
+  await body.fill("# Hello\n\nWritten in the browser, once more.\n");
+  await autosaved();
 
-  // The terminal saves a newer version while the browser has unsaved edits.
   const token = await (
     await request.post("/api/auth/token", {
       data: { username: "e2e", password, name: "e2e terminal" },
     })
   ).json();
   const auth = { Authorization: `Bearer ${token.secret}` };
+  const latest = await (
+    await request.get(`/api/posts/${slug}`, { headers: auth })
+  ).json();
+  const history = await (
+    await request.get(`/api/posts/${slug}/revisions`, { headers: auth })
+  ).json();
+  // Where the post began, then one entry for the whole session.
+  expect(history.items.map((r: { version: number }) => r.version)).toEqual([
+    latest.version - 1,
+    1,
+  ]);
+
+  // Published posts save by hand, so the rest of the workflow is explicit.
+  const live = await request.post(`/api/posts/${slug}/publish`, {
+    headers: auth,
+    data: { version: latest.version },
+  });
+  expect(live.status()).toBe(200);
+  await page.reload();
+  await expect(body).toHaveValue("# Hello\n\nWritten in the browser, once more.\n");
+
+  // The terminal saves a newer version while the browser has unsaved edits.
   const current = await request.get(`/api/posts/${slug}/markdown`, { headers: auth });
   const doc = (await current.text()).replace(
-    "Written in the browser.",
+    "Written in the browser, once more.",
     "Rewritten in vim.",
   );
   const put = await request.put(`/api/posts/${slug}/markdown`, {
@@ -60,6 +94,9 @@ test("writing in the browser and the terminal never loses work", async ({
   expect(put.status()).toBe(200);
 
   await body.fill("# Hello\n\nMy browser edit.\n");
+  await expect(
+    page.getByRole("status").filter({ hasText: "Unsaved changes" }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Save", exact: true }).click();
   const conflict = page.getByRole("alert").filter({ hasText: "saved a newer version" });
   await expect(conflict).toBeVisible();
@@ -134,21 +171,9 @@ test("writing in the browser and the terminal never loses work", async ({
   await page.screenshot({ path: info.outputPath("editor.png") });
   if (narrow) await page.getByRole("button", { name: "Write" }).click();
 
-  // Publishing saves first, then reader builds can download it.
-  await page.getByRole("button", { name: "Publish", exact: true }).click();
-  await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "Save and publish" })
-    .click();
-  await expect(page.getByRole("button", { name: "Publish", exact: true })).toHaveCount(0);
-  // The button goes while the save is still running, so wait for the server.
-  await expect
-    .poll(
-      async () =>
-        (await (await request.get(`/api/posts/${slug}`, { headers: auth })).json())
-          .status,
-    )
-    .toBe("published");
+  // Saving a live post lands in what reader builds download.
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: /^\s*Saved/ })).toBeVisible();
   const exported = await request.get("/api/export.tar.gz", { headers: auth });
   expect(exported.status()).toBe(200);
   expect(gunzipSync(await exported.body()).toString("latin1")).toContain(`${slug}.md`);
