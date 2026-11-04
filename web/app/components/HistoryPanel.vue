@@ -73,7 +73,7 @@ const pick = async (rev: RevisionSummary) => {
   <USlideover
     v-model:open="open"
     title="History"
-    :description="`Every save is kept. You are on version ${version}.`"
+    :description="`Every save is kept; a draft's autosaves count as one per writing session. You are on version ${version}.`"
     :ui="{ content: 'max-w-2xl' }"
     :content="{ onCloseAutoFocus: closeFocus }"
   >

@@ -234,6 +234,10 @@ type postInput struct {
 	Featured    *bool      `json:"featured"`
 	PublishedOn *time.Time `json:"publishedOn"`
 	UpdatedOn   *time.Time `json:"updatedOn"`
+	// Autosave marks a save the editor made on its own while the writer
+	// typed. It is checked and versioned like any other, but consecutive
+	// autosaves by one writer share one revision (store.AutosavePost).
+	Autosave bool `json:"autosave"`
 }
 
 func (in *postInput) apply(p *post.Post) {
@@ -282,7 +286,11 @@ func (s *Server) savePost(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	s.update(w, r, r.PathValue("slug"), in.Version, func(p *post.Post) error {
+	save := s.store.UpdatePost
+	if in.Autosave {
+		save = s.store.AutosavePost
+	}
+	s.updateWith(w, r, save, r.PathValue("slug"), in.Version, func(p *post.Post) error {
 		in.apply(p)
 		return nil
 	})
@@ -291,8 +299,14 @@ func (s *Server) savePost(w http.ResponseWriter, r *http.Request) {
 // update runs a versioned change and triggers a reader rebuild when
 // published content changed.
 func (s *Server) update(w http.ResponseWriter, r *http.Request, slug string, version int64, change func(*post.Post) error) {
+	s.updateWith(w, r, s.store.UpdatePost, slug, version, change)
+}
+
+type postUpdater func(ctx context.Context, slug string, version int64, by string, change func(*post.Post) error) (*post.Post, error)
+
+func (s *Server) updateWith(w http.ResponseWriter, r *http.Request, save postUpdater, slug string, version int64, change func(*post.Post) error) {
 	var before post.Post
-	updated, err := s.store.UpdatePost(r.Context(), slug, version, who(r).user.Username, func(p *post.Post) error {
+	updated, err := save(r.Context(), slug, version, who(r).user.Username, func(p *post.Post) error {
 		before = *p
 		return change(p)
 	})

@@ -69,7 +69,10 @@ single cross-compile covers every platform.
 - **Versions and revisions.** Every change goes through one update path that
   takes the version the caller started from, refuses the save if the post has
   moved on, raises the version, and keeps the previous content as a revision.
-  Revisions are never pruned automatically and can be restored.
+  Revisions are never pruned automatically and can be restored. The one
+  exception is autosaving: a run of autosaves by one writer, each within
+  30 minutes of the last, keeps a single revision that the latest autosave
+  replaces, so History reads as writing sessions rather than keystrokes.
 - **Migrations** run in order at start-up and are never edited once released;
   data changes that SQL cannot express run as Go steps alongside them.
 - **Secrets** are stored only as digests: session and token secrets as
