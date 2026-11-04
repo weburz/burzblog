@@ -842,6 +842,11 @@ code {
   outline: none;
   box-shadow: -14px 0 0 -12px var(--bb-blue);
 }
+.md-source.is-dragging {
+  outline: 2px dashed var(--bb-blue);
+  outline-offset: 6px;
+  border-radius: 4px;
+}
 .md-editor {
   margin-top: 24px;
 }

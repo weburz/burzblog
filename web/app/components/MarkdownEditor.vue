@@ -7,18 +7,25 @@ import {
   horizontalRule,
   image,
   indentList,
+  insertPlaceholders,
   keepIndent,
   link,
   prefixLines,
+  replacePlaceholder,
   table,
   taskPrefix,
+  uploadPlaceholder,
   wrap,
   type Edit,
 } from "../utils/markdown";
+import { markdownFor, uploadable } from "../utils/media";
 
 const model = defineModel<string>({ required: true });
 const props = defineProps<{ readonly?: boolean }>();
 const area = ref<HTMLTextAreaElement | null>(null);
+const toast = useToast();
+const media = useUploadedMedia();
+const dragging = ref(false);
 const imageOpen = ref(false);
 // The selection when the image dialog opened; the dialog takes focus away.
 const imageRange = ref({ start: 0, end: 0, text: "" });
@@ -184,9 +191,56 @@ const navigated = (event: KeyboardEvent) => {
   if (/^(Arrow|Page|Home|End)/.test(event.key)) keepCaretVisible();
 };
 
-// Pasting a link over selected words turns them into a Markdown link.
+// Files pasted or dropped into the body are uploaded and linked where the
+// caret is. Each gets a placeholder at once, so the writer can keep typing;
+// the placeholder becomes the image (or link, for a PDF) when its upload is
+// done, and goes away with a message when it is not.
+let uploadId = 0;
+const addFiles = async (files: ArrayLike<File> | null | undefined) => {
+  const el = area.value;
+  const picked = uploadable(files);
+  if (!el || props.readonly || !picked.length) return;
+  const placeholders = picked.map((file) => uploadPlaceholder(file.name, ++uploadId));
+  apply(insertPlaceholders(el.value, el.selectionStart, el.selectionEnd, placeholders));
+  for (const [i, file] of picked.entries()) {
+    const placeholder = placeholders[i]!;
+    const [item] = await media.upload([file]);
+    const failure = media.failures.value[0];
+    // The file's name stands in as alt text until the writer puts a real
+    // description there; the upload itself is stored without one.
+    const stem = file.name.replace(/\.[^.]+$/, "");
+    const edit = replacePlaceholder(
+      el.value,
+      placeholder,
+      item ? markdownFor({ ...item, alt: item.alt || stem }) : "",
+      el.selectionStart,
+      el.selectionEnd,
+    );
+    if (edit) apply(edit);
+    if (!item)
+      toast.add({
+        title: "Could not upload",
+        description: failure ?? file.name,
+        color: "error",
+      });
+  }
+};
+const drop = (event: DragEvent) => {
+  dragging.value = false;
+  if (!event.dataTransfer?.files.length) return;
+  event.preventDefault();
+  void addFiles(event.dataTransfer.files);
+};
+
+// Pasting a link over selected words turns them into a Markdown link; pasting
+// an image (a screenshot, say) uploads it.
 const paste = (event: ClipboardEvent) => {
   const el = area.value;
+  if (event.clipboardData?.files.length) {
+    event.preventDefault();
+    void addFiles(event.clipboardData.files);
+    return;
+  }
   const text = event.clipboardData?.getData("text/plain")?.trim() ?? "";
   if (!el || el.selectionStart === el.selectionEnd || !/^https?:\/\/\S+$/.test(text))
     return;
@@ -253,14 +307,21 @@ defineExpose({ focus: () => area.value?.focus(), focusStart, element: area });
       ref="area"
       v-model="model"
       class="md-source"
+      :class="{ 'is-dragging': dragging }"
       aria-label="Post body in Markdown"
-      placeholder="Write in Markdown. # for headings, **bold**, [links](https://…)"
+      placeholder="Write in Markdown. # for headings, **bold**, [links](https://…), or drop images here"
       spellcheck="true"
       :readonly="readonly"
       @keydown="keydown"
       @input="keepCaretVisible"
       @keyup="navigated"
       @paste="paste"
+      @dragenter="
+        dragging = !readonly && Boolean($event.dataTransfer?.types.includes('Files'))
+      "
+      @dragover.prevent
+      @dragleave="dragging = false"
+      @drop="drop"
     />
     <ImageDialog
       v-model:open="imageOpen"

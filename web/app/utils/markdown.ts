@@ -131,6 +131,62 @@ export const image = (
   };
 };
 
+// The Markdown that stands in for a file while it uploads. The id keeps two
+// uploads of files with the same name apart; the text tells the writer (and
+// the preview) what is happening.
+export const uploadPlaceholder = (name: string, id: number): string =>
+  `![Uploading ${
+    name
+      .replace(/[[\]()]/g, "")
+      .replace(/\s+/g, " ")
+      .trim() || "file"
+  }…](uploading-${id})`;
+
+// Put placeholders for dropped or pasted files where the selection is, each on
+// its own line, and leave the caret after them.
+export const insertPlaceholders = (
+  source: string,
+  start: number,
+  end: number,
+  placeholders: string[],
+): Edit => {
+  const before = source.slice(0, start);
+  const after = source.slice(end);
+  const lead = !before || before.endsWith("\n") ? "" : "\n";
+  const trail = after && !after.startsWith("\n") ? "\n" : "";
+  const block = placeholders.join("\n");
+  const caret = before.length + lead.length + block.length;
+  return { text: `${before}${lead}${block}${trail}${after}`, start: caret, end: caret };
+};
+
+// Swap a placeholder for the finished Markdown (or nothing, when the upload
+// failed) without moving the writer's caret: text before the placeholder stays
+// put, and a caret after it shifts by the change in length. Returns null when
+// the writer has already removed the placeholder.
+export const replacePlaceholder = (
+  source: string,
+  placeholder: string,
+  replacement: string,
+  start: number,
+  end: number,
+): Edit | null => {
+  const at = source.indexOf(placeholder);
+  if (at < 0) return null;
+  // A failed upload takes its line with it, so no blank line is left behind.
+  let from = at;
+  let to = at + placeholder.length;
+  if (!replacement && source[to] === "\n") to++;
+  else if (!replacement && from > 0 && source[from - 1] === "\n" && to === source.length)
+    from--;
+  const delta = replacement.length - (to - from);
+  const shift = (pos: number) => (pos >= to ? pos + delta : pos > from ? from : pos);
+  return {
+    text: source.slice(0, from) + replacement + source.slice(to),
+    start: shift(start),
+    end: shift(end),
+  };
+};
+
 // Insert a block (table, rule) on its own lines with blank lines around it, so
 // a rule never turns the paragraph above into a heading.
 const insertBlock = (
