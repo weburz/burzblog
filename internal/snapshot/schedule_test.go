@@ -179,15 +179,17 @@ func TestSchedulePruneFailureIsAWarning(t *testing.T) {
 	done := make(chan struct{})
 	go func() { s.Run(ctx); close(done) }()
 	waitFor(t, "the snapshot", func() bool { return pings.Load() == 1 })
-	waitFor(t, "the next run time", func() bool { st := s.Status(); return st.NextAt != nil && !st.Running })
+	// The run time set before the snapshot is 10ms away: wait for the one
+	// computed after it, which a failure would have put an hour out.
+	waitFor(t, "the next run time a day out: a stored snapshot whose pruning failed must not be retried like a failure", func() bool {
+		st := s.Status()
+		return st.NextAt != nil && !st.Running && st.NextAt.After(time.Now().Add(23*time.Hour))
+	})
 	cancel()
 	<-done
 	st := s.Status()
 	if st.LastError != "" || !strings.Contains(st.Warning, "AccessDenied") {
 		t.Errorf("status = %+v", st)
-	}
-	if st.NextAt.Before(time.Now().Add(23 * time.Hour)) {
-		t.Errorf("next run %v: a stored snapshot whose pruning failed is retried like a failure", st.NextAt)
 	}
 	if e, err := b.st.LastAudit(context.Background(), "snapshot.create"); err != nil || e.ActorName != "scheduler" {
 		t.Errorf("audit = %+v, %v", e, err)
