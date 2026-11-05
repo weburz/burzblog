@@ -73,6 +73,7 @@ const titleField = ref<HTMLTextAreaElement | null>(null);
 const editor = ref<{
   focus: () => void;
   focusStart: () => void;
+  lineAtY: (y: number) => number | undefined;
   element: HTMLTextAreaElement | null;
 } | null>(null);
 
@@ -829,15 +830,35 @@ const dividerKey = (event: KeyboardEvent) => {
   event.preventDefault();
 };
 
-// The preview follows the writing pane's scroll position.
+// The preview follows the Markdown block under the caret, or at the top of
+// the writing pane while it is scrolled by hand. Each change is a fresh
+// object so the same line can be followed again. Where blocks cannot be
+// matched, the preview follows the pane's scroll ratio instead.
 const scrollRatio = ref(0);
+const followed = ref<{ line: number } | undefined>();
 const writePane = ref<HTMLElement | null>(null);
+let caretMovedAt = 0;
+let scrollFrame = 0;
+const onCaret = (line: number) => {
+  caretMovedAt = performance.now();
+  followed.value = { line };
+};
+const followTop = () => {
+  scrollFrame = 0;
+  const pane = writePane.value;
+  const line = pane && editor.value?.lineAtY(pane.getBoundingClientRect().top);
+  followed.value = line === undefined || line === null ? undefined : { line };
+};
 const onWriteScroll = () => {
   const el = writePane.value;
   if (!el) return;
   const max = el.scrollHeight - el.clientHeight;
   scrollRatio.value = max > 0 ? el.scrollTop / max : 0;
+  // Scrolling that keeps the caret in view is the caret's, not the reader's.
+  if (layout.value !== "split" || performance.now() - caretMovedAt < 200) return;
+  if (!scrollFrame) scrollFrame = requestAnimationFrame(followTop);
 };
+onUnmounted(() => cancelAnimationFrame(scrollFrame));
 
 // Title and description grow with their text.
 const grow = (event: Event) => {
@@ -1244,7 +1265,12 @@ const primary = computed(() => {
             @input="descriptionInput"
             @keydown="descriptionKey"
           />
-          <MarkdownEditor ref="editor" v-model="draft.body" :readonly="archived" />
+          <MarkdownEditor
+            ref="editor"
+            v-model="draft.body"
+            :readonly="archived"
+            @caret="onCaret"
+          />
         </div>
       </section>
       <div
@@ -1271,6 +1297,7 @@ const primary = computed(() => {
           coverAlt: draft.coverAlt,
         }"
         :scroll="layout === 'split' ? scrollRatio : undefined"
+        :follow="layout === 'split' ? followed : undefined"
       />
     </div>
 

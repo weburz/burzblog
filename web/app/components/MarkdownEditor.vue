@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from "vue";
+import { lastAtMost, lineAt } from "../utils/blocks";
 import { caretScroll } from "../utils/caret";
 import {
   codeBlock,
@@ -22,6 +23,8 @@ import { markdownFor, uploadable } from "../utils/media";
 
 const model = defineModel<string>({ required: true });
 const props = defineProps<{ readonly?: boolean }>();
+// The line the caret is on, so a split preview can follow it.
+const emit = defineEmits<{ caret: [line: number] }>();
 const area = ref<HTMLTextAreaElement | null>(null);
 const toast = useToast();
 const media = useUploadedMedia();
@@ -129,9 +132,8 @@ const mirrored = [
 // Past this many characters the body is far taller than its minimum height.
 const longText = 20_000;
 
-// caretTop measures where the caret's line starts by laying out the text
-// before it in a hidden copy of the body.
-const caretTop = (el: HTMLTextAreaElement, style: CSSStyleDeclaration) => {
+// mirror is a hidden copy of the body to measure text layout in.
+const mirror = (style: CSSStyleDeclaration) => {
   const ghost = document.createElement("div");
   for (const name of mirrored) ghost.style[name] = style[name];
   Object.assign(ghost.style, {
@@ -140,6 +142,13 @@ const caretTop = (el: HTMLTextAreaElement, style: CSSStyleDeclaration) => {
     whiteSpace: "pre-wrap",
     overflowWrap: "break-word",
   });
+  return ghost;
+};
+
+// caretTop measures where the caret's line starts by laying out the text
+// before it in a hidden copy of the body.
+const caretTop = (el: HTMLTextAreaElement, style: CSSStyleDeclaration) => {
+  const ghost = mirror(style);
   ghost.textContent = el.value.slice(0, el.selectionStart);
   const marker = document.createElement("span");
   marker.textContent = "\u200b";
@@ -176,6 +185,37 @@ const keepCaretVisible = () => {
   if (delta) pane.scrollTop += delta;
 };
 
+const reportCaret = () => {
+  const el = area.value;
+  if (el) emit("caret", lineAt(el.value, el.selectionStart));
+};
+
+const typed = () => {
+  keepCaretVisible();
+  reportCaret();
+};
+
+// Past this many characters, laying out every line on each scroll costs too
+// much; the preview falls back to following the scroll ratio.
+const mappableText = 100_000;
+
+// lineAtY is the line shown at a viewport height, found by laying out each
+// line in a hidden copy of the body.
+const lineAtY = (y: number): number | undefined => {
+  const el = area.value;
+  if (!el || el.value.length > mappableText) return undefined;
+  const ghost = mirror(getComputedStyle(el));
+  for (const text of el.value.split("\n")) {
+    const row = document.createElement("div");
+    row.textContent = text || "​";
+    ghost.append(row);
+  }
+  el.parentElement!.append(ghost);
+  const tops = Array.from(ghost.children, (row) => (row as HTMLElement).offsetTop);
+  ghost.remove();
+  return Math.max(lastAtMost(tops, y - el.getBoundingClientRect().top), 0) + 1;
+};
+
 const keydown = (event: KeyboardEvent) => {
   if (listKey(event)) return;
   if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
@@ -189,6 +229,7 @@ const keydown = (event: KeyboardEvent) => {
 
 const navigated = (event: KeyboardEvent) => {
   if (/^(Arrow|Page|Home|End)/.test(event.key)) keepCaretVisible();
+  reportCaret();
 };
 
 // Files pasted or dropped into the body are uploaded and linked where the
@@ -279,7 +320,7 @@ const focusStart = () => {
   area.value?.setSelectionRange(0, 0);
 };
 
-defineExpose({ focus: () => area.value?.focus(), focusStart, element: area });
+defineExpose({ focus: () => area.value?.focus(), focusStart, lineAtY, element: area });
 </script>
 
 <template>
@@ -313,7 +354,8 @@ defineExpose({ focus: () => area.value?.focus(), focusStart, element: area });
       spellcheck="true"
       :readonly="readonly"
       @keydown="keydown"
-      @input="keepCaretVisible"
+      @input="typed"
+      @click="reportCaret"
       @keyup="navigated"
       @paste="paste"
       @dragenter="

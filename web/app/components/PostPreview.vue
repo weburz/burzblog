@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, watch } from "vue";
 import { errorMessage, request } from "../utils/api";
+import { blockAt, previewScroll } from "../utils/blocks";
 import { previewDocument, type PreviewMeta } from "../utils/preview";
 
 const props = defineProps<{
   body: string;
   meta: PreviewMeta;
   scroll?: number;
+  follow?: { line: number };
   dark?: boolean;
 }>();
 const frame = ref<HTMLIFrameElement | null>(null);
@@ -44,6 +46,8 @@ const render = async () => {
     html = result.html;
     error.value = "";
     paint();
+    // Rendered heights changed with the text; stay on the block being edited.
+    if (props.follow) followLine(props.follow.line);
   } catch (cause) {
     if (ticket === sequence) error.value = errorMessage(cause);
   } finally {
@@ -63,13 +67,55 @@ watch(
   () => props.dark,
   (dark) => frame.value?.contentDocument?.documentElement.classList.toggle("dark", dark),
 );
+// The rendered blocks carry the Markdown line they start on (data-line).
+const blocks = () =>
+  Array.from(
+    frame.value?.contentDocument?.querySelectorAll<HTMLElement>(
+      "article > [data-line]",
+    ) ?? [],
+  );
+
+// Bring the block the line belongs to into view. False when the preview has
+// no line markers to go by.
+const followLine = (line: number) => {
+  const win = frame.value?.contentWindow;
+  const found = blocks();
+  if (!win || !found.length) return false;
+  const behavior = matchMedia("(prefers-reduced-motion: reduce)").matches
+    ? "auto"
+    : "smooth";
+  const index = blockAt(
+    found.map((block) => Number(block.dataset.line)),
+    line,
+  );
+  if (index < 0) {
+    win.scrollTo({ top: 0, behavior });
+    return true;
+  }
+  const rect = found[index]!.getBoundingClientRect();
+  const delta = previewScroll(rect.top, rect.bottom, win.innerHeight);
+  if (delta) win.scrollBy({ top: delta, behavior });
+  return true;
+};
+
+const followRatio = () => {
+  const win = frame.value?.contentWindow;
+  const doc = frame.value?.contentDocument?.documentElement;
+  if (props.scroll === undefined || !win || !doc) return;
+  win.scrollTo({ top: props.scroll * (doc.scrollHeight - win.innerHeight) });
+};
+
+watch(
+  () => props.follow,
+  (target) => {
+    if (!target || !followLine(target.line)) followRatio();
+  },
+);
+// The ratio only steers the preview where lines cannot.
 watch(
   () => props.scroll,
-  (ratio) => {
-    const win = frame.value?.contentWindow;
-    const doc = frame.value?.contentDocument?.documentElement;
-    if (ratio === undefined || !win || !doc) return;
-    win.scrollTo({ top: ratio * (doc.scrollHeight - win.innerHeight) });
+  () => {
+    if (!props.follow || !blocks().length) followRatio();
   },
 );
 onMounted(() => {
