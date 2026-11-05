@@ -24,6 +24,7 @@ const editorFailed = useState("editor-failed", () => false);
 const { dark: themeDark } = usePreferredTheme();
 const { register } = useRegisteredCommands();
 const { remember } = useRecentPosts();
+const { now } = useCurrentTime();
 
 const post = ref<Post | null>(null);
 const draft = ref<PostDraft | null>(null);
@@ -579,7 +580,9 @@ const saveState = computed(() => {
   if (dirty.value) return { text: "Unsaved changes", kind: "dirty" };
   if (justSaved.value) return { text: "Saved", kind: "saved" };
   return {
-    text: post.value ? `Saved ${editedLabel(post.value.updatedAt).toLowerCase()}` : "",
+    text: post.value
+      ? `Saved ${editedLabel(post.value.updatedAt, now.value).toLowerCase()}`
+      : "",
     kind: "clean",
   };
 });
@@ -1020,8 +1023,8 @@ const primary = computed(() => {
       <p>
         <strong
           >Unsaved changes from
-          {{ editedLabel(new Date(recovered.at).toISOString()).toLowerCase() }} are still
-          in this browser.</strong
+          {{ editedLabel(new Date(recovered.at).toISOString(), now).toLowerCase() }} are
+          still in this browser.</strong
         >
         Bring them back to keep working on them.
       </p>
@@ -1037,7 +1040,7 @@ const primary = computed(() => {
         <p>
           <strong
             >{{ conflict.updatedBy || "Someone" }} saved a newer version
-            {{ editedLabel(conflict.updatedAt).toLowerCase() }}.</strong
+            {{ editedLabel(conflict.updatedAt, now).toLowerCase() }}.</strong
           >
           Your changes are not saved yet. Compare them, then choose which to keep.
         </p>

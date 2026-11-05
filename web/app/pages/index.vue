@@ -16,6 +16,7 @@ const route = useRoute();
 const router = useRouter();
 const { state } = useCurrentSession();
 const { enabled: shortcutsEnabled } = useEnabledShortcuts();
+const { now } = useCurrentTime();
 
 type Filter = "" | PostStatus | "scheduled";
 const filters: { value: Filter; label: string }[] = [
@@ -179,7 +180,7 @@ const rowDate = (post: PostSummary) =>
     ? publishedLabel(post.publishedOn as string)
     : isScheduled(post)
       ? publishesLabel(post.publishAt as string)
-      : editedLabel(post.updatedAt);
+      : editedLabel(post.updatedAt, now.value);
 
 const created = (post: Post) => navigateTo(`/posts/${post.slug}`);
 

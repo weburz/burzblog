@@ -22,6 +22,7 @@ const {
   visible: updateVisible,
   dismiss,
 } = useAvailableUpdate();
+const { now } = useCurrentTime();
 const settings = ref<Settings | null>(null);
 const tokens = ref<Token[] | null>(null);
 const error = ref("");
@@ -171,7 +172,9 @@ const exportCommand = computed(
 const site = computed(() => settings.value?.site);
 const feedFiles = computed(() => (site.value ? siteFiles(site.value) : []));
 const scopeUse = (t: Token) =>
-  t.lastUsedAt ? `Last used ${editedLabel(t.lastUsedAt).toLowerCase()}` : "Never used";
+  t.lastUsedAt
+    ? `Last used ${editedLabel(t.lastUsedAt, now.value).toLowerCase()}`
+    : "Never used";
 </script>
 
 <template>
@@ -360,7 +363,7 @@ const scopeUse = (t: Token) =>
                 <template v-if="settings.deploy.pending">Rebuild requested…</template>
                 <template v-else-if="settings.deploy.lastStatus === 'ok'"
                   >Last rebuild requested
-                  {{ editedLabel(settings.deploy.lastAt!).toLowerCase() }}</template
+                  {{ editedLabel(settings.deploy.lastAt!, now).toLowerCase() }}</template
                 >
                 <template v-else-if="settings.deploy.lastStatus === 'failed'"
                   >The last rebuild request failed</template
@@ -463,7 +466,7 @@ const scopeUse = (t: Token) =>
         </p>
         <p v-else class="muted">
           You run the latest version ({{ update.current }}). Last checked
-          {{ editedLabel(update.checkedAt).toLowerCase() }}.
+          {{ editedLabel(update.checkedAt, now).toLowerCase() }}.
         </p>
       </div>
     </section>
@@ -495,11 +498,13 @@ const scopeUse = (t: Token) =>
               />
               <template v-if="snapshotStatus === 'failed'"
                 >The last automatic snapshot failed
-                {{ editedLabel(settings.schedule!.lastErrorAt!).toLowerCase() }}</template
+                {{
+                  editedLabel(settings.schedule!.lastErrorAt!, now).toLowerCase()
+                }}</template
               >
               <template v-else-if="settings.snapshot"
                 >Last full snapshot
-                {{ editedLabel(settings.snapshot.at).toLowerCase() }}</template
+                {{ editedLabel(settings.snapshot.at, now).toLowerCase() }}</template
               >
               <template v-else>No full snapshot yet</template>
             </p>
