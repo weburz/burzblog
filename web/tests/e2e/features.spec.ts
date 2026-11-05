@@ -96,7 +96,9 @@ test("View on site explains the missing site URL for a published post", async ({
   await openPost(page, slug);
   await page.getByRole("button", { name: "More actions" }).click();
   await page.getByRole("menuitem", { name: "View on site" }).click();
-  await expect(page.getByText("Set BURZBLOG_SITE_URL")).toBeVisible();
+  await expect(
+    page.getByLabel("Notifications (F8)").getByText("Set BURZBLOG_SITE_URL"),
+  ).toBeVisible();
 });
 
 test("history summarises each save and marks the current version", async ({
