@@ -544,15 +544,15 @@ code {
   padding: 14px 0;
   border-radius: var(--bb-radius-s);
 }
-/* The tick boxes stay out of the way until the row is hovered or focused, or
-   something is already selected. Touch screens have no hover, so they show. */
-.post-select {
+/* The row tick boxes stay out of the way until the row is hovered or focused,
+   or something is already selected. Touch screens have no hover, so they show.
+   The select-all box always shows, so its label never stands alone. */
+.post-item .post-select {
   opacity: 0;
 }
 .post-item:hover .post-select,
 .post-select:focus-within,
-.post-select-on,
-.post-select-bar:hover .post-select {
+.post-select-on {
   opacity: 1;
 }
 @media (hover: none) {

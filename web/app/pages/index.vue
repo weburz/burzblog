@@ -515,7 +515,7 @@ const origin = typeof window === "undefined" ? "" : window.location.origin;
         @tag="tagSelected"
         @clear="clearSelection"
       />
-      <span v-else class="muted">Select all</span>
+      <label v-else for="select-all-posts" class="muted">Select all</label>
     </div>
 
     <ul v-if="list && list.items.length" class="post-list" :aria-busy="loading">
