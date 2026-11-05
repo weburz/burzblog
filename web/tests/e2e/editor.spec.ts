@@ -1,6 +1,6 @@
 import { gunzipSync } from "node:zlib";
 import { expect, test } from "@playwright/test";
-import { password, signIn } from "./helpers";
+import { apiAs, password, signIn, unique } from "./helpers";
 
 test("writing in the browser and the terminal never loses work", async ({
   page,
@@ -201,4 +201,24 @@ test("posts list filters, searches and is usable by keyboard", async ({ page }, 
   await expect(page.locator(".empty-title")).toHaveText(/No published posts match/);
   await page.getByRole("button", { name: "Show all posts" }).click();
   await expect(page.getByLabel("Search posts")).toHaveValue("");
+});
+
+test("Duplicate opens a draft copy of the post", async ({ page, request }, info) => {
+  const api = await apiAs(request);
+  const slug = `dup-${info.project.name}-${unique()}`;
+  await api.createPost(slug, "Template post", "Reusable body.", true);
+
+  await signIn(page);
+  await page.goto(`/posts/${slug}`);
+  await expect(page.getByLabel("Post body in Markdown")).toBeVisible();
+  await page.getByRole("button", { name: "More actions" }).click();
+  await page.getByRole("menuitem", { name: "Duplicate" }).click();
+
+  await expect(page).toHaveURL(new RegExp(`/posts/${slug}-copy$`));
+  await expect(page.getByLabel("Title", { exact: true })).toHaveValue(
+    "Template post (copy)",
+  );
+  await expect(page.getByLabel("Post body in Markdown")).toHaveValue("Reusable body.");
+  expect(await api.status(`${slug}-copy`)).toBe("draft");
+  expect(await api.status(slug)).toBe("published");
 });
