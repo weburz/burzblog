@@ -650,7 +650,7 @@ func (s *Server) preview(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	html, err := render.HTML(r.Context(), body.Markdown)
+	html, err := render.Preview(r.Context(), body.Markdown)
 	if !s.renderError(w, r, err) {
 		return
 	}

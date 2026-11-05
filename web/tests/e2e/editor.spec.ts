@@ -181,6 +181,34 @@ test("writing in the browser and the terminal never loses work", async ({
   expect(violations).toEqual([]);
 });
 
+test("split preview follows the block under the caret", async ({
+  page,
+  request,
+}, info) => {
+  test.skip(info.project.name !== "desktop", "Split layout is for desktop.");
+  const slug = `block-sync-${unique()}`;
+  const sections = Array.from(
+    { length: 40 },
+    (_, i) =>
+      `## Section ${i}\n\nParagraph for section ${i}.\n\n\`\`\`\ncode ${i}\n\`\`\`\n`,
+  );
+  await (await apiAs(request)).createPost(slug, "Block sync", sections.join("\n"));
+  await signIn(page);
+  await page.goto(`/posts/${slug}`);
+  await page.getByRole("button", { name: "Split" }).click();
+  const frame = page.frameLocator('iframe[title="Preview of the published post"]');
+  await expect(frame.locator("article > [data-line]").first()).toBeAttached();
+
+  const body = page.getByLabel("Post body in Markdown");
+  await body.click();
+  await page.keyboard.press("Control+End");
+  await page.keyboard.type("x");
+  await expect(frame.getByRole("heading", { name: "Section 39" })).toBeInViewport();
+
+  await page.keyboard.press("Control+Home");
+  await expect(frame.getByRole("heading", { name: "Section 0" })).toBeInViewport();
+});
+
 test("posts list filters, searches and is usable by keyboard", async ({ page }, info) => {
   test.skip(info.project.name !== "desktop", "Keyboard shortcuts are for desktop.");
   await signIn(page);
