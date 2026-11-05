@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from
 import type { Post, PostList, PostStatus, PostSummary, TagCount } from "../types";
 import { errorMessage, request } from "../utils/api";
 import { wordLabel } from "../utils/markdown";
+import { copyText } from "../utils/clipboard";
 import { duplicatePost } from "../utils/duplicate";
 import { returnFocusTo } from "../utils/focus";
 import {
@@ -399,15 +400,16 @@ const duplicate = async (post: PostSummary) => {
     });
   }
 };
+// The link, when the browser would not copy it; shown in a dialog.
+const manualLink = ref("");
 const copyLink = async (post: PostSummary) => {
   const url = publicPostUrl(state.value.postUrl, post.slug);
   if (!url) return void toast.add(noSiteUrlNotice);
-  try {
-    await navigator.clipboard.writeText(url);
+  if (await copyText(url)) {
     toast.add({ title: "Link copied", description: url, color: "success" });
-  } catch {
-    toast.add({ title: "Could not copy", description: url, color: "neutral" });
+    return;
   }
+  manualLink.value = url;
 };
 
 const tagSelected = async (raw: string) => {
@@ -755,6 +757,14 @@ burzblog new "My first post"</code></pre>
       Press <UKbd value="n" /> for a new post, <UKbd value="/" /> to search,
       <UKbd value="?" /> for all shortcuts.
     </p>
+
+    <CopyFallbackDialog
+      :open="Boolean(manualLink)"
+      title="Copy the link"
+      label="the link to the post"
+      :value="manualLink"
+      @update:open="manualLink = ''"
+    />
 
     <ConfirmDialog
       v-model:open="confirm.open"

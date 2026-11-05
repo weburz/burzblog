@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref } from "vue";
+import { computed, nextTick, onMounted, ref } from "vue";
 import type { MediaItem } from "../types";
+import { copyText } from "../utils/clipboard";
 import { detailLabel, isImage, markdownFor, usageLabel } from "../utils/media";
 import { exactTime } from "../utils/time";
 
@@ -37,17 +38,16 @@ const missingAlt = () =>
     (item) => fresh.value.includes(item.id) && isImage(item) && !item.alt,
   ).length;
 
+// What the browser would not copy, shown in a dialog that stays open.
+const manual = ref<{ what: string; text: string } | null>(null);
+const manualOpen = ref(false);
 const copy = async (text: string, what: string) => {
-  try {
-    await navigator.clipboard.writeText(text);
+  if (await copyText(text)) {
     toast.add({ title: `${what} copied`, color: "success" });
-  } catch {
-    toast.add({
-      title: "Copying was blocked",
-      description: "Your browser did not allow it. Select the address and copy it.",
-      color: "warning",
-    });
+    return;
   }
+  manual.value = { what, text };
+  manualOpen.value = true;
 };
 
 const askDelete = (item: MediaItem) => {
@@ -56,6 +56,13 @@ const askDelete = (item: MediaItem) => {
   inUse.value = false;
   deleteOpen.value = true;
 };
+const deleteBody = computed(() => {
+  if (deleteError.value) return deleteError.value;
+  const item = deleting.value;
+  if (!item) return "";
+  const broken = item.usedIn ? " Those posts will show a broken image." : "";
+  return `Delete ${item.originalName || item.name}? Its public address stops working. ${usageLabel(item)}.${broken}`;
+});
 const confirmDelete = async () => {
   if (!deleting.value) return;
   const result = await media.remove(deleting.value, inUse.value);
@@ -177,13 +184,17 @@ const confirmDelete = async () => {
       >Show more</UButton
     >
 
+    <CopyFallbackDialog
+      v-model:open="manualOpen"
+      :title="`Copy the ${(manual?.what ?? 'text').toLowerCase()}`"
+      :value="manual?.text ?? ''"
+      :label="`the ${(manual?.what ?? 'text').toLowerCase()}`"
+    />
+
     <ConfirmDialog
       v-model:open="deleteOpen"
       :title="inUse ? 'Delete anyway?' : 'Delete this file?'"
-      :body="
-        deleteError ||
-        'The file and its public address stop working. Posts that link to it will show a broken image.'
-      "
+      :body="deleteBody"
       :confirm-label="inUse ? 'Delete anyway' : 'Delete'"
       confirm-color="error"
       @confirm="confirmDelete"

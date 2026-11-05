@@ -64,7 +64,7 @@ export const goToCommands = (go: (path: string) => void): PaletteCommand[] => [
   },
   {
     id: "go-published",
-    label: "Published",
+    label: "Published posts",
     icon: "i-lucide-globe",
     run: () => go("/?status=published"),
   },

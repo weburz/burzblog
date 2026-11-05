@@ -1,16 +1,16 @@
 <script setup lang="ts">
 import { ref } from "vue";
+import { copyText } from "../utils/clipboard";
 
 const props = defineProps<{ value: string; label: string; multiline?: boolean }>();
 const copied = ref(false);
 const failed = ref(false);
 const copy = async () => {
-  try {
-    await navigator.clipboard.writeText(props.value);
+  if (await copyText(props.value)) {
     copied.value = true;
     failed.value = false;
     setTimeout(() => (copied.value = false), 2000);
-  } catch {
+  } else {
     failed.value = true;
   }
 };

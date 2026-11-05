@@ -64,7 +64,7 @@ func TestDuplicatePostSlugCollisions(t *testing.T) {
 		}
 	}
 	// A copy of a copy starts its own chain.
-	if _, out := h.do("POST", "/api/posts/thing-copy/duplicate", nil); out["slug"] != "thing-copy-copy" || out["title"] != "Thing (copy) (copy)" {
+	if _, out := h.do("POST", "/api/posts/thing-copy/duplicate", nil); out["slug"] != "thing-copy-copy" || out["title"] != "Thing (copy 2)" {
 		t.Errorf("copy of copy = %v %v", out["slug"], out["title"])
 	}
 }
