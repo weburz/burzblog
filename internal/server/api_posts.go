@@ -238,6 +238,9 @@ type postInput struct {
 	// typed. It is checked and versioned like any other, but consecutive
 	// autosaves by one writer share one revision (store.AutosavePost).
 	Autosave bool `json:"autosave"`
+	// Untitled, on create, asks for an empty draft under the next free
+	// untitled slug (untitled, untitled-2, ...); it takes no slug or title.
+	Untitled bool `json:"untitled"`
 }
 
 func (in *postInput) apply(p *post.Post) {
@@ -259,12 +262,24 @@ func (s *Server) createPost(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	p := &post.Post{Status: post.Draft}
-	in.apply(p)
-	if p.Slug == "" {
-		p.Slug = post.Slugify(p.Title)
+	var created *post.Post
+	var err error
+	if in.Untitled {
+		if in.Slug != "" || in.Title != "" {
+			s.postError(w, r, &post.FieldError{Field: "untitled", Message: "drafts take no slug or title; the panel fills them in later."}, nil)
+			return
+		}
+		created, err = s.store.CreateUntitled(r.Context(), who(r).user.Username)
+	} else {
+		p := &post.Post{Status: post.Draft}
+		in.apply(p)
+		if p.Slug == "" {
+			p.Slug = post.Slugify(p.Title)
+		}
+		if err = post.RequireTitle(p); err == nil {
+			created, err = s.store.CreatePost(r.Context(), p, who(r).user.Username)
+		}
 	}
-	created, err := s.store.CreatePost(r.Context(), p, who(r).user.Username)
 	if err != nil {
 		s.postError(w, r, err, nil)
 		return
@@ -405,16 +420,35 @@ func pastTense(action string) string {
 }
 
 func (s *Server) deletePost(w http.ResponseWriter, r *http.Request) {
+	slug := r.PathValue("slug")
+	p, err := s.store.GetPost(r.Context(), slug)
+	if err != nil {
+		s.postError(w, r, err, nil)
+		return
+	}
+	// A never-published draft with no writing in it may be deleted by any
+	// writer: the panel does so when an author leaves a new post empty.
+	// Everything else stays admin-only and archived-only.
+	empty := store.IsEmptyDraft(p)
+	if !empty && !isAdmin(r) {
+		forbidRole(w)
+		return
+	}
 	version, err := strconv.ParseInt(r.URL.Query().Get("version"), 10, 64)
 	if err != nil {
 		fail(w, http.StatusBadRequest, "bad_request", "Pass the post version you are deleting as ?version=N.", "")
 		return
 	}
-	if err := s.store.DeletePost(r.Context(), r.PathValue("slug"), version); err != nil {
+	if empty {
+		err = s.store.DeleteEmptyDraft(r.Context(), slug, version)
+	} else {
+		err = s.store.DeletePost(r.Context(), slug, version)
+	}
+	if err != nil {
 		s.postError(w, r, err, nil)
 		return
 	}
-	s.record(r, "post.delete", r.PathValue("slug"))
+	s.record(r, "post.delete", slug)
 	reply(w, http.StatusOK, map[string]bool{"deleted": true})
 }
 
@@ -457,6 +491,10 @@ func (s *Server) putMarkdown(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("If-None-Match") == "*" {
 		p := &post.Post{Slug: slug}
 		doc.Apply(p)
+		if err := post.RequireTitle(p); err != nil {
+			s.postError(w, r, err, nil)
+			return
+		}
 		created, err := s.store.CreatePost(r.Context(), p, who(r).user.Username)
 		if err != nil {
 			s.postError(w, r, err, nil)
@@ -488,7 +526,7 @@ func (s *Server) putMarkdown(w http.ResponseWriter, r *http.Request) {
 			doc.Status = post.Archived
 		}
 		doc.Apply(p)
-		return nil
+		return post.RequireTitle(p)
 	})
 }
 

@@ -157,6 +157,55 @@ func (s *Store) CreatePost(ctx context.Context, p *post.Post, by string) (*post.
 	return created, nil
 }
 
+// UntitledSlug is the slug of the first untitled draft; later ones are
+// untitled-2, untitled-3 and so on.
+const UntitledSlug = "untitled"
+
+// CreateUntitled stores an empty draft under the first free slug of untitled,
+// untitled-2, ... The slug is chosen and claimed by the same insert, so
+// writers creating drafts at once never share one.
+func (s *Store) CreateUntitled(ctx context.Context, by string) (*post.Post, error) {
+	for range 20 {
+		slug, err := s.nextUntitledSlug(ctx)
+		if err != nil {
+			return nil, err
+		}
+		created, err := s.CreatePost(ctx, &post.Post{Slug: slug, Status: post.Draft}, by)
+		if !errors.Is(err, ErrTaken) {
+			return created, err
+		}
+		// Another writer took the slug between the lookup and the insert.
+	}
+	return nil, errors.New("create untitled draft: no free untitled slug after 20 attempts")
+}
+
+// nextUntitledSlug returns the first of untitled, untitled-2, ... that is not
+// a post. A redirect from such a slug does not block it: CreatePost drops it.
+func (s *Store) nextUntitledSlug(ctx context.Context) (string, error) {
+	rows, err := s.db.QueryContext(ctx, "SELECT slug FROM posts WHERE slug = ? OR slug LIKE ?",
+		UntitledSlug, UntitledSlug+"-%")
+	if err != nil {
+		return "", fmt.Errorf("find untitled slug: %w", err)
+	}
+	defer rows.Close()
+	used := map[string]bool{}
+	for rows.Next() {
+		var slug string
+		if err := rows.Scan(&slug); err != nil {
+			return "", fmt.Errorf("find untitled slug: %w", err)
+		}
+		used[slug] = true
+	}
+	if err := rows.Err(); err != nil {
+		return "", fmt.Errorf("find untitled slug: %w", err)
+	}
+	slug := UntitledSlug
+	for n := 2; used[slug]; n++ {
+		slug = fmt.Sprintf("%s-%d", UntitledSlug, n)
+	}
+	return slug, nil
+}
+
 // GetPost loads one post by slug.
 func (s *Store) GetPost(ctx context.Context, slug string) (*post.Post, error) {
 	p, err := scanPost(s.db.QueryRowContext(ctx, "SELECT "+postColumns+" FROM posts WHERE slug = ?", slug))
@@ -527,7 +576,14 @@ func (s *Store) updatePost(ctx context.Context, slug string, version int64, by s
 			return nil, err
 		}
 	}
-	if next.Slug != current.Slug {
+	if next.Slug != current.Slug && neverPublished(current) {
+		// A draft that was never public has no address anyone could have
+		// followed, so renaming it leaves no redirect. The new slug is live,
+		// so it stops being a redirect if it was one.
+		if err := dropRedirect(ctx, tx, next.Slug); err != nil {
+			return nil, err
+		}
+	} else if next.Slug != current.Slug {
 		// The new slug is live, so it stops being a redirect; the old one
 		// starts being one. Earlier redirects of this post point at the
 		// post, so they follow the rename without any work.
@@ -548,6 +604,11 @@ func (s *Store) updatePost(ctx context.Context, slug string, version int64, by s
 		return nil, fmt.Errorf("commit update: %w", err)
 	}
 	return updated, nil
+}
+
+// neverPublished reports whether p is a draft that has never been published.
+func neverPublished(p *post.Post) bool {
+	return p.Status == post.Draft && p.PublishedOn == nil
 }
 
 // Scheduled is a draft waiting for its publish time.
@@ -616,6 +677,52 @@ func (s *Store) DeletePost(ctx context.Context, slug string, version int64) erro
 		return fmt.Errorf("commit delete: %w", err)
 	}
 	return nil
+}
+
+// DeleteEmptyDraft removes a draft that was never published and holds nothing:
+// no title or body now, and none in any earlier revision, so no writing is
+// lost. It returns ErrState for any other post, ErrConflict when the version
+// moved on.
+func (s *Store) DeleteEmptyDraft(ctx context.Context, slug string, version int64) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin delete: %w", err)
+	}
+	defer tx.Rollback()
+	current, err := scanPost(tx.QueryRowContext(ctx, "SELECT "+postColumns+" FROM posts WHERE slug = ?", slug))
+	if err != nil {
+		return err
+	}
+	if current.Version != version {
+		return ErrConflict
+	}
+	if !IsEmptyDraft(current) {
+		return ErrState
+	}
+	var written int
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM revisions
+		WHERE post_id = ? AND (trim(title) != '' OR trim(body) != '')`, current.ID).Scan(&written); err != nil {
+		return fmt.Errorf("check revisions: %w", err)
+	}
+	if written > 0 {
+		return ErrState
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM posts WHERE id = ?", current.ID); err != nil {
+		return fmt.Errorf("delete post: %w", err)
+	}
+	if err := unindexPost(ctx, tx, current.ID); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit delete: %w", err)
+	}
+	return nil
+}
+
+// IsEmptyDraft reports whether p is a never-published draft without a title
+// or body.
+func IsEmptyDraft(p *post.Post) bool {
+	return neverPublished(p) && strings.TrimSpace(p.Title) == "" && strings.TrimSpace(p.Body) == ""
 }
 
 // Revision is an earlier version of a post.

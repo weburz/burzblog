@@ -169,7 +169,11 @@ func (a *App) importOne(cl *client.Client, path string, seen map[string]bool, as
 	p := &post.Post{Slug: slug}
 	doc.Apply(p)
 	post.Normalize(p)
-	if err := post.Validate(p); err != nil {
+	err = post.RequireTitle(p)
+	if err == nil {
+		err = post.Validate(p)
+	}
+	if err != nil {
 		return res.failed(&exitError{"validation", ExitValidation, err.Error()})
 	}
 	res.Status = string(p.Status)

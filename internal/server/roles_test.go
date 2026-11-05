@@ -44,7 +44,13 @@ func seedPosts(t *testing.T, h *harness) {
 	t.Helper()
 	ctx := context.Background()
 	for _, slug := range []string{"hello", "pub", "gone", "old"} {
-		if _, err := h.store.CreatePost(ctx, &post.Post{Slug: slug, Title: slug, Status: post.Draft}, "ada"); err != nil {
+		// "old" starts out published: only a post that was public keeps a
+		// redirect when it is renamed.
+		status := post.Draft
+		if slug == "old" {
+			status = post.Published
+		}
+		if _, err := h.store.CreatePost(ctx, &post.Post{Slug: slug, Title: slug, Status: status}, "ada"); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -207,8 +213,9 @@ func itoa(n int64) string {
 func TestAuthorIsRefusedBeforeTheRequestIsRead(t *testing.T) {
 	h := newHarness(t, nil)
 	withRoles(t, h)
+	seedPosts(t, h)
 	h.signInAs("grace", false)
-	status, raw := h.send("DELETE", "/api/posts/nothing-here", "", nil)
+	status, raw := h.send("DELETE", "/api/posts/gone", "", nil)
 	if status != 403 || !strings.Contains(raw, `"code":"role"`) {
 		t.Errorf("delete as author = %d %s", status, raw)
 	}

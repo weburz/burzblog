@@ -167,7 +167,7 @@ func (s *Server) routes() {
 	m.HandleFunc("POST /api/posts", s.write(s.createPost))
 	m.HandleFunc("GET /api/posts/{slug}", s.write(s.getPost))
 	m.HandleFunc("PUT /api/posts/{slug}", s.write(s.savePost))
-	m.HandleFunc("DELETE /api/posts/{slug}", s.admin(s.deletePost))
+	m.HandleFunc("DELETE /api/posts/{slug}", s.write(s.deletePost))
 	m.HandleFunc("POST /api/posts/{slug}/{action}", s.write(s.postAction))
 	m.HandleFunc("GET /api/posts/{slug}/markdown", s.write(s.getMarkdown))
 	m.HandleFunc("PUT /api/posts/{slug}/markdown", s.write(s.putMarkdown))

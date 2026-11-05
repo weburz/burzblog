@@ -272,7 +272,7 @@ the time a draft publishes itself (UTC, RFC 3339), or <code>null</code>; see
 </tr>
 <tr>
 <td><code>POST /api/posts</code></td>
-<td><code>{title, slug?, ...}</code> → new draft; the slug is made from the title when omitted</td>
+<td><code>{title, slug?, ...}</code> → new draft; the slug is made from the title when omitted. <code>{untitled: true}</code> instead makes an empty draft with no title under the first free slug of <code>untitled</code>, <code>untitled-2</code>, ...; it takes no <code>title</code> or <code>slug</code> (422 <code>validation</code>). The browser panel's New post uses it, and the CLI and <code>PUT .../markdown</code> still require a title</td>
 </tr>
 <tr>
 <td><code>GET /api/posts/{slug}</code></td>
@@ -308,7 +308,7 @@ the time a draft publishes itself (UTC, RFC 3339), or <code>null</code>; see
 </tr>
 <tr>
 <td><code>DELETE /api/posts/{slug}?version=N</code></td>
-<td>admins only (403 <code>role</code>). Only archived posts; removes its history and its redirects too</td>
+<td>admins only (403 <code>role</code>), and only archived posts; removes its history and its redirects too. The one exception, open to authors as well: a draft that was never published and has no title and no body, now or in any earlier revision, so no writing is lost (409 <code>state</code> for anything else)</td>
 </tr>
 <tr>
 <td><code>GET /api/posts/{slug}/redirects</code></td>
@@ -332,6 +332,9 @@ the time a draft publishes itself (UTC, RFC 3339), or <code>null</code>; see
 </tr>
 </tbody>
 </table>
+<p>A draft may have an empty <code>title</code> while it is saved; publishing or scheduling
+it needs one (422 <code>validation</code>). The browser panel renames a draft that was
+never published to follow its title, until the writer edits the slug.</p>
 <p><code>PUT /api/posts/{slug}</code> also accepts <code>autosave: true</code> for a save the client
 made on its own while the writer typed. It is checked against <code>version</code> and
 raises it like any save, but consecutive autosaves by the same account
@@ -404,7 +407,9 @@ redirect belongs to the post, not to a slug, so renaming again points every
 earlier slug at the newest one (<code>a</code> to <code>b</code> to <code>c</code> leaves <code>a</code> and <code>b</code> both going
 to <code>c</code>). A slug that is live always wins: creating a post or renaming one to a
 slug that is only a redirect removes that redirect, and a post renamed back to
-an old slug stops redirecting from it. Deleting a post deletes its redirects.
+an old slug stops redirecting from it. A draft that was never published has no
+address anyone could follow, so renaming it keeps no redirect. Deleting a post
+deletes its redirects.
 Restoring a revision keeps the current slug, so it adds none. Removing a
 redirect with <code>DELETE</code> is the only other way to end one. Redirects are
 published to websites only while their post is published; see the

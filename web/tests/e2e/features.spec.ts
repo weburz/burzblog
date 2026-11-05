@@ -164,7 +164,8 @@ test("the shortcuts switch turns off single-key shortcuts", async ({ page }) => 
   await page.keyboard.press("/");
   await expect(page.getByLabel("Search posts")).not.toBeFocused();
   await page.keyboard.press("n");
-  await expect(page.getByRole("dialog", { name: "New post" })).toHaveCount(0);
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole("heading", { name: "Posts", exact: true })).toBeVisible();
 });
 
 test("the image dialog rejects unsafe addresses and inserts a valid image", async ({
@@ -260,4 +261,29 @@ test("focus mode toggles with Ctrl+Shift+F and leaves with Esc", async ({
   await expect(shell).toHaveAttribute("data-focus", "true");
   await page.keyboard.press("Control+Shift+F");
   await expect(shell).toHaveAttribute("data-focus", "false");
+});
+
+test("a new post that is abandoned empty leaves no draft behind", async ({
+  page,
+  request,
+}) => {
+  const api = await apiAs(request);
+  await signIn(page);
+  const count = async () => {
+    const list = await request.get("/api/posts?status=draft&limit=500", {
+      headers: api.headers,
+    });
+    const body = (await list.json()) as { items: { slug: string }[] };
+    return body.items.filter((post) => /^untitled(-\d+)?$/.test(post.slug)).length;
+  };
+  const before = await count();
+
+  await page.getByRole("button", { name: "New post", exact: true }).first().click();
+  await expect(page).toHaveURL(/\/posts\/untitled(-\d+)?$/);
+  await expect(page.getByLabel("Title", { exact: true })).toBeFocused();
+  expect(await count()).toBe(before + 1);
+
+  await page.getByRole("link", { name: "All posts" }).click();
+  await expect(page.getByRole("heading", { name: "Posts", exact: true })).toBeVisible();
+  await expect.poll(count).toBe(before);
 });
