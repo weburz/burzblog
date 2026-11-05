@@ -18,6 +18,14 @@ export const examplePostUrl = (site: SiteSettings): string =>
 export const publicPostUrl = (template: string, slug: string): string =>
   template && slug ? template.replace("{slug}", encodeURIComponent(slug)) : "";
 
+// The toast for "Copy link" or "View on site" when no website address is set.
+export const noSiteUrlNotice = {
+  title: "No website address set",
+  description:
+    "Set BURZBLOG_SITE_URL (or --site-url) and restart the server. BURZBLOG_POST_PATH changes the path.",
+  color: "neutral" as const,
+};
+
 // A curl line that downloads one site file with a build token.
 export const fetchCommand = (origin: string, file: SiteFile): string =>
   `curl -fsSL -H "Authorization: Bearer $BURZBLOG_TOKEN" \\\n  ${origin}${file.path} -o ${file.name}`;

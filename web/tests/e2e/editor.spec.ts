@@ -253,3 +253,88 @@ test("Duplicate opens a draft copy of the post", async ({ page, request }, info)
   expect(await api.status(`${slug}-copy`)).toBe("draft");
   expect(await api.status(slug)).toBe("published");
 });
+
+test("a row menu publishes a draft without opening it", async ({
+  page,
+  request,
+}, info) => {
+  const api = await apiAs(request);
+  const tag = unique();
+  const slug = `row-${info.project.name}-${tag}`;
+  await api.createPost(slug, `Row menu ${tag}`);
+
+  await signIn(page);
+  await page.goto(`/?q=${slug}`);
+  await expect(page.locator(".post-row")).toHaveCount(1);
+  await page.getByRole("button", { name: `Actions for Row menu ${tag}` }).click();
+  await page.getByRole("menuitem", { name: "Publish" }).click();
+  await expect.poll(() => api.status(slug)).toBe("published");
+  await expect(page).toHaveURL(/\/\?q=/);
+  await expect(page.locator(".post-item .post-status")).toContainText(/published/i);
+  // Nothing may push the page wider than the screen, phone included.
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(overflow).toBeLessThanOrEqual(0);
+});
+
+test("selected rows are changed together from the bulk bar", async ({
+  page,
+  request,
+}, info) => {
+  const api = await apiAs(request);
+  const tag = unique();
+  const first = `bulk-a-${info.project.name}-${tag}`;
+  const second = `bulk-b-${info.project.name}-${tag}`;
+  await api.createPost(first, `Bulk one ${tag}`);
+  await api.createPost(second, `Bulk two ${tag}`);
+
+  await signIn(page);
+  await page.goto(`/?q=${tag}`);
+  await expect(page.locator(".post-row")).toHaveCount(2);
+  await page.getByRole("checkbox", { name: `Select Bulk one ${tag}` }).click();
+  await page.getByRole("checkbox", { name: `Select Bulk two ${tag}` }).click();
+  const bar = page.getByRole("group", { name: "Actions for the selected posts" });
+  await expect(bar).toContainText("2 selected");
+  await bar.getByRole("button", { name: "Publish" }).click();
+
+  await expect.poll(() => api.status(first)).toBe("published");
+  await expect.poll(() => api.status(second)).toBe("published");
+  await expect(bar).toBeHidden();
+  await expect(page.getByLabel("Search posts")).toHaveValue(tag);
+
+  // Tagging goes through the normal save and keeps the posts as they were.
+  await page.getByRole("checkbox", { name: "Select all posts shown" }).click();
+  await bar.getByRole("button", { name: "Add tag" }).click();
+  await page.getByLabel("Tag to add to the selected posts").fill("Bulk Tagged");
+  await page.getByLabel("Tag to add to the selected posts").press("Enter");
+  await expect(page.locator(".post-tags")).toHaveCount(2);
+  await expect(page.locator(".post-tags").first()).toHaveText("#bulk-tagged");
+  expect(await api.status(first)).toBe("published");
+});
+
+test("j, k, x and Escape drive the posts list", async ({ page, request }, info) => {
+  test.skip(info.project.name !== "desktop", "Keyboard shortcuts are for desktop.");
+  const api = await apiAs(request);
+  const tag = unique();
+  await api.createPost(`keys-a-${tag}`, `Keys one ${tag}`);
+  await api.createPost(`keys-b-${tag}`, `Keys two ${tag}`);
+
+  await signIn(page);
+  await page.goto(`/?q=${tag}`);
+  await expect(page.locator(".post-row")).toHaveCount(2);
+  await page.keyboard.press("j");
+  const rows = page.locator(".post-row");
+  await expect(rows.nth(0)).toBeFocused();
+  await page.keyboard.press("j");
+  await expect(rows.nth(1)).toBeFocused();
+  await page.keyboard.press("k");
+  await expect(rows.nth(0)).toBeFocused();
+  await page.keyboard.press("x");
+  const box = page.getByRole("checkbox", { name: /^Select Keys/ }).first();
+  await expect(box).toBeChecked();
+  await page.keyboard.press("Escape");
+  await expect(box).not.toBeChecked();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/posts\/keys-/);
+});
