@@ -107,7 +107,7 @@ Single-line fields reject control characters, tabs included, like `title`.
 | | |
 |---|---|
 | `GET /api/posts?status=&q=&tag=&featured=&sort=&limit=&offset=` | `{items, total, counts}`; items have no body, but carry `tags`, `author` and `featured`; `featured` is `true` or `false` and keeps only featured or only other posts (any other value is a 422 `validation`); `q` searches title, description, body, tags, author and slug (see below); `tag` keeps only posts with that tag (normalized like a post's tags, so `Machine Learning` finds `machine-learning`) and combines with the other filters, sorting and paging; `limit` (1 to 500) and `offset` page the result, and without `limit` every match is returned; `total` is the number of matches before paging, `counts` ignores the filter and paging; a bad `limit` or `offset` is a 422; without `status`, archived posts are left out; `status` is `draft`, `published`, `archived` or `scheduled` (drafts with a `publishAt`); `counts` has `draft`, `published`, `archived` and `scheduled`, and scheduled drafts are counted in `draft` too; `sort` is `updated` (default, newest first), `published` (newest first, unpublished last), `title` (A to Z, ignoring case) or `created` (newest first); any other value is a 422; items carry `publishAt` |
-| `POST /api/posts` | `{title, slug?, ...}` → new draft; the slug is made from the title when omitted |
+| `POST /api/posts` | `{title, slug?, ...}` → new draft; the slug is made from the title when omitted. `{untitled: true}` instead makes an empty draft with no title under the first free slug of `untitled`, `untitled-2`, ...; it takes no `title` or `slug` (422 `validation`). The browser panel's New post uses it, and the CLI and `PUT .../markdown` still require a title |
 | `GET /api/posts/{slug}` | one post |
 | `PUT /api/posts/{slug}` | `{version, slug, title, description, body, coverUrl, coverAlt, extra, tags, author, seoTitle, seoDescription, canonicalUrl, featured, publishedOn, updatedOn}`; `version` must be current, a new `slug` renames. Like the other fields, a missing `tags` or `author` saves as empty |
 | `GET /api/tags` | `{items: [{tag, count, label, custom}]}`: every tag in use by any post, archived ones included, with its number of posts and the label shown for it, by tag; `custom` is `true` when an admin set the label and `false` when it is [derived](#tag-labels) |
@@ -117,12 +117,16 @@ Single-line fields reject control characters, tabs included, like `title`.
 | `POST /api/posts/{slug}/duplicate` | no body → 201 and a new draft copy; its slug is `{slug}-copy`, then `{slug}-copy-2`, `-3` and so on until one is free (the slug is shortened to fit the 120 character limit), its title is the original's with ` (copy)` added; description, body, cover, tags, author, SEO fields and `extra` are copied unchanged. Status, `publishedOn`, `updatedOn`, `publishAt` and `featured` are not: the copy is an unscheduled, unfeatured draft at version 1 with no dates. 404 `not_found` for an unknown slug; any signed-in role may duplicate |
 | `POST /api/posts/{slug}/schedule` | `{version, at}` → the draft with `publishAt` set; see below |
 | `POST /api/posts/{slug}/unschedule` | `{version}` → the draft without a `publishAt`; a no-op if it had none |
-| `DELETE /api/posts/{slug}?version=N` | admins only (403 `role`). Only archived posts; removes its history and its redirects too |
+| `DELETE /api/posts/{slug}?version=N` | admins only (403 `role`), and only archived posts; removes its history and its redirects too. The one exception, open to authors as well: a draft that was never published and has no title and no body, now or in any earlier revision, so no writing is lost (409 `state` for anything else) |
 | `GET /api/posts/{slug}/redirects` | `{items: ["old-slug", ...]}`: the old slugs that redirect to the post, by slug, whatever the post's status; see [slug redirects](#slug-redirects) |
 | `DELETE /api/posts/{slug}/redirects/{from}` | removes the redirect from one old slug of this post → `{deleted: true}`; 404 `not_found` if the post has no such redirect |
 | `GET /api/posts/{slug}/revisions` | `{items, current}`: earlier versions, newest first, without bodies; see below |
 | `GET /api/posts/{slug}/revisions/{v}` | one earlier version in full |
 | `POST /api/posts/{slug}/revisions/{v}/restore` | `{version}` → saves that content as a new version |
+
+A draft may have an empty `title` while it is saved; publishing or scheduling
+it needs one (422 `validation`). The browser panel renames a draft that was
+never published to follow its title, until the writer edits the slug.
 
 `PUT /api/posts/{slug}` also accepts `autosave: true` for a save the client
 made on its own while the writer typed. It is checked against `version` and
@@ -207,7 +211,9 @@ redirect belongs to the post, not to a slug, so renaming again points every
 earlier slug at the newest one (`a` to `b` to `c` leaves `a` and `b` both going
 to `c`). A slug that is live always wins: creating a post or renaming one to a
 slug that is only a redirect removes that redirect, and a post renamed back to
-an old slug stops redirecting from it. Deleting a post deletes its redirects.
+an old slug stops redirecting from it. A draft that was never published has no
+address anyone could follow, so renaming it keeps no redirect. Deleting a post
+deletes its redirects.
 Restoring a revision keeps the current slug, so it adds none. Removing a
 redirect with `DELETE` is the only other way to end one. Redirects are
 published to websites only while their post is published; see the

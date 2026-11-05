@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
-import type { Post, PostList, PostStatus, PostSummary, TagCount } from "../types";
+import type { PostList, PostStatus, PostSummary, TagCount } from "../types";
 import { errorMessage, request } from "../utils/api";
 import { wordLabel } from "../utils/markdown";
 import {
@@ -51,7 +51,7 @@ const list = ref<PostList | null>(null);
 const loading = ref(true);
 const loadingMore = ref(false);
 const error = ref("");
-const creating = ref(false);
+const { creating, create: createPost } = useCreatedPost();
 
 // The server sends one page at a time, so a big blog opens fast; "Show more"
 // asks for the next one.
@@ -182,8 +182,6 @@ const rowDate = (post: PostSummary) =>
       ? publishesLabel(post.publishAt as string)
       : editedLabel(post.updatedAt, now.value);
 
-const created = (post: Post) => navigateTo(`/posts/${post.slug}`);
-
 // "/" jumps to search and "n" starts a post, unless the writer is typing.
 const shortcut = (event: KeyboardEvent) => {
   const target = event.target as HTMLElement | null;
@@ -199,7 +197,7 @@ const shortcut = (event: KeyboardEvent) => {
     document.querySelector<HTMLInputElement>("#post-search")?.focus();
   } else if (event.key === "n") {
     event.preventDefault();
-    creating.value = true;
+    void createPost();
   }
 };
 onMounted(() => window.addEventListener("keydown", shortcut));
@@ -224,7 +222,12 @@ const origin = typeof window === "undefined" ? "" : window.location.origin;
           >
         </p>
       </div>
-      <UButton v-if="!fresh" icon="i-lucide-plus" size="lg" @click="creating = true"
+      <UButton
+        v-if="!fresh"
+        icon="i-lucide-plus"
+        size="lg"
+        :loading="creating"
+        @click="createPost"
         >New post</UButton
       >
     </div>
@@ -362,7 +365,7 @@ const origin = typeof window === "undefined" ? "" : window.location.origin;
       </p>
       <div class="empty-options">
         <div class="empty-option">
-          <UButton icon="i-lucide-plus" size="lg" @click="creating = true"
+          <UButton icon="i-lucide-plus" size="lg" :loading="creating" @click="createPost"
             >New post</UButton
           >
         </div>
@@ -405,7 +408,5 @@ burzblog new "My first post"</code></pre>
       Press <UKbd value="n" /> for a new post, <UKbd value="/" /> to search,
       <UKbd value="?" /> for all shortcuts.
     </p>
-
-    <NewPostDialog v-model:open="creating" @created="created" />
   </div>
 </template>

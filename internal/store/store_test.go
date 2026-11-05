@@ -112,7 +112,7 @@ func TestUpdatePostVersionsAndRevisions(t *testing.T) {
 		t.Fatalf("stale update: err = %v, current = %+v", err, current)
 	}
 
-	if _, err := s.UpdatePost(ctx, "a", 2, "u2", func(p *post.Post) error { p.Title = ""; return nil }); !post.IsFieldError(err) {
+	if _, err := s.UpdatePost(ctx, "a", 2, "u2", func(p *post.Post) error { p.Title = "a\nb"; return nil }); !post.IsFieldError(err) {
 		t.Fatalf("invalid update: %v", err)
 	}
 

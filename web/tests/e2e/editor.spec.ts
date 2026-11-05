@@ -13,20 +13,19 @@ test("writing in the browser and the terminal never loses work", async ({
     if (message.type() === "error" && /Content Security Policy/i.test(message.text()))
       violations.push(message.text());
   });
-  const slug = `quiet-workflow-${info.project.name}`;
+  const title = `A quieter writing workflow ${info.project.name}`;
+  const slug = `a-quieter-writing-workflow-${info.project.name}`;
   expect((await request.get("/api/posts")).status()).toBe(401);
 
   await signIn(page);
+  // New post opens the editor at once, on an untitled draft, with the cursor
+  // in the title.
   await page.getByRole("button", { name: "New post", exact: true }).first().click();
-  const dialog = page.getByRole("dialog", { name: "New post" });
-  await dialog.getByLabel("Title").fill("A quieter writing workflow");
-  await dialog.getByLabel("Slug").fill(slug);
-  await dialog.getByRole("button", { name: "Create draft" }).click();
-  await expect(page).toHaveURL(new RegExp(`/posts/${slug}$`));
+  await expect(page).toHaveURL(/\/posts\/untitled(-\d+)?$/);
   const body = page.getByLabel("Post body in Markdown");
-  await expect(page.getByLabel("Title", { exact: true })).toHaveValue(
-    "A quieter writing workflow",
-  );
+  await expect(page.getByLabel("Title", { exact: true })).toBeFocused();
+  await page.keyboard.type(title);
+  await expect(page.getByLabel("Title", { exact: true })).toHaveValue(title);
 
   // A draft saves itself once typing stops; nobody presses Save. The server
   // trims the title, and the editor must not stay "unsaved" after. "Saved"
@@ -42,12 +41,14 @@ test("writing in the browser and the terminal never loses work", async ({
     });
     await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
   };
-  await page.getByLabel("Title", { exact: true }).fill("A quieter writing workflow ");
+  await page.getByLabel("Title", { exact: true }).fill(`${title} `);
   await body.fill("# Hello\n\nWritten in the browser.\n");
   await autosaved();
+  // The slug followed the title.
+  await expect(page).toHaveURL(new RegExp(`/posts/${slug}$`));
   await page.reload();
   await expect(body).toHaveValue("# Hello\n\nWritten in the browser.\n");
-  await expect(page).toHaveTitle("A quieter writing workflow · BurzBlog");
+  await expect(page).toHaveTitle(`${title} · BurzBlog`);
   // A run of autosaves is one entry in History, not one per pause.
   await body.fill("# Hello\n\nWritten in the browser, again.\n");
   await autosaved();
@@ -213,11 +214,13 @@ test("posts list filters, searches and is usable by keyboard", async ({ page }, 
   test.skip(info.project.name !== "desktop", "Keyboard shortcuts are for desktop.");
   await signIn(page);
   await page.keyboard.press("n");
-  const dialog = page.getByRole("dialog", { name: "New post" });
-  await dialog.getByLabel("Title").fill("Keyboard first");
-  await expect(dialog.getByLabel("Slug")).toHaveValue("keyboard-first");
-  await dialog.getByLabel("Title").press("Enter");
-  await expect(page).toHaveURL(/\/posts\/keyboard-first$/);
+  await expect(page).toHaveURL(/\/posts\/untitled(-\d+)?$/);
+  await expect(page.getByLabel("Title", { exact: true })).toBeFocused();
+  await page.keyboard.type("Keyboard first");
+  await page.getByLabel("Post body in Markdown").fill("Typed with the keyboard.\n");
+  // The draft saves itself and its slug follows the title.
+  await expect(page).toHaveURL(/\/posts\/keyboard-first$/, { timeout: 10_000 });
+  await expect(page.getByRole("status").filter({ hasText: /^\s*Saved/ })).toBeVisible();
   await page.getByRole("link", { name: "All posts" }).click();
   await expect(page.locator(".post-row").first()).toBeVisible();
   await page.keyboard.press("/");

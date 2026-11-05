@@ -44,7 +44,7 @@ code `role` before the request body is read.
 | Set or clear a tag's display label | `PUT/DELETE /api/tags/{tag}/label` | no | yes |
 | Remove a slug redirect | `DELETE /api/posts/{slug}/redirects/{from}` | yes | yes |
 | Upload and list files | `POST /api/media`, `GET /api/media` | yes | yes |
-| Delete a post | `DELETE /api/posts/{slug}` | no | yes |
+| Delete a post | `DELETE /api/posts/{slug}` | only a never-published draft with no writing in it | yes |
 | Delete an uploaded file | `DELETE /api/media/{id}` | no | yes |
 | Own password and two-factor sign-in | `/api/account/...` | yes | yes |
 | Own write tokens: create, list, revoke | `POST/GET /api/tokens`, `DELETE /api/tokens/{id}` | yes, own only | yes |
