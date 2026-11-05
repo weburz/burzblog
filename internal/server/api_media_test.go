@@ -582,3 +582,124 @@ func TestBackupSkipsMissingMediaFile(t *testing.T) {
 		t.Errorf("entries = %d, want only README.txt", n)
 	}
 }
+
+func TestUpdateMediaAlt(t *testing.T) {
+	h, _ := newMediaHarness(t, nil)
+	data := testPNG(t, 2, 2)
+	if resp, out := h.do("PATCH", "/api/media/1", map[string]any{"alt": "x"}); resp.StatusCode != 401 {
+		t.Errorf("anonymous patch = %d %v", resp.StatusCode, out)
+	}
+	h.login()
+	_, up := h.upload("a.png", "image/png", data, map[string]string{"alt": "old"})
+	path := "/api/media/" + jsonNumber(up["id"])
+
+	resp, out := h.do("PATCH", path, map[string]any{"alt": "  A red\ndot\x00 "})
+	if resp.StatusCode != 200 || out["alt"] != "A reddot" || out["id"] != up["id"] {
+		t.Fatalf("patch = %d %v", resp.StatusCode, out)
+	}
+	if _, list := h.do("GET", "/api/media", nil); list["items"].([]any)[0].(map[string]any)["alt"] != "A reddot" {
+		t.Errorf("alt not persisted: %v", list)
+	}
+	if resp, out := h.do("PATCH", path, map[string]any{"alt": ""}); resp.StatusCode != 200 || out["alt"] != "" {
+		t.Errorf("clearing alt = %d %v", resp.StatusCode, out)
+	}
+
+	// Refused: unknown id, bad id, too long, missing field, unknown field.
+	if resp, out := h.do("PATCH", "/api/media/999999", map[string]any{"alt": "x"}); resp.StatusCode != 404 {
+		t.Errorf("unknown id = %d %v", resp.StatusCode, out)
+	}
+	if resp, out := h.do("PATCH", "/api/media/abc", map[string]any{"alt": "x"}); resp.StatusCode != 404 {
+		t.Errorf("bad id = %d %v", resp.StatusCode, out)
+	}
+	if resp, out := h.do("PATCH", path, map[string]any{"alt": strings.Repeat("a", 1001)}); resp.StatusCode != 422 {
+		t.Errorf("long alt = %d %v", resp.StatusCode, out)
+	}
+	if resp, out := h.do("PATCH", path, map[string]any{}); resp.StatusCode != 422 {
+		t.Errorf("missing alt = %d %v", resp.StatusCode, out)
+	}
+	if resp, out := h.do("PATCH", path, map[string]any{"alt": "x", "mime": "y"}); resp.StatusCode != 400 {
+		t.Errorf("unknown field = %d %v", resp.StatusCode, out)
+	}
+
+	// Missing CSRF token.
+	csrf := h.csrf
+	h.csrf = ""
+	if resp, out := h.do("PATCH", path, map[string]any{"alt": "x"}); resp.StatusCode != 403 || errCode(out) != "csrf" {
+		t.Errorf("no CSRF = %d %v", resp.StatusCode, out)
+	}
+	h.csrf = csrf
+}
+
+// Authors may edit alt text, an export token may not, and every edit is audited.
+func TestUpdateMediaRolesAndAudit(t *testing.T) {
+	h, _ := newMediaHarness(t, nil)
+	withRoles(t, h)
+	h.signInAs("grace", false)
+	_, up := h.upload("a.png", "image/png", testPNG(t, 2, 2), nil)
+	path := "/api/media/" + jsonNumber(up["id"])
+	if resp, out := h.do("PATCH", path, map[string]any{"alt": "by author"}); resp.StatusCode != 200 {
+		t.Fatalf("author patch = %d %v", resp.StatusCode, out)
+	}
+	h.signInAs("ada", false)
+	if resp, out := h.do("PATCH", path, map[string]any{"alt": "by admin"}); resp.StatusCode != 200 {
+		t.Fatalf("admin patch = %d %v", resp.StatusCode, out)
+	}
+	h2 := h.secondBrowser()
+	h2.token = h.issueToken(store.ScopeExport)
+	if resp, out := h2.do("PATCH", path, map[string]any{"alt": "nope"}); resp.StatusCode != 403 {
+		t.Errorf("export token patch = %d %v", resp.StatusCode, out)
+	}
+	var got []string
+	for _, e := range h.audit() {
+		if e.Action == "media.update" {
+			got = append(got, e.ActorName+" "+e.Target)
+		}
+	}
+	name := up["name"].(string)
+	if want := "grace " + name + "|ada " + name; strings.Join(got, "|") != want {
+		t.Errorf("audit = %q; want %q", got, want)
+	}
+}
+
+func TestListMediaSearchAndUsage(t *testing.T) {
+	h, _ := newMediaHarness(t, nil)
+	h.login()
+	_, a := h.upload("Holiday.png", "image/png", testPNG(t, 3, 2), map[string]string{"alt": "A beach"})
+	h.upload("report.pdf", "application/pdf", testPDF, nil)
+	h.do("POST", "/api/posts", map[string]any{"slug": "uses-it", "title": "Uses it", "body": "![x](" + a["url"].(string) + ")"})
+
+	count := func(query string) (int, []any) {
+		t.Helper()
+		resp, out := h.do("GET", "/api/media?"+query, nil)
+		if resp.StatusCode != 200 {
+			t.Fatalf("%s = %d %v", query, resp.StatusCode, out)
+		}
+		return int(out["total"].(float64)), out["items"].([]any)
+	}
+	if n, _ := count("q=HOLIDAY"); n != 1 {
+		t.Errorf("name search = %d", n)
+	}
+	if n, _ := count("q=beach"); n != 1 {
+		t.Errorf("alt search = %d", n)
+	}
+	if n, _ := count("q=nothing-like-this"); n != 0 {
+		t.Errorf("miss = %d", n)
+	}
+	if n, items := count("type=pdf"); n != 1 || items[0].(map[string]any)["mime"] != "application/pdf" {
+		t.Errorf("pdf = %d %v", n, items)
+	}
+	n, items := count("type=image&limit=1")
+	first := items[0].(map[string]any)
+	if n != 1 || first["usedIn"] != float64(1) || first["width"] != float64(3) || first["height"] != float64(2) {
+		t.Errorf("image = %d %v", n, first)
+	}
+	if _, items := count("type=pdf"); items[0].(map[string]any)["usedIn"] != float64(0) {
+		t.Errorf("pdf usedIn = %v", items[0])
+	}
+	if resp, out := h.do("GET", "/api/media?type=video", nil); resp.StatusCode != 422 {
+		t.Errorf("bad type = %d %v", resp.StatusCode, out)
+	}
+	if resp, out := h.do("GET", "/api/media?q="+strings.Repeat("a", 201), nil); resp.StatusCode != 422 {
+		t.Errorf("long query = %d %v", resp.StatusCode, out)
+	}
+}

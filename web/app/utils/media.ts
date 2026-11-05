@@ -24,6 +24,12 @@ export const detailLabel = (item: MediaItem): string =>
     .filter(Boolean)
     .join(" · ");
 
+// "Not used in any post", "Used in 1 post", "Used in 3 posts".
+export const usageLabel = (item: Pick<MediaItem, "usedIn">): string =>
+  item.usedIn === 0
+    ? "Not used in any post"
+    : `Used in ${item.usedIn} ${item.usedIn === 1 ? "post" : "posts"}`;
+
 // Brackets and line breaks would end the alt text early.
 const cleanLabel = (text: string): string =>
   text.replace(/[[\]]/g, "").replace(/\s+/g, " ").trim();
