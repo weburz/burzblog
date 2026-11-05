@@ -6,7 +6,7 @@ import { returnFocusTo } from "../../utils/focus";
 import { countWords, lengthLabel } from "../../utils/markdown";
 import { sameDraft } from "../../utils/metadata";
 import { duplicatePost } from "../../utils/duplicate";
-import { publicPostUrl } from "../../utils/site";
+import { noSiteUrlNotice, publicPostUrl } from "../../utils/site";
 import { matchesTitle, slugify, untitledPattern } from "../../utils/slug";
 import { diffTooLong, lineDiff } from "../../utils/diff";
 import type { PaletteCommand } from "../../utils/palette";
@@ -573,13 +573,7 @@ const duplicate = async () => {
 const liveUrl = computed(() =>
   post.value ? publicPostUrl(session.value.postUrl, post.value.slug) : "",
 );
-const noSiteUrl = () =>
-  toast.add({
-    title: "No website address set",
-    description:
-      "Set BURZBLOG_SITE_URL (or --site-url) and restart the server. BURZBLOG_POST_PATH changes the path.",
-    color: "neutral",
-  });
+const noSiteUrl = () => toast.add(noSiteUrlNotice);
 const copyLink = async () => {
   if (!liveUrl.value) return noSiteUrl();
   try {

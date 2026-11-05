@@ -27,6 +27,11 @@ export const shortcutGroups: ShortcutGroup[] = [
     items: [
       { label: "New post", keys: ["n"] },
       { label: "Search", keys: ["/"] },
+      { label: "Next post", keys: ["j"] },
+      { label: "Previous post", keys: ["k"] },
+      { label: "Open the post in focus", keys: ["enter"] },
+      { label: "Select or deselect the post in focus", keys: ["x"] },
+      { label: "Clear the selection", keys: ["escape"] },
     ],
   },
   {
