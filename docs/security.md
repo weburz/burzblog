@@ -222,7 +222,16 @@ control characters (U+0000 to U+001F, U+007F, U+0080 to U+009F), tabs included,
 because terminals act on them. The body keeps tabs and line breaks and only
 refuses NUL, so code samples with escape sequences still save. Existing data
 is never rewritten: a post that already has such a character still loads, and
-saving it again asks you to fix the named field.
+saving it again asks you to fix the named field. Alt text and the stored
+label of an uploaded file's original name are cleaned rather than refused:
+control characters and invisible format characters (Unicode category Cf: bidi
+overrides and isolates, zero-width spaces) are dropped, except the joiners
+U+200C and U+200D that emoji sequences and some scripts need. Canonical URLs
+may not contain whitespace, and a post's `publishedOn` and `updatedOn` must lie
+between 1990 and two years ahead, so one far-future date cannot pin a post to
+the top of every feed or corrupt `lastBuildDate` and the sitemap. Error
+`detail` text for malformed JSON or multipart bodies is written in plain words;
+the parser's own messages, which can quote raw input, are not sent back.
 
 **Uploaded files.** <a id="uploaded-files"></a>`POST /api/media` is a change
 like any other (session with Origin and CSRF, or a write token; export tokens

@@ -118,6 +118,9 @@ func (s *Store) CreatePost(ctx context.Context, p *post.Post, by string) (*post.
 	if err := post.Validate(p); err != nil {
 		return nil, err
 	}
+	if err := post.ValidateDates(p, s.now()); err != nil {
+		return nil, err
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("begin create: %w", err)
@@ -514,6 +517,9 @@ func (s *Store) updatePost(ctx context.Context, slug string, version int64, by s
 	}
 	if post.SameContent(current, &next) {
 		return current, nil
+	}
+	if err := post.ValidateDates(&next, s.now()); err != nil {
+		return nil, err
 	}
 	if next.Slug != current.Slug {
 		var taken int
