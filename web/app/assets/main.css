@@ -523,21 +523,71 @@ code {
 .post-list[aria-busy="true"] {
   opacity: 0.6;
 }
+.post-item {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  margin: 0 -12px;
+  border-bottom: 1px solid var(--bb-border);
+  border-radius: var(--bb-radius-s);
+}
+.post-item-selected {
+  background: var(--bb-surface-2);
+}
 .post-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 96px 92px 172px;
   align-items: center;
   gap: 16px;
-  padding: 14px 12px;
-  margin: 0 -12px;
-  border-bottom: 1px solid var(--bb-border);
+  padding: 14px 0;
   border-radius: var(--bb-radius-s);
 }
+/* The tick boxes stay out of the way until the row is hovered or focused, or
+   something is already selected. Touch screens have no hover, so they show. */
+.post-select {
+  opacity: 0;
+}
+.post-item:hover .post-select,
+.post-select:focus-within,
+.post-select-on,
+.post-select-bar:hover .post-select {
+  opacity: 1;
+}
+@media (hover: none) {
+  .post-select {
+    opacity: 1;
+  }
+}
+.post-select-bar {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin: 0 -12px;
+}
+.bulk-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.bulk-count {
+  font-weight: 600;
+  margin-right: 4px;
+}
+.bulk-tag {
+  display: flex;
+  gap: 8px;
+}
 @media (hover: hover) {
-  .post-row:hover {
+  .post-item:hover {
     background: var(--bb-surface-2);
   }
-  .post-row:hover .post-title {
+  .post-item:hover .post-title {
     text-decoration: underline;
     text-decoration-thickness: 1px;
     text-underline-offset: 3px;

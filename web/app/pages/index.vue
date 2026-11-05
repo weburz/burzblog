@@ -1,8 +1,22 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import type { Post, PostList, PostStatus, PostSummary, TagCount } from "../types";
 import { errorMessage, request } from "../utils/api";
 import { wordLabel } from "../utils/markdown";
+import { duplicatePost } from "../utils/duplicate";
+import { returnFocusTo } from "../utils/focus";
+import {
+  actionSummary,
+  addTag,
+  applyAction,
+  hasUndo,
+  outcomeSummary,
+  partitionByAction,
+  reverseAction,
+  runSequentially,
+  type PostAction,
+} from "../utils/post-actions";
+import { noSiteUrlNotice, publicPostUrl } from "../utils/site";
 import {
   editedLabel,
   exactTime,
@@ -14,7 +28,8 @@ import {
 useHead({ title: "Posts" });
 const route = useRoute();
 const router = useRouter();
-const { state } = useCurrentSession();
+const toast = useToast();
+const { state, isAdmin } = useCurrentSession();
 const { enabled: shortcutsEnabled } = useEnabledShortcuts();
 
 type Filter = "" | PostStatus | "scheduled";
@@ -55,13 +70,19 @@ const creating = ref(false);
 // The server sends one page at a time, so a big blog opens fast; "Show more"
 // asks for the next one.
 const pageSize = 100;
+const maxPageSize = 500;
 let sequence = 0;
-const load = async (more = false) => {
+// A quiet load refreshes the rows already shown, without the busy dimming,
+// so an action leaves the filters and the scroll position alone.
+const load = async (more = false, quiet = false) => {
   const ticket = ++sequence;
-  loading.value = !more;
+  loading.value = !more && !quiet;
   loadingMore.value = more;
   error.value = "";
-  const query = new URLSearchParams({ limit: String(pageSize) });
+  const limit = quiet
+    ? Math.min(maxPageSize, Math.max(pageSize, list.value?.items.length ?? 0))
+    : pageSize;
+  const query = new URLSearchParams({ limit: String(limit) });
   if (more && list.value) query.set("offset", String(list.value.items.length));
   if (status.value) query.set("status", status.value);
   if (search.value.trim()) query.set("q", search.value.trim());
@@ -129,6 +150,7 @@ onMounted(() => {
   void load();
   void loadTags();
 });
+const refresh = () => Promise.all([load(false, true), loadTags()]);
 
 const total = computed(() => {
   const c = list.value?.counts;
@@ -183,13 +205,180 @@ const rowDate = (post: PostSummary) =>
 
 const created = (post: Post) => navigateTo(`/posts/${post.slug}`);
 
+// Rows can be ticked for the bulk bar; the selection only ever holds rows
+// that are still listed.
+const selected = ref<string[]>([]);
+const items = computed(() => list.value?.items ?? []);
+const selectedPosts = computed(() =>
+  items.value.filter((p) => selected.value.includes(p.slug)),
+);
+const allSelected = computed(
+  () => items.value.length > 0 && selectedPosts.value.length === items.value.length,
+);
+watch(items, (rows) => {
+  selected.value = selected.value.filter((slug) => rows.some((p) => p.slug === slug));
+});
+const toggleSelected = (slug: string, on = !selected.value.includes(slug)) => {
+  selected.value = on
+    ? [...selected.value.filter((s) => s !== slug), slug]
+    : selected.value.filter((s) => s !== slug);
+};
+const toggleAll = (on: boolean) =>
+  (selected.value = on ? items.value.map((p) => p.slug) : []);
+const clearSelection = () => (selected.value = []);
+watch([status, search, tag], clearSelection);
+
+// One post or a whole selection: run in turn, report once, refresh in place.
+const working = ref(false);
+const perform = async (action: PostAction, targets: PostSummary[]) => {
+  const { apply, skipped } = partitionByAction(action, targets, isAdmin.value);
+  if (!apply.length) {
+    toast.add({
+      title: "Nothing to do",
+      description: "None of those posts can be changed that way.",
+      color: "neutral",
+    });
+    return;
+  }
+  working.value = true;
+  try {
+    const { done, failed } = await runSequentially(apply, (p) =>
+      applyAction(p.slug, action, p.version),
+    );
+    const names = done.map((d) => d.item.title || d.item.slug);
+    const summary = actionSummary(action, names, failed, skipped.length);
+    const undo =
+      hasUndo(action) && done.length
+        ? () => undoAll(action, done as { item: PostSummary; result: Post }[])
+        : null;
+    toast.add({
+      ...summary,
+      icon: "i-lucide-check",
+      ...(undo && {
+        duration: 10000,
+        actions: [{ label: "Undo", color: "neutral", variant: "outline", onClick: undo }],
+      }),
+    });
+    clearSelection();
+    await refresh();
+  } finally {
+    working.value = false;
+  }
+};
+// The reverse of each finished change, from the post that change returned.
+const undoAll = async (
+  action: PostAction,
+  done: { item: PostSummary; result: Post }[],
+) => {
+  const { done: undone, failed } = await runSequentially(
+    done.map((d) => d.item),
+    (item) =>
+      reverseAction(
+        action,
+        item.status === "published",
+        done.find((d) => d.item.slug === item.slug)!.result,
+      ),
+  );
+  toast.add(
+    outcomeSummary(
+      "Restored",
+      undone.map((d) => d.item.title || d.item.slug),
+      failed,
+    ),
+  );
+  await refresh();
+};
+
+const confirm = reactive({ open: false, targets: [] as PostSummary[] });
+const deleteOpener = ref<HTMLElement | null>(null);
+const closeFocus = returnFocusTo(() => deleteOpener.value);
+const ask = (action: PostAction, targets: PostSummary[]) => {
+  const { apply } = partitionByAction(action, targets, isAdmin.value);
+  if (action !== "delete" || !apply.length) return void perform(action, targets);
+  const first = apply[0];
+  deleteOpener.value = first
+    ? document.querySelector<HTMLElement>(
+        `[data-slug="${CSS.escape(first.slug)}"] .post-menu`,
+      )
+    : null;
+  Object.assign(confirm, { open: true, targets: apply });
+};
+const confirmDelete = () => {
+  confirm.open = false;
+  void perform("delete", confirm.targets);
+};
+
+const duplicate = async (post: PostSummary) => {
+  try {
+    const copy = await duplicatePost(post.slug);
+    toast.add({
+      title: "Draft copy created",
+      description: `Now editing ${copy.slug}.`,
+      color: "success",
+    });
+    await navigateTo(`/posts/${copy.slug}`);
+  } catch (cause) {
+    toast.add({
+      title: "Could not duplicate",
+      description: errorMessage(cause),
+      color: "error",
+    });
+  }
+};
+const copyLink = async (post: PostSummary) => {
+  const url = publicPostUrl(state.value.postUrl, post.slug);
+  if (!url) return void toast.add(noSiteUrlNotice);
+  try {
+    await navigator.clipboard.writeText(url);
+    toast.add({ title: "Link copied", description: url, color: "success" });
+  } catch {
+    toast.add({ title: "Could not copy", description: url, color: "neutral" });
+  }
+};
+
+const tagSelected = async (raw: string) => {
+  working.value = true;
+  try {
+    const { done, failed } = await runSequentially(selectedPosts.value, (p) =>
+      addTag(p.slug, raw),
+    );
+    const changed = done.filter((d) => d.result);
+    toast.add({
+      ...outcomeSummary(
+        "Tagged",
+        changed.map((d) => d.item.title || d.item.slug),
+        failed,
+        done.length - changed.length,
+        "they already have that tag",
+      ),
+      icon: "i-lucide-check",
+    });
+    clearSelection();
+    await refresh();
+  } finally {
+    working.value = false;
+  }
+};
+
+// Rows move with j and k by focusing their link, so Enter opens the post the
+// way it does for any link; x ticks the row that has focus.
+const rowOf = (target: HTMLElement | null) =>
+  target?.closest<HTMLElement>(".post-item") ?? null;
+const moveFocus = (target: HTMLElement | null, step: 1 | -1) => {
+  const rows = Array.from(document.querySelectorAll<HTMLElement>(".post-item"));
+  const current = rowOf(target);
+  const at = current ? rows.indexOf(current) : -1;
+  const next = at < 0 ? rows[0] : rows[at + step];
+  next?.querySelector<HTMLElement>(".post-row")?.focus();
+};
+
 // "/" jumps to search and "n" starts a post, unless the writer is typing.
 const shortcut = (event: KeyboardEvent) => {
   const target = event.target as HTMLElement | null;
   if (!shortcutsEnabled.value || event.metaKey || event.ctrlKey || event.altKey) return;
   if (
     target?.closest(
-      "input, textarea, [contenteditable], [role=dialog], [role=combobox], [role=listbox]",
+      "input, textarea, [contenteditable], [role=dialog], [role=combobox], [role=listbox], [role=menu]",
     )
   )
     return;
@@ -199,6 +388,16 @@ const shortcut = (event: KeyboardEvent) => {
   } else if (event.key === "n") {
     event.preventDefault();
     creating.value = true;
+  } else if (event.key === "j" || event.key === "k") {
+    event.preventDefault();
+    moveFocus(target, event.key === "j" ? 1 : -1);
+  } else if (event.key === "x") {
+    const slug = rowOf(target)?.dataset.slug;
+    if (!slug) return;
+    event.preventDefault();
+    toggleSelected(slug);
+  } else if (event.key === "Escape" && selected.value.length) {
+    clearSelection();
   }
 };
 onMounted(() => window.addEventListener("keydown", shortcut));
@@ -297,8 +496,45 @@ const origin = typeof window === "undefined" ? "" : window.location.origin;
       <template v-else-if="list">{{ emptyText }}</template>
     </div>
 
+    <div v-if="list && list.items.length" class="post-select-bar">
+      <UCheckbox
+        id="select-all-posts"
+        :model-value="allSelected"
+        :indeterminate="selected.length > 0 && !allSelected"
+        aria-label="Select all posts shown"
+        class="post-select"
+        :class="{ 'post-select-on': selected.length }"
+        @update:model-value="(v: boolean | 'indeterminate') => toggleAll(v === true)"
+      />
+      <PostBulkBar
+        v-if="selected.length"
+        :selected="selectedPosts"
+        :admin="isAdmin"
+        :busy="working"
+        @act="(action) => ask(action, selectedPosts)"
+        @tag="tagSelected"
+        @clear="clearSelection"
+      />
+      <span v-else class="muted">Select all</span>
+    </div>
+
     <ul v-if="list && list.items.length" class="post-list" :aria-busy="loading">
-      <li v-for="post in list.items" :key="post.slug">
+      <li
+        v-for="post in list.items"
+        :key="post.slug"
+        class="post-item"
+        :class="{ 'post-item-selected': selected.includes(post.slug) }"
+        :data-slug="post.slug"
+      >
+        <UCheckbox
+          :model-value="selected.includes(post.slug)"
+          :aria-label="`Select ${post.title || post.slug}`"
+          class="post-select"
+          :class="{ 'post-select-on': selected.length }"
+          @update:model-value="
+            (v: boolean | 'indeterminate') => toggleSelected(post.slug, v === true)
+          "
+        />
         <NuxtLink :to="`/posts/${post.slug}`" class="post-row">
           <span class="post-main">
             <span class="post-title" :class="{ 'post-untitled': !post.title }">{{
@@ -344,6 +580,13 @@ const origin = typeof window === "undefined" ? "" : window.location.origin;
             ></time
           >
         </NuxtLink>
+        <PostRowMenu
+          :post="post"
+          :admin="isAdmin"
+          @act="(action) => ask(action, [post])"
+          @duplicate="duplicate(post)"
+          @copy-link="copyLink(post)"
+        />
       </li>
     </ul>
 
@@ -406,5 +649,18 @@ burzblog new "My first post"</code></pre>
     </p>
 
     <NewPostDialog v-model:open="creating" @created="created" />
+    <ConfirmDialog
+      v-model:open="confirm.open"
+      :title="
+        confirm.targets.length === 1
+          ? 'Delete this post for good?'
+          : `Delete ${confirm.targets.length} posts for good?`
+      "
+      body="The posts and their whole history are removed. This cannot be undone."
+      :confirm-label="confirm.targets.length === 1 ? 'Delete post' : 'Delete posts'"
+      confirm-color="error"
+      :close-focus="closeFocus"
+      @confirm="confirmDelete"
+    />
   </div>
 </template>
