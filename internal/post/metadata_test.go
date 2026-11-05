@@ -1,6 +1,7 @@
 package post
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -8,9 +9,11 @@ import (
 
 func TestNormalizeTags(t *testing.T) {
 	p := valid()
-	p.Tags = []string{"  Go ", "Machine Learning", "go", "C++", "---", "", "web-dev", "Web  Dev!", "ÜBER"}
-	Normalize(p)
-	want := []string{"go", "machine-learning", "c", "web-dev", "über"}
+	p.Tags = []string{"  Go ", "Machine Learning", "go", "C++", "#web-dev", "Web  Dev!", "ÜBER", "a_b"}
+	if err := Normalize(p); err != nil {
+		t.Fatalf("Normalize = %v", err)
+	}
+	want := []string{"go", "machine-learning", "c", "web-dev", "über", "a-b"}
 	if !reflect.DeepEqual(p.Tags, want) {
 		t.Errorf("Normalize tags = %q, want %q", p.Tags, want)
 	}
@@ -19,12 +22,28 @@ func TestNormalizeTags(t *testing.T) {
 	}
 }
 
-func TestNormalizeTagsEmptyStaysNil(t *testing.T) {
+func TestNormalizeTagsComposesToNFC(t *testing.T) {
 	p := valid()
-	p.Tags = []string{"", "  ", "!!"}
-	Normalize(p)
-	if p.Tags != nil {
-		t.Errorf("Tags = %#v, want nil", p.Tags)
+	p.Tags = []string{"caf\u00e9", "cafe\u0301", "CAFE\u0301"}
+	if err := Normalize(p); err != nil {
+		t.Fatalf("Normalize = %v", err)
+	}
+	if want := []string{"caf\u00e9"}; !reflect.DeepEqual(p.Tags, want) {
+		t.Errorf("Tags = %q, want one NFC tag %q", p.Tags, want)
+	}
+}
+
+func TestNormalizeTagsRefusesUnusableTags(t *testing.T) {
+	for _, bad := range []string{"\U0001F600", "", "  ", "!!", "---"} {
+		p := valid()
+		p.Tags = []string{"go", bad}
+		err := Normalize(p)
+		if err == nil || !IsFieldError(err) || !strings.Contains(err.Error(), fmt.Sprintf("%q", bad)) {
+			t.Errorf("Normalize(%q) = %v, want a tags error naming it", bad, err)
+		}
+		if !reflect.DeepEqual(p.Tags, []string{"go", bad}) {
+			t.Errorf("Normalize(%q) changed the tags to %q", bad, p.Tags)
+		}
 	}
 }
 

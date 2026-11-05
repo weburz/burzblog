@@ -393,6 +393,31 @@ test("the tags field suggests existing tags and still takes new ones", async ({
     .toEqual([existing, "left-alone", "brand-new", "typed"]);
 });
 
+test("the tags field says why a 21st tag is not added", async ({ page, request }) => {
+  const api = await apiAs(request);
+  const id = unique();
+  const slug = `tag-limit-${id}`;
+  const created = await api.createPost(slug, "Tag limit");
+  const full = Array.from({ length: 20 }, (_, i) => `limit-${id}-${i}`);
+  const saved = await request.put(`/api/posts/${slug}`, {
+    headers: api.headers,
+    data: { version: created.version, slug, title: "Tag limit", tags: full },
+  });
+  expect(saved.status()).toBe(200);
+
+  await signIn(page);
+  await openPost(page, slug);
+  await page.getByRole("button", { name: "Post settings" }).click();
+  const dialog = page.getByRole("dialog");
+  const tags = dialog.getByRole("combobox", { name: "Tags" });
+  await tags.fill("one too many");
+  await expect(dialog.getByText("A post can carry at most 20 tags")).toBeVisible();
+  await expect(page.getByRole("option", { name: /Add/ })).toHaveCount(0);
+  await tags.press("Enter");
+  await expect(tags).toHaveValue("one too many");
+  await expect(dialog.getByText("one-too-many")).toHaveCount(0);
+});
+
 test("a new post that is abandoned empty leaves no draft behind", async ({
   page,
   request,

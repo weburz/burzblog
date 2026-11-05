@@ -237,7 +237,7 @@ the time a draft publishes itself (UTC, RFC 3339), or <code>null</code>; see
 <tbody>
 <tr>
 <td><code>tags</code></td>
-<td>topics and categories in one list. Each tag is trimmed and lowercased, runs of anything but letters and digits become one hyphen (<code>Machine Learning</code> is saved as <code>machine-learning</code>), empty and repeated tags are dropped, and the order is kept. At most 20 tags of 40 characters each, otherwise a 422 <code>validation</code></td>
+<td>topics and categories in one list. Each tag is trimmed and lowercased, runs of anything but letters and digits become one hyphen (<code>Machine Learning</code> is saved as <code>machine-learning</code>, <code>#x</code> as <code>x</code>), text is composed to Unicode NFC so <code>é</code> typed either way is one tag, repeated tags are dropped, and the order is kept. A tag with no letter or digit left, such as <code>😀</code>, <code>!!</code> or an empty string, is a 422 <code>validation</code> that names it instead of vanishing. At most 20 tags of 40 characters each, otherwise a 422 <code>validation</code></td>
 </tr>
 <tr>
 <td><code>author</code></td>

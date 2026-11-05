@@ -1,5 +1,5 @@
 import type { TagCount } from "../types";
-import { normalizeTag } from "./metadata";
+import { maxTagLength, maxTags, normalizeTag, tagSlug } from "./metadata";
 
 export const maxSuggestions = 8;
 
@@ -28,4 +28,16 @@ export const suggestTags = (
     else if ((slug && t.tag.includes(slug)) || label.includes(text)) inside.push(t);
   }
   return [...prefix.sort(byUse), ...inside.sort(byUse)].slice(0, limit);
+};
+
+// Why a typed tag cannot be added, or "" when it can. A tag that is already
+// chosen is no problem: adding it again changes nothing.
+export const tagLimitProblem = (chosen: readonly string[], raw: string): string => {
+  const slug = tagSlug(raw);
+  if (!slug) return "";
+  if (Array.from(slug).length > maxTagLength)
+    return `Tags are at most ${maxTagLength} characters`;
+  if (!chosen.includes(normalizeTag(raw)) && chosen.length >= maxTags)
+    return `A post can carry at most ${maxTags} tags`;
+  return "";
 };
