@@ -5,6 +5,7 @@ import { ApiError, errorMessage, request } from "../../utils/api";
 import { returnFocusTo } from "../../utils/focus";
 import { countWords, lengthLabel } from "../../utils/markdown";
 import { sameDraft } from "../../utils/metadata";
+import { duplicatePost } from "../../utils/duplicate";
 import { diffTooLong, lineDiff } from "../../utils/diff";
 import type { PaletteCommand } from "../../utils/palette";
 import {
@@ -460,6 +461,28 @@ const restoreRevision = async (version: number) => {
   }
 };
 
+// The copy is made from the saved post, so unsaved edits are saved first and
+// included, the way the status actions do it.
+const duplicate = async () => {
+  if (!post.value) return;
+  if (dirty.value && !(await save())) return;
+  try {
+    const copy = await duplicatePost(post.value.slug);
+    toast.add({
+      title: "Draft copy created",
+      description: `Now editing ${copy.slug}.`,
+      color: "success",
+    });
+    await navigateTo(`/posts/${copy.slug}`);
+  } catch (cause) {
+    toast.add({
+      title: "Could not duplicate",
+      description: errorMessage(cause),
+      color: "error",
+    });
+  }
+};
+
 const copyCommand = async () => {
   if (!post.value) return;
   try {
@@ -550,6 +573,7 @@ const menu = computed(() => {
         icon: "i-lucide-history",
         onSelect: fromMenu(() => (historyOpen.value = true)),
       },
+      { label: "Duplicate", icon: "i-lucide-copy", onSelect: duplicate },
     ],
     [
       {

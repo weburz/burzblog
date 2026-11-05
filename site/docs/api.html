@@ -209,7 +209,7 @@ versions: <code>{ &quot;error&quot;: {...}, &quot;current&quot;: { ...post } }</
 </tr>
 <tr>
 <td><code>GET /api/audit</code></td>
-<td>admins only. <code>?limit=</code> (1 to 500, default 100) and <code>?offset=</code> page the audit log, newest first: <code>{items: [{id, at, actorId?, actor, tokenId?, action, target, remote}], total}</code>. <code>actor</code> is an account name, or <code>host</code> or <code>scheduler</code>; <code>actorId</code> and <code>tokenId</code> are left out when there is none. Actions: <code>login.success</code>, <code>login.failure</code>, <code>account.create</code>, <code>role.change</code>, <code>password.change</code>, <code>2fa.enable</code>, <code>2fa.disable</code>, <code>2fa.recovery</code>, <code>token.create</code>, <code>token.revoke</code>, <code>post.publish</code>, <code>post.unpublish</code>, <code>post.archive</code>, <code>post.restore</code>, <code>post.schedule</code>, <code>post.unschedule</code>, <code>post.delete</code>, <code>redirect.delete</code>, <code>deploy</code>, <code>backup.download</code>. There is no route to change or remove an entry</td>
+<td>admins only. <code>?limit=</code> (1 to 500, default 100) and <code>?offset=</code> page the audit log, newest first: <code>{items: [{id, at, actorId?, actor, tokenId?, action, target, remote}], total}</code>. <code>actor</code> is an account name, or <code>host</code> or <code>scheduler</code>; <code>actorId</code> and <code>tokenId</code> are left out when there is none. Actions: <code>login.success</code>, <code>login.failure</code>, <code>account.create</code>, <code>role.change</code>, <code>password.change</code>, <code>2fa.enable</code>, <code>2fa.disable</code>, <code>2fa.recovery</code>, <code>token.create</code>, <code>token.revoke</code>, <code>post.publish</code>, <code>post.unpublish</code>, <code>post.archive</code>, <code>post.restore</code>, <code>post.schedule</code>, <code>post.unschedule</code>, <code>post.duplicate</code>, <code>post.delete</code>, <code>redirect.delete</code>, <code>deploy</code>, <code>backup.download</code>. There is no route to change or remove an entry</td>
 </tr>
 </tbody>
 </table>
@@ -297,6 +297,10 @@ the time a draft publishes itself (UTC, RFC 3339), or <code>null</code>; see
 <tr>
 <td><code>POST /api/posts/{slug}/publish</code></td>
 <td><code>{version}</code>; also <code>unpublish</code>, <code>archive</code>, <code>restore</code></td>
+</tr>
+<tr>
+<td><code>POST /api/posts/{slug}/duplicate</code></td>
+<td>no body → 201 and a new draft copy; its slug is <code>{slug}-copy</code>, then <code>{slug}-copy-2</code>, <code>-3</code> and so on until one is free (the slug is shortened to fit the 120 character limit), its title is the original's with <code> (copy)</code> added; description, body, cover, tags, author, SEO fields and <code>extra</code> are copied unchanged. Status, <code>publishedOn</code>, <code>updatedOn</code>, <code>publishAt</code> and <code>featured</code> are not: the copy is an unscheduled, unfeatured draft at version 1 with no dates. 404 <code>not_found</code> for an unknown slug; any signed-in role may duplicate</td>
 </tr>
 <tr>
 <td><code>POST /api/posts/{slug}/schedule</code></td>

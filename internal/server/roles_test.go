@@ -150,6 +150,7 @@ func routeCases(otherToken int64) []routeCase {
 		{name: "list uploads", method: "GET", path: "/api/media", want: 200},
 		{name: "create post", method: "POST", path: "/api/posts", body: `{"title":"Fresh"}`, want: 201},
 		{name: "get post", method: "GET", path: "/api/posts/hello", want: 200},
+		{name: "duplicate post", method: "POST", path: "/api/posts/hello/duplicate", want: 201},
 		{name: "save post", method: "PUT", path: "/api/posts/hello", body: `{"version":1,"title":"Changed"}`, want: 200},
 		{name: "publish", method: "POST", path: "/api/posts/hello/publish", body: `{"version":1}`, want: 200},
 		{name: "unpublish", method: "POST", path: "/api/posts/pub/unpublish", body: `{"version":2}`, want: 200},
@@ -369,6 +370,7 @@ func TestAuditRecordsEveryAction(t *testing.T) {
 	h.signInAs("grace", false)
 	_, out := h.do("POST", "/api/tokens", map[string]string{"name": "laptop", "scope": "write"})
 	token := int64(out["id"].(float64))
+	h.do("POST", "/api/posts/hello/duplicate", nil)
 	h.do("POST", "/api/posts/hello/publish", map[string]any{"version": 1})
 	h.do("POST", "/api/posts/hello/unpublish", map[string]any{"version": 2})
 	h.do("POST", "/api/posts/hello/archive", map[string]any{"version": 3})
@@ -389,6 +391,7 @@ func TestAuditRecordsEveryAction(t *testing.T) {
 		{"grace", "login.failure", "password"},
 		{"grace", "login.success", ""},
 		{"grace", "token.create", "laptop (token %d, write)"},
+		{"grace", "post.duplicate", "hello to hello-copy"},
 		{"grace", "post.publish", "hello"},
 		{"grace", "post.unpublish", "hello"},
 		{"grace", "post.archive", "hello"},
