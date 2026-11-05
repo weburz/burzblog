@@ -520,7 +520,8 @@ code {
   padding: 0;
   border-top: 1px solid var(--bb-border);
 }
-.post-list[aria-busy="true"] {
+.post-list[aria-busy="true"],
+.post-list[data-stale="true"] {
   opacity: 0.6;
 }
 .post-item {

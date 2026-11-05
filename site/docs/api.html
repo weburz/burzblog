@@ -276,7 +276,7 @@ the time a draft publishes itself (UTC, RFC 3339), or <code>null</code>; see
 </tr>
 <tr>
 <td><code>GET /api/posts/{slug}</code></td>
-<td>one post</td>
+<td>one post. A 404 for a draft that was never published and was renamed within the last day carries <code>error.renamedTo</code>, its new slug, so an editor that reloads under the old address can follow it (remembered in memory, so a restart forgets it)</td>
 </tr>
 <tr>
 <td><code>PUT /api/posts/{slug}</code></td>
@@ -312,7 +312,7 @@ the time a draft publishes itself (UTC, RFC 3339), or <code>null</code>; see
 </tr>
 <tr>
 <td><code>DELETE /api/posts/{slug}?version=N</code></td>
-<td>admins only (403 <code>role</code>), and only archived posts; removes its history and its redirects too. The one exception, open to authors as well: a draft that was never published and has no title and no body, now or in any earlier revision, so no writing is lost (409 <code>state</code> for anything else)</td>
+<td>admins only (403 <code>role</code>), and only archived posts; removes its history and its redirects too. The one exception, open to authors as well: a draft that was never published and has every writable field blank after trimming (title, body, description, tags, cover, SEO fields, canonical URL, <code>extra</code>, author, featured), now and in every earlier revision, so nothing is lost; an author that is only the account that saved the draft counts as blank (409 <code>state</code> for anything else)</td>
 </tr>
 <tr>
 <td><code>GET /api/posts/{slug}/redirects</code></td>
@@ -336,6 +336,7 @@ the time a draft publishes itself (UTC, RFC 3339), or <code>null</code>; see
 </tr>
 </tbody>
 </table>
+<p>While the server runs it also deletes untitled drafts (<code>untitled</code>, <code>untitled-2</code>, ...) that are still empty and were last saved more than 24 hours ago, which closed tabs leave behind. A draft that ever held writing in a revision stays. Each removal is audited as <code>post.delete</code> by <code>scheduler</code>.</p>
 <p>A draft may have an empty <code>title</code> while it is saved; publishing or scheduling
 it needs one (422 <code>validation</code>). The browser panel renames a draft that was
 never published to follow its title, until the writer edits the slug.</p>

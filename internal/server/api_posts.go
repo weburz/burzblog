@@ -299,7 +299,20 @@ func (s *Server) duplicatePost(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getPost(w http.ResponseWriter, r *http.Request) {
-	p, err := s.store.GetPost(r.Context(), r.PathValue("slug"))
+	slug := r.PathValue("slug")
+	p, err := s.store.GetPost(r.Context(), slug)
+	if errors.Is(err, store.ErrNotFound) {
+		// A draft renamed in the last day has no redirect; tell the editor
+		// where it went so a reload under the old address can follow it.
+		if to, rerr := s.store.RenamedDraft(r.Context(), slug); rerr == nil {
+			reply(w, http.StatusNotFound, map[string]apiError{"error": {
+				Code:      "not_found",
+				Message:   "That draft was renamed. Open it under its new slug.",
+				RenamedTo: to,
+			}})
+			return
+		}
+	}
 	if err != nil {
 		s.postError(w, r, err, nil)
 		return

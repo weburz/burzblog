@@ -181,6 +181,8 @@ type apiError struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
 	Detail  string `json:"detail,omitempty"`
+	// RenamedTo is the new slug of a draft that was renamed, on a 404.
+	RenamedTo string `json:"renamedTo,omitempty"`
 }
 
 // fail writes the standard error shape. message tells people what to do;

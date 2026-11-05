@@ -71,6 +71,7 @@ func (s *Server) runScheduler(ctx context.Context) {
 		if published > 0 {
 			s.log.Info("published scheduled posts", "count", published)
 		}
+		s.sweepEmptyDrafts(ctx)
 		t := time.NewTimer(wait)
 		select {
 		case <-ctx.Done():
@@ -80,6 +81,25 @@ func (s *Server) runScheduler(ctx context.Context) {
 		case <-s.scheduler.poke:
 			t.Stop()
 		}
+	}
+}
+
+// emptyDraftAge is how long an untitled draft may sit untouched and empty
+// before the sweep removes it.
+const emptyDraftAge = 24 * time.Hour
+
+// sweepEmptyDrafts deletes untitled drafts that nobody wrote in, which closed
+// tabs and reloads leave behind, and audits each like any other delete.
+func (s *Server) sweepEmptyDrafts(ctx context.Context) {
+	removed, err := s.store.SweepEmptyDrafts(ctx, s.store.Now().Add(-emptyDraftAge))
+	if err != nil && ctx.Err() == nil {
+		s.log.Error("sweeping empty drafts failed", "err", err)
+	}
+	for _, slug := range removed {
+		s.addAudit(ctx, store.Audit{ActorName: "scheduler", Action: "post.delete", Target: slug, Remote: "local"})
+	}
+	if len(removed) > 0 {
+		s.log.Info("removed empty untitled drafts", "count", len(removed))
 	}
 }
 

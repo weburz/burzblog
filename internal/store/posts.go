@@ -179,31 +179,22 @@ func (s *Store) CreateUntitled(ctx context.Context, by string) (*post.Post, erro
 	return nil, errors.New("create untitled draft: no free untitled slug after 20 attempts")
 }
 
-// nextUntitledSlug returns the first of untitled, untitled-2, ... that is not
-// a post. A redirect from such a slug does not block it: CreatePost drops it.
+// nextUntitledSlug returns the slug after the highest untitled, untitled-2,
+// ... in use, so one query decides it however many drafts exist. A slug freed
+// below the highest is not reused. A redirect from such a slug does not block
+// it: CreatePost drops it.
 func (s *Store) nextUntitledSlug(ctx context.Context) (string, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT slug FROM posts WHERE slug = ? OR slug LIKE ?",
-		UntitledSlug, UntitledSlug+"-%")
+	var highest sql.NullInt64
+	err := s.db.QueryRowContext(ctx, `SELECT max(CASE WHEN slug = ? THEN 1 ELSE CAST(substr(slug, ?) AS INTEGER) END)
+		FROM posts WHERE slug = ? OR (slug GLOB ? AND slug NOT GLOB ?)`,
+		UntitledSlug, len(UntitledSlug)+2, UntitledSlug, UntitledSlug+"-[0-9]*", UntitledSlug+"-*[^0-9]*").Scan(&highest)
 	if err != nil {
 		return "", fmt.Errorf("find untitled slug: %w", err)
 	}
-	defer rows.Close()
-	used := map[string]bool{}
-	for rows.Next() {
-		var slug string
-		if err := rows.Scan(&slug); err != nil {
-			return "", fmt.Errorf("find untitled slug: %w", err)
-		}
-		used[slug] = true
+	if !highest.Valid {
+		return UntitledSlug, nil
 	}
-	if err := rows.Err(); err != nil {
-		return "", fmt.Errorf("find untitled slug: %w", err)
-	}
-	slug := UntitledSlug
-	for n := 2; used[slug]; n++ {
-		slug = fmt.Sprintf("%s-%d", UntitledSlug, n)
-	}
-	return slug, nil
+	return fmt.Sprintf("%s-%d", UntitledSlug, highest.Int64+1), nil
 }
 
 // GetPost loads one post by slug.
@@ -576,7 +567,8 @@ func (s *Store) updatePost(ctx context.Context, slug string, version int64, by s
 			return nil, err
 		}
 	}
-	if next.Slug != current.Slug && neverPublished(current) {
+	renamedDraft := next.Slug != current.Slug && neverPublished(current)
+	if renamedDraft {
 		// A draft that was never public has no address anyone could have
 		// followed, so renaming it leaves no redirect. The new slug is live,
 		// so it stops being a redirect if it was one.
@@ -602,6 +594,9 @@ func (s *Store) updatePost(ctx context.Context, slug string, version int64, by s
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit update: %w", err)
+	}
+	if renamedDraft {
+		s.rememberDraftRename(current.Slug, next.Slug)
 	}
 	return updated, nil
 }
@@ -680,7 +675,7 @@ func (s *Store) DeletePost(ctx context.Context, slug string, version int64) erro
 }
 
 // DeleteEmptyDraft removes a draft that was never published and holds nothing:
-// no title or body now, and none in any earlier revision, so no writing is
+// no writing or metadata now, and none in any earlier revision, so nothing is
 // lost. It returns ErrState for any other post, ErrConflict when the version
 // moved on.
 func (s *Store) DeleteEmptyDraft(ctx context.Context, slug string, version int64) error {
@@ -696,12 +691,21 @@ func (s *Store) DeleteEmptyDraft(ctx context.Context, slug string, version int64
 	if current.Version != version {
 		return ErrConflict
 	}
+	if err := loadTags(ctx, tx, current); err != nil {
+		return err
+	}
 	if !IsEmptyDraft(current) {
 		return ErrState
 	}
+	// A revision's author is the account that saved it unless someone wrote
+	// one in, like the post's own (see IsEmptyDraft).
 	var written int
 	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM revisions
-		WHERE post_id = ? AND (trim(title) != '' OR trim(body) != '')`, current.ID).Scan(&written); err != nil {
+		WHERE post_id = ? AND (trim(title) != '' OR trim(body) != '' OR trim(description) != ''
+			OR trim(cover_url) != '' OR trim(cover_alt) != '' OR trim(extra) != ''
+			OR trim(seo_title) != '' OR trim(seo_description) != '' OR trim(canonical_url) != ''
+			OR tags NOT IN ('', '[]', 'null') OR featured != 0
+			OR (trim(author) != '' AND author != saved_by))`, current.ID).Scan(&written); err != nil {
 		return fmt.Errorf("check revisions: %w", err)
 	}
 	if written > 0 {
@@ -719,10 +723,115 @@ func (s *Store) DeleteEmptyDraft(ctx context.Context, slug string, version int64
 	return nil
 }
 
-// IsEmptyDraft reports whether p is a never-published draft without a title
-// or body.
+// IsEmptyDraft reports whether p is a never-published draft with every
+// writable field blank after trimming: title, body, description, tags, cover,
+// SEO fields, canonical URL, extra frontmatter and author. An author that is
+// just the account that last saved the draft counts as blank, because
+// creating a draft credits its creator.
 func IsEmptyDraft(p *post.Post) bool {
-	return neverPublished(p) && strings.TrimSpace(p.Title) == "" && strings.TrimSpace(p.Body) == ""
+	blank := func(texts ...string) bool {
+		return !slices.ContainsFunc(texts, func(t string) bool { return strings.TrimSpace(t) != "" })
+	}
+	author := p.Author
+	if strings.TrimSpace(author) == strings.TrimSpace(p.UpdatedBy) {
+		author = ""
+	}
+	return neverPublished(p) && !p.Featured && len(p.Tags) == 0 &&
+		blank(p.Title, p.Body, p.Description, p.CoverURL, p.CoverAlt, p.Extra,
+			p.SEOTitle, p.SEODescription, p.CanonicalURL, author)
+}
+
+// SweepEmptyDrafts deletes the untitled drafts (untitled, untitled-2, ...)
+// that are still empty and were last saved before cutoff, and returns their
+// slugs. A draft that ever held writing in a revision stays.
+func (s *Store) SweepEmptyDrafts(ctx context.Context, cutoff time.Time) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT slug, version, updated_at FROM posts
+		WHERE status = ? AND published_on IS NULL
+		AND (slug = ? OR (slug GLOB ? AND slug NOT GLOB ?))`,
+		string(post.Draft), UntitledSlug, UntitledSlug+"-[0-9]*", UntitledSlug+"-*[^0-9]*")
+	if err != nil {
+		return nil, fmt.Errorf("find stale drafts: %w", err)
+	}
+	type candidate struct {
+		slug    string
+		version int64
+	}
+	var stale []candidate
+	for rows.Next() {
+		var c candidate
+		var updated string
+		if err := rows.Scan(&c.slug, &c.version, &updated); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("find stale drafts: %w", err)
+		}
+		if parseStamp(updated).Before(cutoff) {
+			stale = append(stale, c)
+		}
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, fmt.Errorf("find stale drafts: %w", err)
+	}
+	var removed []string
+	for _, c := range stale {
+		switch err := s.DeleteEmptyDraft(ctx, c.slug, c.version); {
+		case err == nil:
+			removed = append(removed, c.slug)
+		case errors.Is(err, ErrState), errors.Is(err, ErrConflict), errors.Is(err, ErrNotFound):
+			// Written in, or changed since the lookup: it stays.
+		default:
+			return removed, fmt.Errorf("sweep %s: %w", c.slug, err)
+		}
+	}
+	return removed, nil
+}
+
+// draftRenameWindow is how long a renamed draft's old slug still leads to the
+// new one.
+const draftRenameWindow = 24 * time.Hour
+
+// rememberDraftRename notes that a never-published draft moved from one slug
+// to another. A draft leaves no redirect, so an editor that reloads under the
+// old slug would otherwise find nothing. The notes live in memory only and
+// are dropped after draftRenameWindow.
+func (s *Store) rememberDraftRename(from, to string) {
+	s.renamesMu.Lock()
+	defer s.renamesMu.Unlock()
+	now := s.now()
+	for old, r := range s.renames {
+		if now.Sub(r.at) >= draftRenameWindow {
+			delete(s.renames, old)
+		}
+	}
+	if s.renames == nil {
+		s.renames = map[string]draftRename{}
+	}
+	s.renames[from] = draftRename{to: to, at: now}
+}
+
+// RenamedDraft returns the slug a never-published draft that was called from
+// has now, when it was renamed within the last day and still exists. It
+// returns ErrNotFound otherwise.
+func (s *Store) RenamedDraft(ctx context.Context, from string) (string, error) {
+	slug := from
+	for range 8 {
+		s.renamesMu.Lock()
+		r, ok := s.renames[slug]
+		s.renamesMu.Unlock()
+		if !ok || s.now().Sub(r.at) >= draftRenameWindow {
+			break
+		}
+		slug = r.to
+		_, err := s.GetPost(ctx, slug)
+		if err == nil {
+			return slug, nil
+		}
+		if !errors.Is(err, ErrNotFound) {
+			return "", err
+		}
+	}
+	return "", ErrNotFound
 }
 
 // Revision is an earlier version of a post.

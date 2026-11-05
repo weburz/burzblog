@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	// Pure-Go SQLite driver, so one cross-compiled binary runs on a Pi.
@@ -38,6 +39,14 @@ type Store struct {
 	now  func() time.Time
 	// unlock releases the data directory lock OpenShared took, if any.
 	unlock func()
+	// renames remembers recent draft renames; see rememberDraftRename.
+	renamesMu sync.Mutex
+	renames   map[string]draftRename
+}
+
+type draftRename struct {
+	to string
+	at time.Time
 }
 
 // FileName is the database file inside the data directory.

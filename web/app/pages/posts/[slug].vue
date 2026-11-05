@@ -9,6 +9,7 @@ import { duplicatePost } from "../../utils/duplicate";
 import { noSiteUrlNotice, publicPostUrl } from "../../utils/site";
 import { matchesTitle, slugify, untitledPattern } from "../../utils/slug";
 import { diffTooLong, lineDiff } from "../../utils/diff";
+import { isEmptyDraft, isTransientFailure, retryBackoff } from "../../utils/draft";
 import type { PaletteCommand } from "../../utils/palette";
 import {
   editedLabel,
@@ -29,6 +30,7 @@ const { register } = useRegisteredCommands();
 const { remember, forget } = useRecentPosts();
 const { now } = useCurrentTime();
 const { refresh: refreshTags } = useExistingTags();
+const { state: sessionState } = useCurrentSession();
 
 const post = ref<Post | null>(null);
 const draft = ref<PostDraft | null>(null);
@@ -166,6 +168,14 @@ const load = async () => {
     await nextTick();
     if (!p.body && !p.title) titleField.value?.focus();
   } catch (cause) {
+    // A draft renamed since this address was opened (a reload while typing)
+    // is still there under its new slug.
+    if (cause instanceof ApiError && cause.renamedTo) {
+      await navigateTo(`/posts/${encodeURIComponent(cause.renamedTo)}`, {
+        replace: true,
+      });
+      return;
+    }
     missing.value = cause instanceof ApiError && cause.code === "not_found";
     loadError.value = missing.value
       ? `Nothing is saved at “${slug}”. It may have been renamed or deleted.`
@@ -251,17 +261,23 @@ const saveAs = async (
   version: number,
   auto: boolean,
   follow: boolean,
+  keepalive: boolean,
 ): Promise<Post> => {
   const base = slugify(sent.title);
   for (let n = 1; ; n++) {
     const slug = !follow ? sent.slug : n === 1 ? base : `${base}-${n}`;
     try {
-      return await request<Post>(`/api/posts/${encodeURIComponent(from)}`, "PUT", {
-        version,
-        ...sent,
-        slug,
-        ...(auto ? { autosave: true } : {}),
-      });
+      return await request<Post>(
+        `/api/posts/${encodeURIComponent(from)}`,
+        "PUT",
+        {
+          version,
+          ...sent,
+          slug,
+          ...(auto ? { autosave: true } : {}),
+        },
+        keepalive,
+      );
     } catch (cause) {
       if (
         !follow ||
@@ -275,14 +291,22 @@ const saveAs = async (
 };
 
 // auto marks a save the editor makes by itself (see autosave below): the
-// server folds a run of those into one revision.
+// server folds a run of those into one revision. keepalive lets a save sent
+// as the page unloads finish after it. retryable is set when the last save
+// failed in a way that trying again later can fix.
 let autosaveTimer: ReturnType<typeof setTimeout> | undefined;
-const save = async (overwriteVersion?: number, auto = false): Promise<boolean> => {
+let retryable = false;
+const save = async (
+  overwriteVersion?: number,
+  auto = false,
+  keepalive = false,
+): Promise<boolean> => {
   if (!post.value || !draft.value || saving.value) return false;
   if (!dirty.value && overwriteVersion === undefined) return true;
   clearTimeout(autosaveTimer);
   saving.value = true;
   saveError.value = "";
+  retryable = false;
   const from = post.value.slug;
   const sent = { ...draft.value };
   // A draft's slug follows its title until the writer picks one: the slug is
@@ -295,6 +319,7 @@ const save = async (overwriteVersion?: number, auto = false): Promise<boolean> =
       overwriteVersion ?? post.value.version,
       auto,
       follow,
+      keepalive,
     );
     clearBackup(from);
     void refreshTags();
@@ -325,6 +350,7 @@ const save = async (overwriteVersion?: number, auto = false): Promise<boolean> =
       conflict.value = cause.current;
     } else {
       saveError.value = errorMessage(cause);
+      retryable = isTransientFailure(cause);
       if (cause instanceof ApiError && cause.detail.startsWith("slug "))
         detailsOpen.value = true;
     }
@@ -340,7 +366,8 @@ const keepMine = () => conflict.value && save(conflict.value.version);
 // Ctrl+S. Published posts keep the explicit Save: a live post should not
 // change under the writer's hands. A rename, a conflict or a backup still on
 // offer also waits for the writer; a failed autosave shows as "Not saved" and
-// tries again on the next change.
+// tries again on the next change, when the network comes back and after the
+// writer signs in again (see retryAutosave).
 const autosaveDelay = 2000;
 const autosaves = computed(
   () =>
@@ -363,20 +390,31 @@ const flushAutosave = () => {
   if (autosaveTimer === undefined || !autosaves.value || !dirty.value) return;
   clearTimeout(autosaveTimer);
   autosaveTimer = undefined;
-  void save(undefined, true);
+  void save(undefined, true, true);
 };
 const onHidden = () => document.visibilityState === "hidden" && flushAutosave();
+// After a failure the network or the session may have been the cause. Once
+// either is back, one more autosave follows after a short backoff. It fails
+// quietly into "Not saved" again; only the next event tries once more.
+const retryAutosave = () => {
+  if (!retryable || !autosaves.value || !dirty.value || saving.value) return;
+  clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(() => void save(undefined, true), retryBackoff);
+};
+watch(
+  () => sessionState.value.expired,
+  (expired, was) => was && !expired && retryAutosave(),
+);
 onMounted(() => {
   document.addEventListener("visibilitychange", onHidden);
   window.addEventListener("pagehide", flushAutosave);
+  window.addEventListener("online", retryAutosave);
 });
-// Leaving a new post without writing anything deletes it, so abandoned
-// "New post" clicks leave no untitled drafts behind. The server refuses
-// anything that has ever held writing, and then the draft simply stays.
+// Leaving a new post with every field blank deletes it, so abandoned "New
+// post" clicks leave no untitled drafts behind. The server refuses anything
+// that has ever held writing or metadata, and then the draft simply stays.
 const discardIfEmpty = async (p: Post | null, d: PostDraft | null) => {
-  if (!p || !d || !untitledPattern.test(p.slug) || p.status !== "draft" || p.publishedOn)
-    return;
-  if ([p.title, p.body, d.title, d.body].some((text) => text.trim() !== "")) return;
+  if (!p || !d || !untitledPattern.test(p.slug) || !isEmptyDraft(p, d)) return;
   try {
     await request(
       `/api/posts/${encodeURIComponent(p.slug)}?version=${p.version}`,
@@ -393,6 +431,7 @@ onUnmounted(() => {
   clearTimeout(autosaveTimer);
   document.removeEventListener("visibilitychange", onHidden);
   window.removeEventListener("pagehide", flushAutosave);
+  window.removeEventListener("online", retryAutosave);
 });
 const useTheirs = () => {
   if (!conflict.value) return;

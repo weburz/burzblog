@@ -417,3 +417,48 @@ test("a new post that is abandoned empty leaves no draft behind", async ({
   await expect(page.getByRole("heading", { name: "Posts", exact: true })).toBeVisible();
   await expect.poll(count).toBe(before);
 });
+
+test("a metadata-only new post survives leaving the editor", async ({
+  page,
+  request,
+}) => {
+  const api = await apiAs(request);
+  await signIn(page);
+  await page.getByRole("button", { name: "New post", exact: true }).first().click();
+  await expect(page).toHaveURL(/\/posts\/untitled(-\d+)?$/);
+  const slug = new URL(page.url()).pathname.replace("/posts/", "");
+  const note = `Only a summary ${unique()}`;
+  await page.getByLabel("Description", { exact: true }).fill(note);
+  const saved = async () =>
+    (
+      (await (
+        await request.get(`/api/posts/${slug}`, { headers: api.headers })
+      ).json()) as {
+        description?: string;
+      }
+    ).description;
+  await expect.poll(saved).toBe(note);
+
+  await page.getByRole("link", { name: "All posts" }).click();
+  await expect(page.getByRole("heading", { name: "Posts", exact: true })).toBeVisible();
+  // Give a wrongly sent DELETE time to land before looking again.
+  await page.waitForTimeout(1000);
+  expect(await saved()).toBe(note);
+});
+
+test("reloading while typing keeps the draft reachable", async ({ page }) => {
+  await signIn(page);
+  await page.getByRole("button", { name: "New post", exact: true }).first().click();
+  await expect(page).toHaveURL(/\/posts\/untitled(-\d+)?$/);
+  const tag = unique();
+  const title = page.getByLabel("Title", { exact: true });
+  await expect(title).toBeFocused();
+  await title.fill(`Reload ${tag}`);
+  // The page goes away before the two-second autosave; the pagehide save is
+  // sent with keepalive and renames the draft after the old address was opened.
+  await page.reload();
+
+  await expect(page).toHaveURL(new RegExp(`/posts/reload-${tag}$`));
+  await expect(page.getByLabel("Title", { exact: true })).toHaveValue(`Reload ${tag}`);
+  await expect(page.getByText("Nothing is saved at")).toHaveCount(0);
+});
