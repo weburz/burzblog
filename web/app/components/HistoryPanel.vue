@@ -16,6 +16,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ restore: [version: number] }>();
 
+const { now } = useCurrentTime();
 const items = ref<RevisionSummary[] | null>(null);
 const current = ref<RevisionState | null>(null);
 const error = ref("");
@@ -165,7 +166,7 @@ const pick = async (rev: RevisionSummary) => {
               <span class="history-change">{{ summaryOf(index) }}</span>
               <StatusBadge :status="rev.status" />
               <time :datetime="rev.savedAt" :title="exactTime(rev.savedAt)" class="muted"
-                >{{ editedLabel(rev.savedAt)
+                >{{ editedLabel(rev.savedAt, now)
                 }}<template v-if="rev.savedBy"> by {{ rev.savedBy }}</template></time
               >
               <span v-if="showsTitle(items, index)" class="history-title"

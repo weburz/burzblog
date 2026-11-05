@@ -15,6 +15,7 @@ const emit = defineEmits<{ newPost: []; signOut: [] }>();
 
 const { commands: contextual } = useRegisteredCommands();
 const { recent } = useRecentPosts();
+const { now } = useCurrentTime();
 const theme = usePreferredTheme();
 const shortcutsOpen = useState("shortcuts-open", () => false);
 
@@ -118,7 +119,7 @@ const announcement = computed(() => {
         <template #post-trailing="{ item }">
           <span class="palette-meta">
             <StatusBadge :status="item.status" />
-            <span class="palette-edited">{{ editedLabel(item.updatedAt) }}</span>
+            <span class="palette-edited">{{ editedLabel(item.updatedAt, now) }}</span>
           </span>
         </template>
       </UCommandPalette>
