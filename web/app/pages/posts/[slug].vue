@@ -6,6 +6,7 @@ import { returnFocusTo } from "../../utils/focus";
 import { countWords, lengthLabel } from "../../utils/markdown";
 import { sameDraft } from "../../utils/metadata";
 import { duplicatePost } from "../../utils/duplicate";
+import { publicPostUrl } from "../../utils/site";
 import { diffTooLong, lineDiff } from "../../utils/diff";
 import type { PaletteCommand } from "../../utils/palette";
 import {
@@ -401,7 +402,7 @@ const schedule = async (at: string) => {
   if (await action("schedule", false, { at })) scheduleOpen.value = false;
 };
 
-const { isAdmin } = useCurrentSession();
+const { state: session, isAdmin } = useCurrentSession();
 
 const remove = () =>
   ask({
@@ -482,6 +483,31 @@ const duplicate = async () => {
   }
 };
 
+// Where the published post lives on the website; empty without a site URL.
+const liveUrl = computed(() =>
+  post.value ? publicPostUrl(session.value.postUrl, post.value.slug) : "",
+);
+const noSiteUrl = () =>
+  toast.add({
+    title: "No website address set",
+    description:
+      "Set BURZBLOG_SITE_URL (or --site-url) and restart the server. BURZBLOG_POST_PATH changes the path.",
+    color: "neutral",
+  });
+const copyLink = async () => {
+  if (!liveUrl.value) return noSiteUrl();
+  try {
+    await navigator.clipboard.writeText(liveUrl.value);
+    toast.add({ title: "Link copied", description: liveUrl.value, color: "success" });
+  } catch {
+    toast.add({
+      title: "Could not copy",
+      description: liveUrl.value,
+      color: "neutral",
+    });
+  }
+};
+
 const copyCommand = async () => {
   if (!post.value) return;
   try {
@@ -527,6 +553,25 @@ const menu = computed(() => {
   const p = post.value;
   if (!p) return [];
   const status = [];
+  const live =
+    p.status === "published"
+      ? [
+          liveUrl.value
+            ? {
+                label: "View on site",
+                icon: "i-lucide-external-link",
+                to: liveUrl.value,
+                target: "_blank",
+                rel: "noopener",
+              }
+            : {
+                label: "View on site",
+                icon: "i-lucide-external-link",
+                onSelect: noSiteUrl,
+              },
+          { label: "Copy link", icon: "i-lucide-link", onSelect: copyLink },
+        ]
+      : [];
   if (isScheduled(p))
     status.push({
       label: "Change schedule…",
@@ -574,6 +619,7 @@ const menu = computed(() => {
       },
       { label: "Duplicate", icon: "i-lucide-copy", onSelect: duplicate },
     ],
+    ...(live.length ? [live] : []),
     [
       {
         label: "Copy terminal command",
@@ -936,6 +982,18 @@ const primary = computed(() => {
       <div class="editor-crumb">
         <span class="editor-crumb-title">{{ draft.title || "Untitled" }}</span>
         <StatusBadge :status="post.status" :publish-at="post.publishAt" />
+        <UTooltip v-if="post.status === 'published' && liveUrl" text="View on site">
+          <UButton
+            :to="liveUrl"
+            target="_blank"
+            rel="noopener"
+            icon="i-lucide-external-link"
+            color="neutral"
+            variant="ghost"
+            size="xs"
+            aria-label="View on site"
+          />
+        </UTooltip>
         <time
           v-if="scheduled && post.publishAt"
           class="schedule-note"
@@ -1230,6 +1288,7 @@ const primary = computed(() => {
       v-model:draft="draft"
       :status="post.status"
       :saved-slug="post.slug"
+      :post-url="session.postUrl"
       :readonly="archived"
       :redirects="redirects"
       :close-focus="closeFocus"

@@ -11,6 +11,7 @@ import {
   seoDescriptionLimits,
   seoTitleLimits,
 } from "../utils/metadata";
+import { publicPostUrl } from "../utils/site";
 import { slugify } from "../utils/slug";
 import { fromLocalInput, toLocalInput } from "../utils/time";
 
@@ -19,6 +20,8 @@ const draft = defineModel<PostDraft>("draft", { required: true });
 const props = defineProps<{
   status: PostStatus;
   savedSlug: string;
+  // The public address of a post with {slug} in it; empty without a site URL.
+  postUrl?: string;
   readonly?: boolean;
   // Old slugs of this post that redirect to it.
   redirects?: string[];
@@ -42,6 +45,7 @@ const coverPicked = (item: MediaItem) => {
 };
 const coverOk = computed(() => /^https?:\/\/\S+$/.test(draft.value.coverUrl));
 const slugChanged = computed(() => draft.value.slug !== props.savedSlug);
+const address = computed(() => publicPostUrl(props.postUrl ?? "", draft.value.slug));
 const canonicalValid = computed(() => canonicalOk(draft.value.canonicalUrl));
 // The SEO section opens by itself when the post already has SEO settings.
 const seoOpen = ref(
@@ -95,6 +99,10 @@ const setUpdatedNow = () => {
               >Lowercase words joined by hyphens. Also the file name readers' sites
               use.</template
             >
+          </p>
+          <p v-if="address" id="detail-address" class="field-hint">
+            {{ status === "published" ? "Public address:" : "Address once published:" }}
+            <span class="mono break-all">{{ address }}</span>
           </p>
           <div v-if="redirects?.length" class="redirects">
             <p id="detail-redirects-label" class="field-hint">
