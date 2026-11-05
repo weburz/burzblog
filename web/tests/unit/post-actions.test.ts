@@ -5,6 +5,7 @@ import {
   actionSummary,
   addTag,
   availableActions,
+  hasUndo,
   outcomeSummary,
   partitionByAction,
   reverseAction,
@@ -179,7 +180,29 @@ describe("addTag", () => {
   });
 });
 
+describe("hasUndo", () => {
+  it("covers every action that takes effect on the site at once", () => {
+    expect(hasUndo("publish")).toBe(true);
+    expect(hasUndo("unpublish")).toBe(true);
+    expect(hasUndo("archive")).toBe(true);
+  });
+  it("leaves out restore and delete", () => {
+    expect(hasUndo("restore")).toBe(false);
+    expect(hasUndo("delete")).toBe(false);
+  });
+});
+
 describe("reverseAction", () => {
+  it("undoes a Publish by unpublishing with the returned version", async () => {
+    rememberSession({ authenticated: true, csrf: "token" });
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockImplementation(async () => Response.json(post({ status: "draft" })));
+    vi.stubGlobal("fetch", fetch);
+    await reverseAction("publish", false, post({ slug: "a", version: 7 }));
+    expect(fetch.mock.calls.map((c) => c[0])).toEqual(["/api/posts/a/unpublish"]);
+    expect(JSON.parse(fetch.mock.calls[0]?.[1]?.body as string)).toEqual({ version: 7 });
+  });
   it("undoes an Unpublish by publishing again", async () => {
     rememberSession({ authenticated: true, csrf: "token" });
     const fetch = vi

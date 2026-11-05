@@ -3,7 +3,12 @@ import { computed } from "vue";
 import type { PostSummary } from "../types";
 import { actionApplies, type PostAction } from "../utils/post-actions";
 
-const props = defineProps<{ post: PostSummary; admin: boolean }>();
+// `tabbable` false takes the button out of the Tab order (the list keeps one
+// stop per row); it still opens with the pointer and from the focused row.
+const props = withDefaults(
+  defineProps<{ post: PostSummary; admin: boolean; tabbable?: boolean }>(),
+  { tabbable: true },
+);
 const emit = defineEmits<{
   act: [action: PostAction];
   duplicate: [];
@@ -47,6 +52,7 @@ const items = computed(() => {
       variant="ghost"
       class="post-menu"
       :aria-label="label"
+      :tabindex="tabbable ? undefined : -1"
     />
   </UDropdownMenu>
 </template>

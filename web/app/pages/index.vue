@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import type { Post, PostList, PostStatus, PostSummary, TagCount } from "../types";
 import { errorMessage, request } from "../utils/api";
 import { wordLabel } from "../utils/markdown";
@@ -147,8 +147,30 @@ watch([status, search, sort, tag], ([s, q, o, t], [oldS, , oldO, oldT]) => {
   if (s !== oldS || o !== oldO || t !== oldT) void load();
   else debounce = setTimeout(() => void load(), 200);
 });
+const heading = ref<HTMLElement | null>(null);
+// The slug of the post the writer came back from, when Back from the editor
+// brought them here; null for any other way of arriving.
+const leftPost = (): string | null => {
+  const back = (router.options.history.state as { back?: string | null }).back;
+  const slug = /^\/posts\/([^/?#]+)/.exec(back ?? "")?.[1];
+  return slug ? decodeURIComponent(slug) : null;
+};
+// Whether focus has nowhere useful to be: on the page itself or nothing.
+const focusLost = () => {
+  const active = document.activeElement;
+  return !active || active === document.body || active.id === "main";
+};
+const rowLink = (slug: string) =>
+  document.querySelector<HTMLElement>(`[data-slug="${CSS.escape(slug)}"] .post-row`);
+// Focus lands on the post's row when it is listed, else on the heading, unless
+// the writer has already moved it somewhere.
+const focusRowOrHeading = async (slug: string) => {
+  await nextTick();
+  if (focusLost()) (rowLink(slug) ?? heading.value)?.focus();
+};
 onMounted(() => {
-  void load();
+  const from = leftPost();
+  void load().then(() => (from ? focusRowOrHeading(from) : undefined));
   void loadTags();
 });
 const refresh = () => Promise.all([load(false, true), loadTags()]);
@@ -229,7 +251,14 @@ watch([status, search, tag], clearSelection);
 
 // One post or a whole selection: run in turn, report once, refresh in place.
 const working = ref(false);
-const perform = async (action: PostAction, targets: PostSummary[]) => {
+// A row or bulk action can remove the control that had focus; hand it to the
+// next sensible one unless something else already took it.
+const focusAfterAction = async (target: () => HTMLElement | null | undefined) => {
+  await nextTick();
+  if (focusLost()) target()?.focus();
+};
+const selectAllBox = () => document.getElementById("select-all-posts");
+const perform = async (action: PostAction, targets: PostSummary[], bulk = false) => {
   const { apply, skipped } = partitionByAction(action, targets, isAdmin.value);
   if (!apply.length) {
     toast.add({
@@ -240,6 +269,8 @@ const perform = async (action: PostAction, targets: PostSummary[]) => {
     return;
   }
   working.value = true;
+  // After deleting one row, focus goes to the row below it, if there is one.
+  const below = items.value[items.value.findIndex((p) => p.slug === apply[0]?.slug) + 1];
   try {
     const { done, failed } = await runSequentially(apply, (p) =>
       applyAction(p.slug, action, p.version),
@@ -260,6 +291,9 @@ const perform = async (action: PostAction, targets: PostSummary[]) => {
     });
     clearSelection();
     await refresh();
+    if (bulk) await focusAfterAction(selectAllBox);
+    else if (action === "delete")
+      await focusAfterAction(() => (below && rowLink(below.slug)) || heading.value);
   } finally {
     working.value = false;
   }
@@ -288,23 +322,53 @@ const undoAll = async (
   await refresh();
 };
 
-const confirm = reactive({ open: false, targets: [] as PostSummary[] });
-const deleteOpener = ref<HTMLElement | null>(null);
-const closeFocus = returnFocusTo(() => deleteOpener.value);
-const ask = (action: PostAction, targets: PostSummary[]) => {
+const confirm = reactive({
+  open: false,
+  action: "delete" as PostAction,
+  bulk: false,
+  targets: [] as PostSummary[],
+});
+const confirmOpener = ref<HTMLElement | null>(null);
+const closeFocus = returnFocusTo(() => confirmOpener.value);
+// Deleting always asks; so does publishing a selection, which goes out to the
+// feeds, the sitemap and the deploy hook. One row's Publish has an Undo instead.
+const ask = (action: PostAction, targets: PostSummary[], bulk = false) => {
   const { apply } = partitionByAction(action, targets, isAdmin.value);
-  if (action !== "delete" || !apply.length) return void perform(action, targets);
+  if (!apply.length || !(action === "delete" || (action === "publish" && bulk)))
+    return void perform(action, targets, bulk);
   const first = apply[0];
-  deleteOpener.value = first
-    ? document.querySelector<HTMLElement>(
-        `[data-slug="${CSS.escape(first.slug)}"] .post-menu`,
-      )
-    : null;
-  Object.assign(confirm, { open: true, targets: apply });
+  confirmOpener.value = bulk
+    ? (document.activeElement as HTMLElement | null)
+    : first
+      ? document.querySelector<HTMLElement>(
+          `[data-slug="${CSS.escape(first.slug)}"] .post-menu`,
+        )
+      : null;
+  Object.assign(confirm, { open: true, action, bulk, targets: apply });
 };
-const confirmDelete = () => {
+const confirmText = computed(() => {
+  const count = confirm.targets.length;
+  const many = count !== 1;
+  return confirm.action === "publish"
+    ? {
+        title: many ? `Publish ${count} posts?` : "Publish this post?",
+        body: `${many ? "They become" : "It becomes"} part of your site on the next build. You can unpublish ${many ? "them" : "it"} later.`,
+        label: many ? "Publish posts" : "Publish post",
+        color: "primary" as const,
+      }
+    : {
+        title: many ? `Delete ${count} posts for good?` : "Delete this post for good?",
+        body: "The posts and their whole history are removed. This cannot be undone.",
+        label: many ? "Delete posts" : "Delete post",
+        color: "error" as const,
+      };
+});
+const confirmRun = () => {
+  // The selection is cleared by the action, so the bar's button is not where
+  // the dialog should hand focus back to.
+  if (confirm.bulk) confirmOpener.value = selectAllBox();
   confirm.open = false;
-  void perform("delete", confirm.targets);
+  void perform(confirm.action, confirm.targets, confirm.bulk);
 };
 
 const duplicate = async (post: PostSummary) => {
@@ -354,9 +418,18 @@ const tagSelected = async (raw: string) => {
     });
     clearSelection();
     await refresh();
+    await focusAfterAction(selectAllBox);
   } finally {
     working.value = false;
   }
+};
+
+// One Tab stop per row: the tick and the menu are only reachable from the row
+// that last had focus (j and k move between rows).
+const stopSlug = ref("");
+const trackRow = (event: FocusEvent) => {
+  const slug = rowOf(event.target as HTMLElement)?.dataset.slug;
+  if (slug) stopSlug.value = slug;
 };
 
 // Rows move with j and k by focusing their link, so Enter opens the post the
@@ -409,7 +482,7 @@ const origin = typeof window === "undefined" ? "" : window.location.origin;
   <div class="content">
     <div class="page-head">
       <div>
-        <h1 class="page-title">Posts</h1>
+        <h1 ref="heading" class="page-title" tabindex="-1">Posts</h1>
         <p v-if="list && !fresh" class="muted">
           <template v-if="total === 0">Nothing written yet.</template>
           <template v-else
@@ -515,14 +588,19 @@ const origin = typeof window === "undefined" ? "" : window.location.origin;
         :selected="selectedPosts"
         :admin="isAdmin"
         :busy="working"
-        @act="(action) => ask(action, selectedPosts)"
+        @act="(action) => ask(action, selectedPosts, true)"
         @tag="tagSelected"
         @clear="clearSelection"
       />
       <label v-else for="select-all-posts" class="muted">Select all</label>
     </div>
 
-    <ul v-if="list && list.items.length" class="post-list" :aria-busy="loading">
+    <ul
+      v-if="list && list.items.length"
+      class="post-list"
+      :aria-busy="loading"
+      @focusin="trackRow"
+    >
       <li
         v-for="post in list.items"
         :key="post.slug"
@@ -533,6 +611,7 @@ const origin = typeof window === "undefined" ? "" : window.location.origin;
         <UCheckbox
           :model-value="selected.includes(post.slug)"
           :aria-label="`Select ${post.title || post.slug}`"
+          :tabindex="stopSlug === post.slug ? undefined : -1"
           class="post-select"
           :class="{ 'post-select-on': selected.length }"
           @update:model-value="
@@ -587,6 +666,7 @@ const origin = typeof window === "undefined" ? "" : window.location.origin;
         <PostRowMenu
           :post="post"
           :admin="isAdmin"
+          :tabbable="stopSlug === post.slug"
           @act="(action) => ask(action, [post])"
           @duplicate="duplicate(post)"
           @copy-link="copyLink(post)"
@@ -654,16 +734,12 @@ burzblog new "My first post"</code></pre>
 
     <ConfirmDialog
       v-model:open="confirm.open"
-      :title="
-        confirm.targets.length === 1
-          ? 'Delete this post for good?'
-          : `Delete ${confirm.targets.length} posts for good?`
-      "
-      body="The posts and their whole history are removed. This cannot be undone."
-      :confirm-label="confirm.targets.length === 1 ? 'Delete post' : 'Delete posts'"
-      confirm-color="error"
+      :title="confirmText.title"
+      :body="confirmText.body"
+      :confirm-label="confirmText.label"
+      :confirm-color="confirmText.color"
       :close-focus="closeFocus"
-      @confirm="confirmDelete"
+      @confirm="confirmRun"
     />
   </div>
 </template>
