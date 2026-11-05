@@ -144,4 +144,17 @@ describe("MediaAltField", () => {
     expect(wrapper.emitted("save")).toBeUndefined();
     expect((input.element as HTMLInputElement).value).toBe("Saved");
   });
+
+  it("keeps focus in the field on Escape", async () => {
+    const wrapper = mount(MediaAltField, {
+      props: { inputId: "alt-1", alt: "Saved", label: "a.png" },
+      global: { stubs: { UInput } },
+      attachTo: document.body,
+    });
+    const input = wrapper.find("input");
+    (input.element as HTMLInputElement).focus();
+    await input.trigger("keydown", { key: "Escape" });
+    expect(document.activeElement).toBe(input.element);
+    wrapper.unmount();
+  });
 });

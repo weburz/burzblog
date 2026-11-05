@@ -146,17 +146,20 @@ export const applyAction = (
         version,
       });
 
-// Unpublish and Archive take effect at once, so they come with an Undo.
+// Publish, Unpublish and Archive take effect at once, so they come with an Undo.
 export const hasUndo = (action: PostAction): boolean =>
-  action === "unpublish" || action === "archive";
+  action === "publish" || action === "unpublish" || action === "archive";
 
-// Undoes one finished action, from the post the action returned. Undoing an
-// Archive of a live post restores it, then puts it back on the site.
+// Undoes one finished action, from the post the action returned. Undoing a
+// Publish unpublishes it; undoing an Archive of a live post restores it, then
+// puts it back on the site.
 export const reverseAction = async (
   action: PostAction,
   wasPublished: boolean,
   after: Post,
 ): Promise<Post> => {
+  if (action === "publish")
+    return (await applyAction(after.slug, "unpublish", after.version)) as Post;
   if (action === "unpublish")
     return (await applyAction(after.slug, "publish", after.version)) as Post;
   const restored = (await applyAction(after.slug, "restore", after.version)) as Post;

@@ -417,3 +417,40 @@ test("a new post that is abandoned empty leaves no draft behind", async ({
   await expect(page.getByRole("heading", { name: "Posts", exact: true })).toBeVisible();
   await expect.poll(count).toBe(before);
 });
+
+test("closing the shortcuts dialog gives focus back", async ({ page }, info) => {
+  test.skip(info.project.name !== "desktop", "Keyboard shortcuts are for desktop.");
+  await signIn(page);
+  const heading = page.getByRole("heading", { name: "Posts", exact: true });
+  await heading.focus();
+  await page.keyboard.press("?");
+  const dialog = page.getByRole("dialog", { name: "Keyboard shortcuts" });
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(heading).toBeFocused();
+});
+
+test("the tick and menu of a row are only a Tab stop from that row", async ({
+  page,
+  request,
+}, info) => {
+  test.skip(info.project.name !== "desktop", "Keyboard shortcuts are for desktop.");
+  const api = await apiAs(request);
+  const tag = unique();
+  await api.createPost(`stop-a-${tag}`, `Stop one ${tag}`);
+  await api.createPost(`stop-b-${tag}`, `Stop two ${tag}`);
+
+  await signIn(page);
+  await page.goto(`/?q=${tag}`);
+  await expect(page.locator(".post-row")).toHaveCount(2);
+  const menus = page.locator(".post-menu");
+  await expect(menus.first()).toHaveAttribute("tabindex", "-1");
+  await expect(menus.last()).toHaveAttribute("tabindex", "-1");
+  await page.keyboard.press("j");
+  await expect(page.locator(".post-row").first()).toBeFocused();
+  await expect(menus.first()).not.toHaveAttribute("tabindex", "-1");
+  await expect(menus.last()).toHaveAttribute("tabindex", "-1");
+  await page.keyboard.press("Tab");
+  await expect(menus.first()).toBeFocused();
+});

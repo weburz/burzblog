@@ -2,7 +2,7 @@
 import { ref } from "vue";
 
 // An upload's alt text, edited in place: Enter or leaving the field saves it,
-// Escape puts the saved text back. The parent does the saving.
+// Escape puts the saved text back and keeps focus. The parent does the saving.
 const props = defineProps<{ inputId: string; alt: string; label: string }>();
 const emit = defineEmits<{ save: [alt: string] }>();
 const draft = ref<string | null>(null);
@@ -13,9 +13,9 @@ const commit = () => {
   draft.value = null;
   if (text !== undefined && text !== props.alt) emit("save", text);
 };
-const cancel = (event: KeyboardEvent) => {
+// Focus stays in the field; blurring it would drop focus to the page.
+const cancel = () => {
   draft.value = null;
-  (event.target as HTMLInputElement).blur();
 };
 </script>
 

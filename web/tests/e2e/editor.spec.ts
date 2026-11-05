@@ -271,6 +271,10 @@ test("a row menu publishes a draft without opening it", async ({
   await expect.poll(() => api.status(slug)).toBe("published");
   await expect(page).toHaveURL(/\/\?q=/);
   await expect(page.locator(".post-item .post-status")).toContainText(/published/i);
+  // The row's Publish has no confirm, so it comes with an Undo.
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect.poll(() => api.status(slug)).toBe("draft");
+  await expect(page.locator(".post-item .post-status")).toContainText(/draft/i);
   // Nothing may push the page wider than the screen, phone included.
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -296,11 +300,26 @@ test("selected rows are changed together from the bulk bar", async ({
   await page.getByRole("checkbox", { name: `Select Bulk two ${tag}` }).click();
   const bar = page.getByRole("group", { name: "Actions for the selected posts" });
   await expect(bar).toContainText("2 selected");
-  await bar.getByRole("button", { name: "Publish" }).click();
+  // Publishing a selection asks first, with the count; Cancel changes nothing.
+  const publish = bar.getByRole("button", { name: "Publish" });
+  await publish.click();
+  const dialog = page.getByRole("dialog", { name: "Publish 2 posts?" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(publish).toBeFocused();
+  expect(await api.status(first)).toBe("draft");
+  expect(await api.status(second)).toBe("draft");
 
+  await publish.click();
+  await dialog.getByRole("button", { name: "Publish posts" }).click();
   await expect.poll(() => api.status(first)).toBe("published");
   await expect.poll(() => api.status(second)).toBe("published");
   await expect(bar).toBeHidden();
+  // The bar is gone; focus lands on the Select all box.
+  await expect(
+    page.getByRole("checkbox", { name: "Select all posts shown" }),
+  ).toBeFocused();
   await expect(page.getByLabel("Search posts")).toHaveValue(tag);
 
   // Tagging goes through the normal save and keeps the posts as they were.
