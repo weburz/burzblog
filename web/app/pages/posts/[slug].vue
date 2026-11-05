@@ -27,6 +27,7 @@ const { dark: themeDark } = usePreferredTheme();
 const { register } = useRegisteredCommands();
 const { remember } = useRecentPosts();
 const { now } = useCurrentTime();
+const { refresh: refreshTags } = useExistingTags();
 
 const post = ref<Post | null>(null);
 const draft = ref<PostDraft | null>(null);
@@ -171,6 +172,7 @@ const load = async () => {
   }
 };
 onMounted(load);
+onMounted(refreshTags);
 
 // The old slugs that redirect to this post, shown in its settings.
 const redirects = ref<string[]>([]);
@@ -241,6 +243,7 @@ const save = async (overwriteVersion?: number, auto = false): Promise<boolean> =
       ...(auto ? { autosave: true } : {}),
     });
     clearBackup(from);
+    void refreshTags();
     conflict.value = null;
     comparing.value = false;
     post.value = saved;
