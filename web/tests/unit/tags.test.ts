@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { TagCount } from "../../app/types";
-import { suggestTags } from "../../app/utils/tags";
+import { maxTagLength, maxTags } from "../../app/utils/metadata";
+import { suggestTags, tagLimitProblem } from "../../app/utils/tags";
 
 const tag = (name: string, count: number, label = name): TagCount => ({
   tag: name,
@@ -64,5 +65,39 @@ describe("suggestTags", () => {
     const copy = [...all];
     suggestTags(all, "", []);
     expect(all).toEqual(copy);
+  });
+});
+
+describe("tagLimitProblem", () => {
+  const full = Array.from({ length: maxTags }, (_, i) => `tag-${i}`);
+
+  it("accepts a tag with room left", () => {
+    expect(tagLimitProblem(["go"], "Machine Learning")).toBe("");
+  });
+
+  it("names the count limit when the list is full", () => {
+    expect(tagLimitProblem(full, "one more")).toBe("A post can carry at most 20 tags");
+  });
+
+  it("lets a full list take a tag it already has", () => {
+    expect(tagLimitProblem(full, "Tag 3")).toBe("");
+  });
+
+  it("names the length limit instead of cutting the tag", () => {
+    expect(tagLimitProblem([], "x".repeat(maxTagLength + 1))).toBe(
+      "Tags are at most 40 characters",
+    );
+    expect(tagLimitProblem([], "x".repeat(maxTagLength))).toBe("");
+  });
+
+  it("counts characters, not code units", () => {
+    expect(tagLimitProblem([], "é".repeat(maxTagLength))).toBe("");
+    expect(tagLimitProblem([], "\u{1d4d0}".repeat(maxTagLength))).toBe("");
+    expect(tagLimitProblem([], "\u{1d4d0}".repeat(maxTagLength + 1))).not.toBe("");
+  });
+
+  it("has nothing to say about text with no usable characters", () => {
+    expect(tagLimitProblem(full, "  ")).toBe("");
+    expect(tagLimitProblem(full, "!!")).toBe("");
   });
 });

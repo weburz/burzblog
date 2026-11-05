@@ -43,6 +43,10 @@ describe("normalizeTag", () => {
   ])("%j → %j", (input, tag) => {
     expect(normalizeTag(input)).toBe(tag);
   });
+  it("composes to NFC so both spellings of é are one tag", () => {
+    expect(normalizeTag("café")).toBe("café");
+    expect(normalizeTags(["café", "café"])).toEqual(["café"]);
+  });
   it("stops at the server's length limit without a dangling hyphen", () => {
     const tag = normalizeTag(`${"a".repeat(maxTagLength - 1)} b`);
     expect(tag).toBe("a".repeat(maxTagLength - 1));

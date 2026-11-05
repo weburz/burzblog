@@ -8,18 +8,18 @@ export const maxTagLabel = 60;
 export const seoTitleLimits = { advised: 60, max: 120 };
 export const seoDescriptionLimits = { advised: 160, max: 320 };
 
-// Mirrors the server: lowercase letters, digits and marks, with single hyphens
-// between words. "Machine Learning" becomes "machine-learning".
+// Mirrors the server: composed to NFC, lowercase letters, digits and marks, with
+// single hyphens between words. "Machine Learning" becomes "machine-learning".
+// The length limit is not applied here, so callers can tell a long tag from a cut one.
+export const tagSlug = (raw: string): string =>
+  raw
+    .normalize("NFC")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\p{M}]+/gu, "-")
+    .replace(/^-+|-+$/g, "");
+
 export const normalizeTag = (raw: string): string =>
-  Array.from(
-    raw
-      .toLowerCase()
-      .replace(/[^\p{L}\p{N}\p{M}]+/gu, "-")
-      .replace(/^-+|-+$/g, ""),
-  )
-    .slice(0, maxTagLength)
-    .join("")
-    .replace(/-+$/, "");
+  Array.from(tagSlug(raw)).slice(0, maxTagLength).join("").replace(/-+$/, "");
 
 // Normalizes each tag, drops empty ones and repeats, keeps the writer's order.
 export const normalizeTags = (tags: readonly string[]): string[] => [

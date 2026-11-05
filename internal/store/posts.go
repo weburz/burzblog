@@ -104,7 +104,9 @@ func insertTags(ctx context.Context, tx *sql.Tx, id int64, tags []string) error 
 // CreatePost stores a new post. Slug, title and status must be set. A post
 // without an author is credited to the account creating it.
 func (s *Store) CreatePost(ctx context.Context, p *post.Post, by string) (*post.Post, error) {
-	post.Normalize(p)
+	if err := post.Normalize(p); err != nil {
+		return nil, err
+	}
 	if p.Author == "" {
 		p.Author = by
 	}
@@ -494,7 +496,9 @@ func (s *Store) updatePost(ctx context.Context, slug string, version int64, by s
 	if err := change(&next); err != nil {
 		return nil, err
 	}
-	post.Normalize(&next)
+	if err := post.Normalize(&next); err != nil {
+		return nil, err
+	}
 	// Only drafts wait for a publish time: publishing or archiving ends it.
 	if next.Status != post.Draft || next.PublishAt == nil {
 		next.PublishAt, next.PublishBy = nil, ""
