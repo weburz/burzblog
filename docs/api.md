@@ -54,7 +54,7 @@ versions: `{ "error": {...}, "current": { ...post } }`.
 
 | | |
 |---|---|
-| `GET /api/session` | `{authenticated, username, role, csrf}` (`role` is `admin` or `author`); works without signing in. An export token is anonymous here (`authenticated: false`) |
+| `GET /api/session` | `{authenticated, username, role, csrf, postUrl?}` (`role` is `admin` or `author`; `postUrl` is the public address of a post with `{slug}` in it, such as `https://example.com/blog/{slug}`, and is left out when no site URL is set); works without signing in. An export token is anonymous here (`authenticated: false`) |
 | `GET /api/setup` | `{needed}`: true while the server has no accounts. Needs no sign-in and reveals nothing else |
 | `POST /api/setup` | `{token, username, password}` creates the first account and signs the browser in (201, same body as `GET /api/session`, plus the session cookie). Needs the `Origin` header. `token` is the one-time value after `#token=` in the link `burzblog serve` prints. 403 `setup_token` for a wrong, expired or used token (one message for all), 409 `setup_done` once any account exists, 400 `validation` for a name or password `burzblog user add` would refuse, 429 `rate_limited` and 503 `busy` like sign-in |
 | `POST /api/login` | `{username, password}` → session cookie and the same body as `GET /api/session`. When the account uses two-factor sign-in the answer is `200 {"second_factor": true, "challenge": "..."}` and **no** cookie is set |

@@ -11,6 +11,7 @@ export const useCurrentSession = () => {
     username: "",
     role: "author" as Role,
     expired: false,
+    postUrl: "",
   }));
   // Only for showing or hiding controls; the server decides what is allowed.
   const isAdmin = computed(
@@ -21,6 +22,7 @@ export const useCurrentSession = () => {
     state.value.authenticated = session.authenticated;
     state.value.username = session.username ?? "";
     state.value.role = session.role ?? "author";
+    state.value.postUrl = session.postUrl ?? "";
   };
   const load = async () => {
     apply(await request<Session>("/api/session"));
