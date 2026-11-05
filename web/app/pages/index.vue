@@ -425,6 +425,7 @@ const origin = typeof window === "undefined" ? "" : window.location.origin;
         v-if="!fresh"
         icon="i-lucide-plus"
         size="lg"
+        class="shrink-0 whitespace-nowrap"
         :loading="creating"
         @click="createPost"
         >New post</UButton
@@ -541,9 +542,12 @@ const origin = typeof window === "undefined" ? "" : window.location.origin;
         />
         <NuxtLink :to="`/posts/${post.slug}`" class="post-row">
           <span class="post-main">
-            <span class="post-title" :class="{ 'post-untitled': !post.title }">{{
-              post.title || "Untitled"
-            }}</span>
+            <span
+              class="post-title"
+              :class="{ 'post-untitled': !post.title }"
+              :title="post.title || undefined"
+              >{{ post.title || "Untitled" }}</span
+            >
             <span class="post-sub">
               <span v-if="post.featured" class="post-featured"
                 ><UIcon
@@ -552,11 +556,18 @@ const origin = typeof window === "undefined" ? "" : window.location.origin;
                   aria-hidden="true"
                 />Featured</span
               >
-              <span class="mono">{{ post.slug }}</span>
-              <span v-if="post.tags.length" class="post-tags">{{
-                post.tags.map((t) => `#${t}`).join(" ")
-              }}</span>
-              <span v-if="post.description" class="post-description">
+              <span class="mono" :title="post.slug">{{ post.slug }}</span>
+              <span
+                v-if="post.tags.length"
+                class="post-tags"
+                :title="post.tags.map((t) => `#${t}`).join(' ')"
+                >{{ post.tags.map((t) => `#${t}`).join(" ") }}</span
+              >
+              <span
+                v-if="post.description"
+                class="post-description"
+                :title="post.description"
+              >
                 {{ post.description }}</span
               >
             </span>

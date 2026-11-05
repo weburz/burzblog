@@ -1082,7 +1082,9 @@ const primary = computed(() => {
         <span class="max-md:sr-only">Posts</span>
       </NuxtLink>
       <div class="editor-crumb">
-        <span class="editor-crumb-title">{{ draft.title || "Untitled" }}</span>
+        <span class="editor-crumb-title" :title="draft.title || undefined">{{
+          draft.title || "Untitled"
+        }}</span>
         <StatusBadge :status="post.status" :publish-at="post.publishAt" />
         <UTooltip v-if="post.status === 'published' && liveUrl" text="View on site">
           <UButton
@@ -1112,7 +1114,7 @@ const primary = computed(() => {
       >
         <UIcon v-if="saveState.kind === 'saved'" name="i-lucide-check" class="size-4" />
         <span v-else-if="saveState.kind === 'dirty'" class="dot" aria-hidden="true" />
-        {{ saveState.text }}
+        <span class="save-text" :title="saveState.text">{{ saveState.text }}</span>
       </span>
       <div class="editor-actions">
         <UTooltip text="History">

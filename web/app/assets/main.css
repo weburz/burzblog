@@ -183,6 +183,7 @@ main:focus {
 .brand {
   display: inline-flex;
   align-items: center;
+  min-height: 44px;
   font-size: 19px;
   font-weight: 800;
   letter-spacing: -0.03em;
@@ -238,6 +239,10 @@ main:focus {
 @media (max-width: 480px) {
   .brand-name {
     display: none;
+  }
+  .brand {
+    min-width: 24px;
+    justify-content: center;
   }
   .brand-mark {
     margin-right: 0;
@@ -492,11 +497,15 @@ code {
 }
 .list-find {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+  max-width: 100%;
 }
 .list-search {
   width: 280px;
+  max-width: 100%;
 }
 .list-sort-select,
 .list-tag-select {
@@ -505,7 +514,6 @@ code {
 @media (max-width: 640px) {
   .list-find {
     width: 100%;
-    flex-wrap: wrap;
   }
   .list-search,
   .list-sort-select,
@@ -551,22 +559,48 @@ code {
   opacity: 0;
 }
 .post-item:hover .post-select,
-.post-select:focus-within,
-.post-select-on {
+.post-item .post-select:focus-within,
+.post-item .post-select-on {
   opacity: 1;
 }
 @media (hover: none) {
-  .post-select {
+  .post-item .post-select {
     opacity: 1;
   }
 }
+/* The tick box is 16 px; its centred 24 px cell and the extended button hit
+   area make it an easy target. */
+.post-select {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+}
+.post-select button {
+  position: relative;
+}
+.post-select button::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+}
+/* One fixed height for "Select all" and the bulk bar, so selecting never
+   moves the list. The bar sticks to the top while a long list scrolls. */
 .post-select-bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
   display: grid;
   grid-template-columns: 24px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
+  min-height: 52px;
+  padding: 0 12px;
   margin: 0 -12px;
+  background: var(--bb-bg);
+}
+.post-item {
+  scroll-margin-top: 56px;
 }
 .bulk-bar {
   display: flex;
@@ -574,6 +608,19 @@ code {
   align-items: center;
   gap: 8px;
   min-width: 0;
+}
+/* On a phone the bar is one row that scrolls, so Clear and the tag field
+   never wrap and push the list down. */
+@media (max-width: 640px) {
+  .bulk-bar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .bulk-bar > *,
+  .bulk-tag {
+    flex: none;
+  }
 }
 .bulk-count {
   font-weight: 600;
@@ -621,7 +668,7 @@ code {
 }
 .post-sub .mono {
   flex: 0 1 auto;
-  min-width: 0;
+  min-width: min(16ch, 100%);
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--bb-text-3);
@@ -635,7 +682,7 @@ code {
   color: var(--bb-text);
 }
 .post-tags {
-  flex: 0 1 auto;
+  flex: 0 10 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -766,6 +813,11 @@ code {
   font-size: 13px;
   color: var(--bb-text-2);
   white-space: nowrap;
+}
+.save-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .save-state[data-kind="saved"] {
   color: var(--bb-ok);
@@ -1334,11 +1386,15 @@ code {
   border-radius: var(--bb-radius-m);
   background: var(--bb-surface);
 }
+.deploy-card > * {
+  min-width: 0;
+}
 .deploy-card[data-state="failed"] {
   border-color: var(--bb-danger);
 }
 .feed-list {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
   list-style: none;
   margin: 10px 0 0;
@@ -1523,6 +1579,56 @@ code {
   }
   .md-tools > * {
     flex: none;
+  }
+}
+/* Strips that scroll sideways fade at the edge with more to see. The covers are
+   local (they scroll away at the ends); the shadows stay put. Where nothing
+   scrolls, the covers hide the shadows. Kept last so it beats the shorthands. */
+.nav-tabs,
+.segment,
+.md-tools,
+.bulk-bar {
+  background-image:
+    linear-gradient(to right, var(--hint-bg), transparent),
+    linear-gradient(to left, var(--hint-bg), transparent),
+    linear-gradient(to right, var(--bb-border-strong), transparent),
+    linear-gradient(to left, var(--bb-border-strong), transparent);
+  background-size:
+    28px 100%,
+    28px 100%,
+    10px 100%,
+    10px 100%;
+  background-position:
+    left center,
+    right center,
+    left center,
+    right center;
+  background-repeat: no-repeat;
+  background-attachment: local, local, scroll, scroll;
+}
+.nav-tabs,
+.bulk-bar {
+  --hint-bg: var(--bb-bg);
+}
+.segment {
+  --hint-bg: var(--bb-surface-2);
+}
+.md-tools {
+  --hint-bg: var(--bb-surface);
+}
+
+/* Three actions and a save message do not fit a 320 px bar: the message keeps
+   its icon, and its words stay for screen readers (errors still show). */
+@media (max-width: 400px) {
+  .save-state:not([data-kind="error"]) .save-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .editor-bar {
+    gap: 6px;
   }
 }
 @media (prefers-reduced-motion: reduce) {

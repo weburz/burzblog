@@ -417,3 +417,49 @@ test("a new post that is abandoned empty leaves no draft behind", async ({
   await expect(page.getByRole("heading", { name: "Posts", exact: true })).toBeVisible();
   await expect.poll(count).toBe(before);
 });
+
+test("the list, editor and settings never scroll sideways, and selected ticks show", async ({
+  page,
+  request,
+}) => {
+  const api = await apiAs(request);
+  const tag = unique();
+  const slug = `wide-${tag}`;
+  const title = `A very long title that keeps going ${tag} `.repeat(4).slice(0, 160);
+  await api.createPost(slug, title);
+  await signIn(page);
+  await page.getByLabel("Search posts").fill(slug);
+  await expect(page.locator(".post-row")).toHaveCount(1);
+  await expect(page.locator(".post-title")).toHaveAttribute("title", title);
+
+  const fits = () =>
+    page.evaluate(
+      () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+    );
+  for (const width of [320, 390, 683, 1365]) {
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto(`/?q=${slug}`);
+    await expect(page.locator(".post-row")).toHaveCount(1);
+    expect(await fits(), `/ at ${width}`).toBe(true);
+
+    // The selected row's tick stays visible with the mouse somewhere else.
+    await page
+      .getByRole("checkbox", { name: `Select ${title}`, exact: true })
+      .click({ force: true });
+    await page.mouse.move(1, 1);
+    await expect(page.locator(".post-item .post-select").first()).toHaveCSS(
+      "opacity",
+      "1",
+    );
+    await page.getByRole("button", { name: "Clear" }).click();
+
+    await page.goto(`/posts/${slug}`);
+    await expect(page.getByLabel("Post body in Markdown")).toBeVisible();
+    expect(await fits(), `editor at ${width}`).toBe(true);
+    await page.goto("/settings");
+    await expect(
+      page.getByRole("heading", { name: "Settings", exact: true }),
+    ).toBeVisible();
+    expect(await fits(), `/settings at ${width}`).toBe(true);
+  }
+});
