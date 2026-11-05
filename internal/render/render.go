@@ -13,6 +13,8 @@ import (
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/parser"
+	"github.com/yuin/goldmark/renderer"
+	"github.com/yuin/goldmark/util"
 )
 
 var (
@@ -21,11 +23,30 @@ var (
 		goldmark.WithParserOptions(parser.WithAutoHeadingID()),
 		// Raw HTML in Markdown is dropped; posts are text, not pages.
 	)
-	policy = newPolicy()
+	policy = newPolicy(false)
+
+	// markedMarkdown and markedPolicy serve previews only: top-level blocks
+	// carry data-line, the Markdown line they start on, so the panel can keep
+	// the preview on the block being edited. Published HTML never has it.
+	markedMarkdown = goldmark.New(
+		goldmark.WithExtensions(extension.GFM, extension.Footnote),
+		goldmark.WithParserOptions(
+			parser.WithAutoHeadingID(),
+			parser.WithASTTransformers(util.Prioritized(lineMarker{}, 100)),
+		),
+		goldmark.WithRendererOptions(renderer.WithNodeRenderers(
+			util.Prioritized(codeBlockRenderer{}, 100),
+		)),
+	)
+	markedPolicy = newPolicy(true)
 )
 
-func newPolicy() *bluemonday.Policy {
+func newPolicy(lines bool) *bluemonday.Policy {
 	p := bluemonday.NewPolicy()
+	if lines {
+		p.AllowAttrs("data-line").Matching(bluemonday.Integer).
+			OnElements("p", "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "blockquote", "pre", "table")
+	}
 	p.AllowElements("p", "br", "hr", "blockquote", "pre", "code", "em", "strong", "del", "sup", "sub",
 		"ul", "ol", "li", "table", "thead", "tbody", "tr", "th", "td", "section")
 	p.AllowAttrs("id").Matching(regexp.MustCompile(`^[A-Za-z0-9_:.-]{1,128}$`)).
@@ -74,6 +95,16 @@ var slots = make(chan struct{}, MaxConcurrent)
 // post is too large or built from constructs previews do not support, and
 // ErrBusy when no render slot frees up in time. ctx ends the wait for a slot.
 func HTML(ctx context.Context, source string) (string, error) {
+	return convert(ctx, source, markdown, policy)
+}
+
+// Preview is HTML with a data-line attribute on each top-level block, for the
+// panel's split view. Use it for previews only, never for published content.
+func Preview(ctx context.Context, source string) (string, error) {
+	return convert(ctx, source, markedMarkdown, markedPolicy)
+}
+
+func convert(ctx context.Context, source string, md goldmark.Markdown, sanitizer *bluemonday.Policy) (string, error) {
 	if len(source) > MaxInput {
 		return "", &LimitError{fmt.Sprintf("The post is larger than the %d MiB previews support.", MaxInput>>20)}
 	}
@@ -91,13 +122,13 @@ func HTML(ctx context.Context, source string) (string, error) {
 		return "", ErrBusy
 	}
 	out := &limitedBuffer{limit: MaxOutput}
-	if err := markdown.Convert([]byte(source), out); err != nil {
+	if err := md.Convert([]byte(source), out); err != nil {
 		if errors.Is(err, errOutputTooLarge) {
 			return "", &LimitError{fmt.Sprintf("The preview would be larger than %d MiB. Look for very wide tables or deeply nested lists.", MaxOutput>>20)}
 		}
 		return "", fmt.Errorf("render markdown: %w", err)
 	}
-	return policy.Sanitize(out.String()), nil
+	return sanitizer.Sanitize(out.String()), nil
 }
 
 var errOutputTooLarge = errors.New("output too large")
