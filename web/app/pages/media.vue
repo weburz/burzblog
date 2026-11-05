@@ -37,16 +37,6 @@ const missingAlt = () =>
     (item) => fresh.value.includes(item.id) && isImage(item) && !item.alt,
   ).length;
 
-const saveAlt = async (item: MediaItem, alt: string) => {
-  const message = await media.saveAlt(item, alt);
-  if (message)
-    toast.add({
-      title: `Could not save the alt text for ${item.originalName || item.name}`,
-      description: message,
-      color: "error",
-    });
-};
-
 const copy = async (text: string, what: string) => {
   try {
     await navigator.clipboard.writeText(text);
@@ -134,7 +124,7 @@ const confirmDelete = async () => {
           :input-id="`alt-${item.id}`"
           :alt="item.alt"
           :label="item.originalName || item.name"
-          @save="saveAlt(item, $event)"
+          :save="(alt) => media.saveAlt(item, alt)"
         />
         <div class="media-actions">
           <UButton

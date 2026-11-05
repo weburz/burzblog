@@ -9,6 +9,8 @@ export class ApiError extends Error {
     public readonly detail = "",
     // On a save conflict, the post as it is on the server now.
     public readonly current: Post | null = null,
+    // On a 404 for a draft that was renamed, the slug it has now.
+    public readonly renamedTo = "",
   ) {
     super(message);
   }
@@ -30,19 +32,31 @@ const sessionExpired = () => {
     window.dispatchEvent(new CustomEvent("burzblog:session-expired"));
 };
 
-const send = async (path: string, method: string, body: unknown): Promise<Response> => {
+// Browsers cap the body of a keepalive request at 64 KiB.
+const keepaliveLimit = 60_000;
+
+const send = async (
+  path: string,
+  method: string,
+  body: unknown,
+  keepalive = false,
+): Promise<Response> => {
   const headers: Record<string, string> = {};
   // A form (an upload) sets its own Content-Type, with the multipart boundary.
   const form = body instanceof FormData;
   if (body !== undefined && !form) headers["Content-Type"] = "application/json";
   if (method !== "GET" && csrf) headers["X-CSRF-Token"] = csrf;
+  const payload = body === undefined ? undefined : form ? body : JSON.stringify(body);
   try {
     return await fetch(path, {
       method,
       headers,
       credentials: "same-origin",
       cache: "no-store",
-      body: body === undefined ? undefined : form ? body : JSON.stringify(body),
+      body: payload,
+      // A request the page leaves behind (pagehide) survives it when small enough.
+      keepalive:
+        keepalive && typeof payload === "string" && payload.length < keepaliveLimit,
     });
   } catch {
     throw new ApiError(
@@ -67,6 +81,7 @@ export const request = async <T>(
   path: string,
   method = "GET",
   body?: unknown,
+  keepalive = false,
 ): Promise<T> => {
   if (
     method !== "GET" &&
@@ -75,7 +90,7 @@ export const request = async <T>(
     path !== "/api/setup"
   )
     await refreshCsrf();
-  let response = await send(path, method, body);
+  let response = await send(path, method, body, keepalive);
   if (response.status === 403 && method !== "GET") {
     // A token rotated by another tab: fetch the current one and retry once.
     const value = (await response
@@ -85,11 +100,11 @@ export const request = async <T>(
       error?: { code?: string };
     } | null;
     if (value?.error?.code === "csrf" && (await refreshCsrf()))
-      response = await send(path, method, body);
+      response = await send(path, method, body, keepalive);
   }
   if (!response.ok) {
     const value = (await response.json().catch(() => null)) as {
-      error?: { code?: string; message?: string; detail?: string };
+      error?: { code?: string; message?: string; detail?: string; renamedTo?: string };
       current?: Post;
     } | null;
     const code = value?.error?.code ?? "request";
@@ -102,6 +117,7 @@ export const request = async <T>(
         "The request failed. Your changes may not be saved; reload the post before trying again.",
       value?.error?.detail ?? "",
       value?.current ?? null,
+      value?.error?.renamedTo ?? "",
     );
   }
   return response.json() as Promise<T>;
