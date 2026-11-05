@@ -26,7 +26,7 @@ const draftWith = (change: Partial<PostDraft> = {}): PostDraft =>
 
 const show = (
   draft: PostDraft,
-  extra: { status?: "draft" | "published"; redirects?: string[] } = {},
+  extra: { status?: "draft" | "published"; redirects?: string[]; postUrl?: string } = {},
 ) =>
   mount(PostDetails, {
     props: { open: true, draft, status: "draft", savedSlug: "hello", ...extra },
@@ -146,5 +146,33 @@ describe("post settings: featured", () => {
     expect((wrapper.get("#detail-featured").element as HTMLInputElement).checked).toBe(
       true,
     );
+  });
+});
+
+describe("post settings: public address", () => {
+  const postUrl = "https://example.com/blog/{slug}";
+
+  it("shows the address of a published post and follows the slug", async () => {
+    const draft = draftWith();
+    const wrapper = show(draft, { status: "published", postUrl });
+    expect(wrapper.find("#detail-address").text()).toBe(
+      "Public address: https://example.com/blog/hello",
+    );
+    await wrapper.find("#detail-slug").setValue("renamed");
+    expect(wrapper.find("#detail-address").text()).toContain(
+      "https://example.com/blog/renamed",
+    );
+  });
+
+  it("says the address applies once a draft is published", () => {
+    expect(show(draftWith(), { postUrl }).find("#detail-address").text()).toContain(
+      "Address once published:",
+    );
+  });
+
+  it("shows nothing without a site URL", () => {
+    expect(
+      show(draftWith(), { status: "published" }).find("#detail-address").exists(),
+    ).toBe(false);
   });
 });

@@ -13,6 +13,11 @@ export const siteFiles = (site: SiteSettings): SiteFile[] =>
 export const examplePostUrl = (site: SiteSettings): string =>
   (site.url ?? "") + (site.postPath ?? "").replace("{slug}", "my-post");
 
+// The public address of a post: the template from the session with {slug}
+// filled in. Empty when no site URL is configured.
+export const publicPostUrl = (template: string, slug: string): string =>
+  template && slug ? template.replace("{slug}", encodeURIComponent(slug)) : "";
+
 // A curl line that downloads one site file with a build token.
 export const fetchCommand = (origin: string, file: SiteFile): string =>
   `curl -fsSL -H "Authorization: Bearer $BURZBLOG_TOKEN" \\\n  ${origin}${file.path} -o ${file.name}`;

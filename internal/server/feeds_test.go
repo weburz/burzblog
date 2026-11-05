@@ -491,3 +491,30 @@ func TestSiteConfigValidation(t *testing.T) {
 		t.Error("New accepted a bad site URL")
 	}
 }
+
+func TestSessionPostURL(t *testing.T) {
+	t.Run("without a site URL", func(t *testing.T) {
+		h := newHarness(t, nil)
+		h.login()
+		if _, out := h.do("GET", "/api/session", nil); out["postUrl"] != nil {
+			t.Errorf("postUrl = %v, want none", out["postUrl"])
+		}
+	})
+	t.Run("with a site URL", func(t *testing.T) {
+		h := newHarness(t, func(c *Config) { c.SiteURL, c.PostPath = siteURL+"/", "/posts/{slug}" })
+		if _, out := h.do("GET", "/api/session", nil); out["postUrl"] != nil {
+			t.Errorf("anonymous session leaks postUrl = %v", out["postUrl"])
+		}
+		h.login()
+		if _, out := h.do("GET", "/api/session", nil); out["postUrl"] != siteURL+"/posts/{slug}" {
+			t.Errorf("postUrl = %v", out["postUrl"])
+		}
+	})
+	t.Run("default post path", func(t *testing.T) {
+		h := newHarness(t, func(c *Config) { c.SiteURL = siteURL })
+		h.login()
+		if _, out := h.do("GET", "/api/session", nil); out["postUrl"] != siteURL+DefaultPostPath {
+			t.Errorf("postUrl = %v", out["postUrl"])
+		}
+	})
+}

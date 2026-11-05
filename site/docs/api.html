@@ -137,7 +137,7 @@ versions: <code>{ &quot;error&quot;: {...}, &quot;current&quot;: { ...post } }</
 <tbody>
 <tr>
 <td><code>GET /api/session</code></td>
-<td><code>{authenticated, username, role, csrf}</code> (<code>role</code> is <code>admin</code> or <code>author</code>); works without signing in. An export token is anonymous here (<code>authenticated: false</code>)</td>
+<td><code>{authenticated, username, role, csrf, postUrl?}</code> (<code>role</code> is <code>admin</code> or <code>author</code>; <code>postUrl</code> is the public address of a post with <code>{slug}</code> in it, such as <code>https://example.com/blog/{slug}</code>, and is left out when no site URL is set); works without signing in. An export token is anonymous here (<code>authenticated: false</code>)</td>
 </tr>
 <tr>
 <td><code>GET /api/setup</code></td>

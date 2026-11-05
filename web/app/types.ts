@@ -97,6 +97,8 @@ export interface Session {
   username?: string;
   role?: Role;
   csrf?: string;
+  // Public address of a post with {slug} in it; absent without a site URL.
+  postUrl?: string;
 }
 
 // The answer to a correct password when the account also needs a code.
