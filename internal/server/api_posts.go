@@ -272,6 +272,17 @@ func (s *Server) createPost(w http.ResponseWriter, r *http.Request) {
 	reply(w, http.StatusCreated, postJSON(created))
 }
 
+// duplicatePost creates a draft copy of a post and returns it.
+func (s *Server) duplicatePost(w http.ResponseWriter, r *http.Request) {
+	copied, err := s.store.DuplicatePost(r.Context(), r.PathValue("slug"), who(r).user.Username)
+	if err != nil {
+		s.postError(w, r, err, nil)
+		return
+	}
+	s.record(r, "post.duplicate", r.PathValue("slug")+" to "+copied.Slug)
+	reply(w, http.StatusCreated, postJSON(copied))
+}
+
 func (s *Server) getPost(w http.ResponseWriter, r *http.Request) {
 	p, err := s.store.GetPost(r.Context(), r.PathValue("slug"))
 	if err != nil {

@@ -18,6 +18,7 @@ const labels: Record<string, string> = {
   "post.restore": "Post restored",
   "post.schedule": "Post scheduled",
   "post.unschedule": "Schedule cancelled",
+  "post.duplicate": "Post duplicated",
   "post.delete": "Post deleted",
   "redirect.delete": "Redirect removed",
   "media.upload": "File uploaded",
