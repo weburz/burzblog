@@ -23,6 +23,8 @@ type Media struct {
 	Alt           string
 	UploadedBy    string
 	CreatedAt     time.Time
+	// UsedIn is how many posts mention the file. Only FindMedia fills it.
+	UsedIn int
 }
 
 const mediaColumns = "id, file_name, original_name, mime, size, sha256, width, height, alt, uploaded_by, created_at"
@@ -94,6 +96,86 @@ func (s *Store) ListMedia(ctx context.Context, limit, offset int) ([]Media, int,
 		list = append(list, *m)
 	}
 	return list, total, rows.Err()
+}
+
+// SetMediaAlt replaces an upload's alt text and returns the updated record. It
+// returns ErrNotFound when there is none.
+func (s *Store) SetMediaAlt(ctx context.Context, id int64, alt string) (*Media, error) {
+	m, err := scanMedia(s.db.QueryRowContext(ctx, "UPDATE media SET alt = ? WHERE id = ? RETURNING "+mediaColumns, alt, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("update upload: %w", err)
+	}
+	return m, nil
+}
+
+// MediaFilter narrows FindMedia. A zero field matches everything.
+type MediaFilter struct {
+	// Query matches, ignoring ASCII case, the original file name, stored file
+	// name or alt text.
+	Query string
+	// Type is "image" or "pdf".
+	Type string
+}
+
+// mediaUsedIn counts the posts whose body or cover mention the media row m.
+const mediaUsedIn = `(SELECT count(*) FROM posts p
+	WHERE instr(p.body, m.file_name) > 0 OR instr(p.cover_url, m.file_name) > 0)`
+
+// FindMedia lists the uploads that match f, newest first, with how many posts
+// use each (UsedIn) and how many match in all. A zero limit lists every match.
+func (s *Store) FindMedia(ctx context.Context, f MediaFilter, limit, offset int) ([]Media, int, error) {
+	where, args := "1 = 1", []any{}
+	if f.Query != "" {
+		where += ` AND (instr(lower(m.original_name), lower(?1)) > 0 OR instr(lower(m.file_name), lower(?1)) > 0
+			OR instr(lower(m.alt), lower(?1)) > 0)`
+		args = append(args, f.Query)
+	}
+	switch f.Type {
+	case "image":
+		where += " AND m.mime LIKE 'image/%'"
+	case "pdf":
+		where += " AND m.mime = 'application/pdf'"
+	}
+	var total int
+	if err := s.db.QueryRowContext(ctx, "SELECT count(*) FROM media m WHERE "+where, args...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("count uploads: %w", err)
+	}
+	if limit == 0 {
+		limit = -1
+	}
+	cols := "m." + strings.ReplaceAll(mediaColumns, ", ", ", m.")
+	rows, err := s.db.QueryContext(ctx, "SELECT "+cols+", "+mediaUsedIn+" FROM media m WHERE "+where+
+		" ORDER BY m.created_at DESC, m.id DESC LIMIT ? OFFSET ?", append(args, limit, offset)...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list uploads: %w", err)
+	}
+	defer rows.Close()
+	list := []Media{}
+	for rows.Next() {
+		var m Media
+		var created string
+		if err := rows.Scan(&m.ID, &m.FileName, &m.OriginalName, &m.MIME, &m.Size, &m.SHA256,
+			&m.Width, &m.Height, &m.Alt, &m.UploadedBy, &created, &m.UsedIn); err != nil {
+			return nil, 0, fmt.Errorf("list uploads: %w", err)
+		}
+		m.CreatedAt = parseStamp(created)
+		list = append(list, m)
+	}
+	return list, total, rows.Err()
+}
+
+// MediaUseCount is how many posts, whatever their status, mention fileName in
+// their body or cover.
+func (s *Store) MediaUseCount(ctx context.Context, fileName string) (int, error) {
+	var n int
+	if err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM posts
+		WHERE instr(body, ?1) > 0 OR instr(cover_url, ?1) > 0`, fileName).Scan(&n); err != nil {
+		return 0, fmt.Errorf("count uploads in use: %w", err)
+	}
+	return n, nil
 }
 
 // DeleteMedia removes an upload's row and returns it, so the caller can

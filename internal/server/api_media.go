@@ -32,6 +32,8 @@ const (
 	uploadOverhead = 1 << 20
 	// inUseListed is how many posts a refused delete names.
 	inUseListed = 10
+	// maxMediaQuery is the longest search text, in runes.
+	maxMediaQuery = 200
 	// mediaPrefix is where uploads are served.
 	mediaPrefix = "/media/"
 )
@@ -47,6 +49,7 @@ type mediaReply struct {
 	Width        int       `json:"width,omitempty"`
 	Height       int       `json:"height,omitempty"`
 	Alt          string    `json:"alt"`
+	UsedIn       int       `json:"usedIn"`
 	UploadedBy   string    `json:"uploadedBy"`
 	CreatedAt    time.Time `json:"createdAt"`
 }
@@ -60,7 +63,7 @@ func (s *Server) mediaURL(name string) string {
 func (s *Server) mediaJSON(m *store.Media) mediaReply {
 	return mediaReply{
 		ID: m.ID, Name: m.FileName, URL: s.mediaURL(m.FileName), OriginalName: m.OriginalName, MIME: m.MIME,
-		Size: m.Size, Width: m.Width, Height: m.Height, Alt: m.Alt, UploadedBy: m.UploadedBy, CreatedAt: m.CreatedAt,
+		Size: m.Size, Width: m.Width, Height: m.Height, Alt: m.Alt, UsedIn: m.UsedIn, UploadedBy: m.UploadedBy, CreatedAt: m.CreatedAt,
 	}
 }
 
@@ -209,16 +212,32 @@ func (s *Server) uploadMedia(w http.ResponseWriter, r *http.Request) {
 		status = http.StatusCreated
 		s.record(r, "media.upload", m.FileName)
 	}
+	if m.UsedIn, err = s.store.MediaUseCount(r.Context(), m.FileName); err != nil {
+		s.internal(w, r, err)
+		return
+	}
 	reply(w, status, s.mediaJSON(m))
 }
 
-// listMedia lists uploads, newest first. Without ?limit= it returns all.
+// listMedia lists uploads, newest first, optionally only those whose name or
+// alt text contain ?q= and of one ?type= (image or pdf). Without ?limit= it
+// returns all.
 func (s *Server) listMedia(w http.ResponseWriter, r *http.Request) {
 	limit, offset, ok := pageParams(w, r)
 	if !ok {
 		return
 	}
-	list, total, err := s.store.ListMedia(r.Context(), limit, offset)
+	q := r.URL.Query()
+	filter := store.MediaFilter{Query: strings.TrimSpace(q.Get("q")), Type: q.Get("type")}
+	if filter.Type != "" && filter.Type != "image" && filter.Type != "pdf" {
+		fail(w, http.StatusUnprocessableEntity, "validation", "The type filter must be image or pdf.", "")
+		return
+	}
+	if utf8.RuneCountInString(filter.Query) > maxMediaQuery {
+		fail(w, http.StatusUnprocessableEntity, "validation", "The search text is too long.", "")
+		return
+	}
+	list, total, err := s.store.FindMedia(r.Context(), filter, limit, offset)
 	if err != nil {
 		s.internal(w, r, err)
 		return
@@ -228,6 +247,51 @@ func (s *Server) listMedia(w http.ResponseWriter, r *http.Request) {
 		items = append(items, s.mediaJSON(&list[i]))
 	}
 	reply(w, http.StatusOK, map[string]any{"items": items, "total": total})
+}
+
+// cleanAlt drops control characters (line breaks included) from alt text and
+// trims it.
+func cleanAlt(alt string) string {
+	return strings.TrimSpace(strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, alt))
+}
+
+// updateMedia changes an upload's alt text. The file itself never changes.
+func (s *Server) updateMedia(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		fail(w, http.StatusNotFound, "not_found", "That upload does not exist. It may have been deleted.", "")
+		return
+	}
+	var in struct {
+		Alt *string `json:"alt"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	if in.Alt == nil || len(*in.Alt) > maxUploadAlt || !utf8.ValidString(*in.Alt) {
+		fail(w, http.StatusUnprocessableEntity, "validation", "Send \"alt\" as text of at most 1000 bytes.", "")
+		return
+	}
+	m, err := s.store.SetMediaAlt(r.Context(), id, cleanAlt(*in.Alt))
+	if errors.Is(err, store.ErrNotFound) {
+		fail(w, http.StatusNotFound, "not_found", "That upload does not exist. It may have been deleted.", "")
+		return
+	}
+	if err != nil {
+		s.internal(w, r, err)
+		return
+	}
+	if m.UsedIn, err = s.store.MediaUseCount(r.Context(), m.FileName); err != nil {
+		s.internal(w, r, err)
+		return
+	}
+	s.record(r, "media.update", m.FileName)
+	reply(w, http.StatusOK, s.mediaJSON(m))
 }
 
 // deleteMedia removes an upload and its bytes. Posts that mention it would

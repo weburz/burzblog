@@ -124,3 +124,88 @@ func TestMediaSizes(t *testing.T) {
 		t.Errorf("MediaSizes(%d names) = %v, %v", len(many), got, err)
 	}
 }
+
+func TestSetMediaAlt(t *testing.T) {
+	ctx := context.Background()
+	s := open(t)
+	m, _, err := s.AddMedia(ctx, upload(digest("a")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.SetMediaAlt(ctx, m.ID, "A beach")
+	if err != nil || got.Alt != "A beach" || got.FileName != m.FileName {
+		t.Fatalf("set = %+v %v", got, err)
+	}
+	if again, _ := s.GetMedia(ctx, m.ID); again.Alt != "A beach" {
+		t.Errorf("alt not saved: %+v", again)
+	}
+	if _, err := s.SetMediaAlt(ctx, m.ID+99, "x"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("unknown id = %v, want ErrNotFound", err)
+	}
+}
+
+func TestFindMedia(t *testing.T) {
+	ctx := context.Background()
+	s := open(t)
+	rows := []Media{upload(digest("a")), upload(digest("b")), upload(digest("c"))}
+	rows[0].OriginalName, rows[0].Alt = "Holiday.PNG", "A beach"
+	rows[1].OriginalName, rows[1].Alt = "report.pdf", ""
+	rows[1].MIME, rows[1].FileName = "application/pdf", digest("b")[:32]+".pdf"
+	rows[2].OriginalName, rows[2].Alt = "other.png", "Mountain at dusk"
+	for _, m := range rows {
+		if _, _, err := s.AddMedia(ctx, m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	find := func(f MediaFilter) string {
+		t.Helper()
+		list, total, err := s.FindMedia(ctx, f, 0, 0)
+		if err != nil || total != len(list) {
+			t.Fatalf("find %+v = %d of %d, %v", f, len(list), total, err)
+		}
+		var names []string
+		for _, m := range list {
+			names = append(names, m.OriginalName)
+		}
+		return strings.Join(names, " ")
+	}
+	for _, c := range []struct {
+		f    MediaFilter
+		want string
+	}{
+		{MediaFilter{}, "other.png report.pdf Holiday.PNG"},
+		{MediaFilter{Query: "holiday"}, "Holiday.PNG"},
+		{MediaFilter{Query: "MOUNTAIN"}, "other.png"},
+		{MediaFilter{Type: "pdf"}, "report.pdf"},
+		{MediaFilter{Type: "image"}, "other.png Holiday.PNG"},
+		{MediaFilter{Query: "png", Type: "pdf"}, ""},
+		{MediaFilter{Query: "100%"}, ""},
+	} {
+		if got := find(c.f); got != c.want {
+			t.Errorf("find %+v = %q, want %q", c.f, got, c.want)
+		}
+	}
+	if list, total, _ := s.FindMedia(ctx, MediaFilter{Type: "image"}, 1, 1); total != 2 || len(list) != 1 || list[0].OriginalName != "Holiday.PNG" {
+		t.Errorf("paged = %v %d", list, total)
+	}
+}
+
+func TestMediaUsageCounts(t *testing.T) {
+	ctx := context.Background()
+	s := open(t)
+	m, _, _ := s.AddMedia(ctx, upload(digest("a")))
+	unused, _, _ := s.AddMedia(ctx, upload(digest("b")))
+	for _, slug := range []string{"one", "two"} {
+		p := post.Post{Slug: slug, Title: slug, Status: post.Draft, Body: "![x](/media/" + m.FileName + ")"}
+		if _, err := s.CreatePost(ctx, &p, "ada"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	list, _, err := s.FindMedia(ctx, MediaFilter{}, 0, 0)
+	if err != nil || len(list) != 2 || list[1].UsedIn != 2 || list[0].UsedIn != 0 || list[0].ID != unused.ID {
+		t.Errorf("usage = %+v %v", list, err)
+	}
+	if n, err := s.MediaUseCount(ctx, m.FileName); err != nil || n != 2 {
+		t.Errorf("count = %d %v", n, err)
+	}
+}

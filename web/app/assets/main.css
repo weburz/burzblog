@@ -1490,8 +1490,39 @@ code {
   display: grid;
   gap: 20px;
 }
-.media-alt {
-  max-width: 520px;
+.media-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+}
+.media-search {
+  flex: 1 1 260px;
+  max-width: 420px;
+}
+.media-kinds {
+  display: flex;
+  gap: 6px;
+}
+.media-prompt {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--bb-blue);
+  border-radius: var(--bb-radius-m);
+  font-size: 14px;
+}
+.media-card.is-new {
+  padding: 8px;
+  border: 1px solid var(--bb-blue);
+  border-radius: var(--bb-radius-m);
+}
+.media-alt-field {
+  gap: 4px;
+}
+.media-alt-field > .media-alt-label {
+  font-weight: 500;
+  font-size: 12px;
+  color: var(--bb-text-2);
 }
 .dropzone {
   display: grid;

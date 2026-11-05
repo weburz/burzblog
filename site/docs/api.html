@@ -431,7 +431,11 @@ browser); export tokens get 403 <code>scope</code>.</p>
 </tr>
 <tr>
 <td><code>GET /api/media</code></td>
-<td><code>{items, total}</code>, newest first; <code>?limit=</code> (1 to 500) and <code>?offset=</code> page it, without <code>limit</code> every upload is returned</td>
+<td><code>{items, total}</code>, newest first; <code>?limit=</code> (1 to 500) and <code>?offset=</code> page it, without <code>limit</code> every upload is returned. <code>?q=</code> keeps the uploads whose file name or alt text contain it (ignoring case, at most 200 characters) and <code>?type=image</code> or <code>?type=pdf</code> one kind; any other <code>type</code> is 422. <code>total</code> counts the matches</td>
+</tr>
+<tr>
+<td><code>PATCH /api/media/{id}</code></td>
+<td>JSON <code>{&quot;alt&quot;: &quot;...&quot;}</code> (at most 1000 bytes; control characters are dropped and the text is trimmed, so <code>&quot;&quot;</code> clears it). Admins and authors; 200 with the record, 404 for an unknown id, 422 <code>validation</code> for a missing or too long <code>alt</code>. Audited as <code>media.update</code></td>
 </tr>
 <tr>
 <td><code>DELETE /api/media/{id}</code></td>
@@ -443,7 +447,9 @@ browser); export tokens get 403 <code>scope</code>.</p>
 </tr>
 </tbody>
 </table>
-<p>A record is <code>{id, name, url, originalName, mime, size, width, height, alt, uploadedBy, createdAt}</code>. <code>url</code> is absolute, built from the configured origin
+<p>A record is <code>{id, name, url, originalName, mime, size, width, height, alt, usedIn, uploadedBy, createdAt}</code>. <code>usedIn</code> is how many posts, whatever their
+status, mention the file in their body or cover (earlier revisions are not
+counted). <code>url</code> is absolute, built from the configured origin
 (<code>--origin</code>), so a post that embeds it keeps working in an export or on the
 website. <code>width</code> and <code>height</code> are present for JPEG, PNG and GIF only; BurzBlog
 does no image processing.</p>

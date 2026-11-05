@@ -7,6 +7,8 @@ import { detailLabel, isImage } from "../utils/media";
 const open = defineModel<boolean>("open", { default: false });
 const emit = defineEmits<{ pick: [item: MediaItem] }>();
 const media = useUploadedMedia();
+// Only images can be inserted, so the server filters for them.
+media.kind.value = "image";
 
 watch(open, (value) => {
   if (value) void media.load();
@@ -50,6 +52,11 @@ const pick = (item: MediaItem) => {
         <p v-if="media.error.value" class="field-error" role="alert">
           {{ media.error.value }}
         </p>
+        <MediaFilters
+          v-model:query="media.query.value"
+          id-prefix="picker"
+          @search="media.typeAhead()"
+        />
         <ul
           v-if="media.items.value.some(isImage)"
           class="media-grid"
@@ -64,7 +71,7 @@ const pick = (item: MediaItem) => {
           </li>
         </ul>
         <p v-else-if="!media.loading.value && !media.error.value" class="field-hint">
-          Nothing uploaded yet.
+          {{ media.query.value.trim() ? "No images match." : "Nothing uploaded yet." }}
         </p>
         <UButton
           v-if="media.items.value.length < media.total.value"

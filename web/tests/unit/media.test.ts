@@ -6,6 +6,7 @@ import {
   markdownFor,
   sizeLabel,
   uploadable,
+  usageLabel,
 } from "../../app/utils/media";
 
 const item = (change: Partial<MediaItem> = {}): MediaItem => ({
@@ -18,6 +19,7 @@ const item = (change: Partial<MediaItem> = {}): MediaItem => ({
   width: 1200,
   height: 800,
   alt: "A beach",
+  usedIn: 0,
   uploadedBy: "ada",
   createdAt: "2026-10-26T10:00:00Z",
   ...change,
@@ -64,5 +66,13 @@ describe("uploadable", () => {
     const files = [new File(["x"], "a.png"), new File([], "folder")];
     expect(uploadable(files).map((f) => f.name)).toEqual(["a.png"]);
     expect(uploadable(null)).toEqual([]);
+  });
+});
+
+describe("usageLabel", () => {
+  it("says how many posts use the file", () => {
+    expect(usageLabel(item({ usedIn: 0 }))).toBe("Not used in any post");
+    expect(usageLabel(item({ usedIn: 1 }))).toBe("Used in 1 post");
+    expect(usageLabel(item({ usedIn: 4 }))).toBe("Used in 4 posts");
   });
 });
