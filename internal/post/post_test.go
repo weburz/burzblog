@@ -48,24 +48,26 @@ func TestValidate(t *testing.T) {
 		t.Fatalf("Validate(valid) = %v", err)
 	}
 	cases := map[string]func(*Post){
-		"empty title":      func(p *Post) { p.Title = "  " },
-		"multi-line title": func(p *Post) { p.Title = "a\nb" },
-		"long title":       func(p *Post) { p.Title = strings.Repeat("x", MaxTitle+1) },
-		"bad status":       func(p *Post) { p.Status = "live" },
-		"relative cover":   func(p *Post) { p.CoverURL = "/img.png" },
-		"script cover":     func(p *Post) { p.CoverURL = "javascript:alert(1)" },
-		"alt without url":  func(p *Post) { p.CoverAlt = "a cat" },
-		"tab in title":     func(p *Post) { p.Title = "a\tb" },
-		"escape in title":  func(p *Post) { p.Title = "\x1b]52;c;ZXZpbA==\x07hi" },
-		"del in title":     func(p *Post) { p.Title = "a\x7fb" },
-		"c1 in title":      func(p *Post) { p.Title = "a\u009bb" },
-		"c1 in desc":       func(p *Post) { p.Description = "a\u0085b" },
-		"escape in alt":    func(p *Post) { p.CoverURL = "https://x.test/a.png"; p.CoverAlt = "\x1b[2Jhi" },
-		"nul in body":      func(p *Post) { p.Body = "a\x00b" },
-		"huge body":        func(p *Post) { p.Body = strings.Repeat("x", MaxBody+1) },
-		"reserved extra":   func(p *Post) { p.Extra = "title: sneaky\n" },
-		"list extra":       func(p *Post) { p.Extra = "- a\n- b\n" },
-		"alias extra":      func(p *Post) { p.Extra = "a: &x 1\nb: *x\n" },
+		"empty title, published": func(p *Post) { p.Title = "  "; p.Status = Published },
+		"empty title, archived":  func(p *Post) { p.Title = ""; p.Status = Archived },
+		"empty title, scheduled": func(p *Post) { at := time.Now().Add(time.Hour); p.Title = ""; p.PublishAt = &at },
+		"multi-line title":       func(p *Post) { p.Title = "a\nb" },
+		"long title":             func(p *Post) { p.Title = strings.Repeat("x", MaxTitle+1) },
+		"bad status":             func(p *Post) { p.Status = "live" },
+		"relative cover":         func(p *Post) { p.CoverURL = "/img.png" },
+		"script cover":           func(p *Post) { p.CoverURL = "javascript:alert(1)" },
+		"alt without url":        func(p *Post) { p.CoverAlt = "a cat" },
+		"tab in title":           func(p *Post) { p.Title = "a\tb" },
+		"escape in title":        func(p *Post) { p.Title = "\x1b]52;c;ZXZpbA==\x07hi" },
+		"del in title":           func(p *Post) { p.Title = "a\x7fb" },
+		"c1 in title":            func(p *Post) { p.Title = "a\u009bb" },
+		"c1 in desc":             func(p *Post) { p.Description = "a\u0085b" },
+		"escape in alt":          func(p *Post) { p.CoverURL = "https://x.test/a.png"; p.CoverAlt = "\x1b[2Jhi" },
+		"nul in body":            func(p *Post) { p.Body = "a\x00b" },
+		"huge body":              func(p *Post) { p.Body = strings.Repeat("x", MaxBody+1) },
+		"reserved extra":         func(p *Post) { p.Extra = "title: sneaky\n" },
+		"list extra":             func(p *Post) { p.Extra = "- a\n- b\n" },
+		"alias extra":            func(p *Post) { p.Extra = "a: &x 1\nb: *x\n" },
 	}
 	for name, mutate := range cases {
 		p := valid()
@@ -74,6 +76,21 @@ func TestValidate(t *testing.T) {
 		if err == nil || !IsFieldError(err) {
 			t.Errorf("%s: Validate = %v, want a FieldError", name, err)
 		}
+	}
+}
+
+func TestValidateAcceptsUntitledDraft(t *testing.T) {
+	p := valid()
+	p.Title = ""
+	if err := Validate(p); err != nil {
+		t.Errorf("Validate(untitled draft) = %v", err)
+	}
+	if err := RequireTitle(p); !IsFieldError(err) {
+		t.Errorf("RequireTitle(untitled) = %v, want a FieldError", err)
+	}
+	p.Title = "Hello"
+	if err := RequireTitle(p); err != nil {
+		t.Errorf("RequireTitle(titled) = %v", err)
 	}
 }
 

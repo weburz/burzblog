@@ -23,5 +23,14 @@ export const useRecentPosts = () => {
       /* storage unavailable: the list lasts for this visit */
     }
   };
-  return { recent, remember };
+  // A post deleted while it was still on the list must not stay on it.
+  const forget = (slug: string) => {
+    recent.value = recent.value.filter((s) => s !== slug);
+    try {
+      localStorage.setItem(recentKey, JSON.stringify(recent.value));
+    } catch {
+      /* storage unavailable: the list lasts for this visit */
+    }
+  };
+  return { recent, remember, forget };
 };

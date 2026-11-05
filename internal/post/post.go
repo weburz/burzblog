@@ -156,6 +156,16 @@ func Slugify(title string) string {
 	return strings.Trim(b.String(), "-")
 }
 
+// RequireTitle reports an error when p has no title. Validate accepts an
+// untitled draft; the terminal client and the import never create one, so
+// they check this too.
+func RequireTitle(p *Post) error {
+	if strings.TrimSpace(p.Title) == "" {
+		return &FieldError{"title", "must not be empty."}
+	}
+	return nil
+}
+
 // HasControl reports whether s contains a control character: C0 (U+0000 to
 // U+001F, which includes tab, newline and escape), DEL, or C1 (U+0080 to
 // U+009F). Terminals act on these, so they are not allowed in single-line
@@ -186,8 +196,12 @@ func Validate(p *Post) error {
 	}); err != nil {
 		return err
 	}
-	if strings.TrimSpace(p.Title) == "" {
-		return &FieldError{"title", "must not be empty."}
+	// Only a draft that is not scheduled may be untitled: the panel creates
+	// drafts that way and fills the title in while the writer types.
+	if p.Status != Draft || p.PublishAt != nil {
+		if err := RequireTitle(p); err != nil {
+			return err
+		}
 	}
 	if p.CoverURL != "" {
 		if err := validateURL(p.CoverURL); err != nil {

@@ -7,6 +7,7 @@ import { countWords, lengthLabel } from "../../utils/markdown";
 import { sameDraft } from "../../utils/metadata";
 import { duplicatePost } from "../../utils/duplicate";
 import { publicPostUrl } from "../../utils/site";
+import { matchesTitle, slugify, untitledPattern } from "../../utils/slug";
 import { diffTooLong, lineDiff } from "../../utils/diff";
 import type { PaletteCommand } from "../../utils/palette";
 import {
@@ -25,7 +26,7 @@ const dirtyFlag = useState("editor-dirty", () => false);
 const editorFailed = useState("editor-failed", () => false);
 const { dark: themeDark } = usePreferredTheme();
 const { register } = useRegisteredCommands();
-const { remember } = useRecentPosts();
+const { remember, forget } = useRecentPosts();
 const { now } = useCurrentTime();
 const { refresh: refreshTags } = useExistingTags();
 
@@ -225,6 +226,54 @@ const discardBackup = () => {
   recovered.value = null;
 };
 
+// Whether a save of sent renames the post along with its title: it is a draft
+// that was never published, its slug is the one its saved title gives (so the
+// writer has not chosen their own, here or in Post settings), and the new
+// title gives a different one.
+const followsTitle = (sent: PostDraft): boolean => {
+  const p = post.value;
+  return Boolean(
+    p &&
+    p.status === "draft" &&
+    !p.publishedOn &&
+    sent.slug === p.slug &&
+    matchesTitle(p.slug, p.title) &&
+    slugify(sent.title) !== "" &&
+    !matchesTitle(p.slug, sent.title),
+  );
+};
+
+// PUTs sent. When following the title, the slug is the title's slug, then
+// that with -2, -3, ... for as long as another post has it.
+const saveAs = async (
+  from: string,
+  sent: PostDraft,
+  version: number,
+  auto: boolean,
+  follow: boolean,
+): Promise<Post> => {
+  const base = slugify(sent.title);
+  for (let n = 1; ; n++) {
+    const slug = !follow ? sent.slug : n === 1 ? base : `${base}-${n}`;
+    try {
+      return await request<Post>(`/api/posts/${encodeURIComponent(from)}`, "PUT", {
+        version,
+        ...sent,
+        slug,
+        ...(auto ? { autosave: true } : {}),
+      });
+    } catch (cause) {
+      if (
+        !follow ||
+        !(cause instanceof ApiError) ||
+        cause.code !== "slug_taken" ||
+        n >= 50
+      )
+        throw cause;
+    }
+  }
+};
+
 // auto marks a save the editor makes by itself (see autosave below): the
 // server folds a run of those into one revision.
 let autosaveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -236,12 +285,17 @@ const save = async (overwriteVersion?: number, auto = false): Promise<boolean> =
   saveError.value = "";
   const from = post.value.slug;
   const sent = { ...draft.value };
+  // A draft's slug follows its title until the writer picks one: the slug is
+  // renamed with the title, and numbered when another post has it.
+  const follow = followsTitle(sent);
   try {
-    const saved = await request<Post>(`/api/posts/${encodeURIComponent(from)}`, "PUT", {
-      version: overwriteVersion ?? post.value.version,
-      ...sent,
-      ...(auto ? { autosave: true } : {}),
-    });
+    const saved = await saveAs(
+      from,
+      sent,
+      overwriteVersion ?? post.value.version,
+      auto,
+      follow,
+    );
     clearBackup(from);
     void refreshTags();
     conflict.value = null;
@@ -252,7 +306,15 @@ const save = async (overwriteVersion?: number, auto = false): Promise<boolean> =
     if (same(draft.value, sent)) draft.value = editable(saved);
     if (saved.slug !== from) {
       remember(saved.slug);
-      await navigateTo(`/posts/${saved.slug}`, { replace: true });
+      // Following the title happens while the writer types, so the address
+      // changes without reloading the editor under their hands.
+      if (follow)
+        window.history.replaceState(
+          { ...window.history.state, current: `/posts/${saved.slug}` },
+          "",
+          `/posts/${encodeURIComponent(saved.slug)}`,
+        );
+      else await navigateTo(`/posts/${saved.slug}`, { replace: true });
     }
     justSaved.value = true;
     clearTimeout(savedFlash);
@@ -308,7 +370,26 @@ onMounted(() => {
   document.addEventListener("visibilitychange", onHidden);
   window.addEventListener("pagehide", flushAutosave);
 });
+// Leaving a new post without writing anything deletes it, so abandoned
+// "New post" clicks leave no untitled drafts behind. The server refuses
+// anything that has ever held writing, and then the draft simply stays.
+const discardIfEmpty = async (p: Post | null, d: PostDraft | null) => {
+  if (!p || !d || !untitledPattern.test(p.slug) || p.status !== "draft" || p.publishedOn)
+    return;
+  if ([p.title, p.body, d.title, d.body].some((text) => text.trim() !== "")) return;
+  try {
+    await request(
+      `/api/posts/${encodeURIComponent(p.slug)}?version=${p.version}`,
+      "DELETE",
+    );
+    forget(p.slug);
+    clearBackup(p.slug);
+  } catch {
+    /* it holds history or changed; keep it */
+  }
+};
 onUnmounted(() => {
+  void discardIfEmpty(post.value, draft.value);
   clearTimeout(autosaveTimer);
   document.removeEventListener("visibilitychange", onHidden);
   window.removeEventListener("pagehide", flushAutosave);

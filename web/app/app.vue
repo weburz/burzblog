@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
-import type { Post } from "./types";
 import { errorMessage } from "./utils/api";
 import { themeOptions } from "./utils/theme";
 
@@ -16,7 +15,7 @@ const dirty = useState("editor-dirty", () => false);
 const editorFailed = useState("editor-failed", () => false);
 const shortcutsOpen = useState("shortcuts-open", () => false);
 const paletteOpen = useState("palette-open", () => false);
-const creating = ref(false);
+const { create: createPost } = useCreatedPost();
 const route = useRoute();
 const error = ref("");
 const confirmingSignOut = ref(false);
@@ -58,7 +57,6 @@ const leave = async () => {
   await signOut();
   await navigateTo("/");
 };
-const openCreated = (post: Post) => navigateTo(`/posts/${post.slug}`);
 const requestSignOut = () => {
   if (dirty.value) confirmingSignOut.value = true;
   else void leave();
@@ -190,13 +188,8 @@ useHead({
       <CommandPalette
         v-if="state.authenticated"
         v-model:open="paletteOpen"
-        @new-post="creating = true"
+        @new-post="createPost"
         @sign-out="requestSignOut"
-      />
-      <NewPostDialog
-        v-if="state.authenticated"
-        v-model:open="creating"
-        @created="openCreated"
       />
       <ConfirmDialog
         v-model:open="confirmingSignOut"
