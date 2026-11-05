@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import { useExistingTags } from "../composables/useExistingTags";
 import type { MediaItem, PostDraft, PostStatus } from "../types";
 import {
   canonicalOk,
   counterLabel,
   maxAuthor,
   maxTags,
+  normalizeTag,
   normalizeTags,
   overAdvice,
   seoDescriptionLimits,
@@ -13,6 +15,7 @@ import {
 } from "../utils/metadata";
 import { publicPostUrl } from "../utils/site";
 import { slugify } from "../utils/slug";
+import { suggestTags } from "../utils/tags";
 import { fromLocalInput, toLocalInput } from "../utils/time";
 
 const open = defineModel<boolean>("open", { default: false });
@@ -38,6 +41,37 @@ const updated = computed({
   set: (v: string) => (draft.value.updatedOn = fromLocalInput(v)),
 });
 const pickerOpen = ref(false);
+const { existing } = useExistingTags();
+// What the writer has typed in the tags field, not yet a tag.
+const tagTerm = ref("");
+const tagItems = computed(() =>
+  suggestTags(existing.value, tagTerm.value, draft.value.tags).map((t) => ({
+    label: t.tag,
+    value: t.tag,
+    count: t.count,
+    description: t.label.toLowerCase() === t.tag ? undefined : t.label,
+  })),
+);
+const postsLabel = (count: number) => `${count} ${count === 1 ? "post" : "posts"}`;
+// Tags are cleaned and without repeats, up to the limit.
+const setTags = (tags: string[]) =>
+  (draft.value.tags = normalizeTags(tags).slice(0, maxTags));
+const addTag = (raw: string) => {
+  tagTerm.value = "";
+  setTags([...draft.value.tags, raw]);
+};
+// Text left in the field when the writer moves on becomes a tag. While the menu is
+// open a blur is only a click on a suggestion, which takes care of the text itself.
+const tagsOpen = ref(false);
+const addPendingTag = () => {
+  if (!tagsOpen.value && tagTerm.value) addTag(tagTerm.value);
+};
+// A comma ends a tag, like Enter does.
+const typeTag = (text: string) => {
+  const parts = text.split(",");
+  tagTerm.value = parts.pop() ?? "";
+  if (parts.length) setTags([...draft.value.tags, ...parts]);
+};
 // An uploaded image becomes the cover; its alt text fills an empty description.
 const coverPicked = (item: MediaItem) => {
   draft.value.coverUrl = item.url;
@@ -126,16 +160,34 @@ const setUpdatedNow = () => {
 
         <div class="field">
           <label for="detail-tags">Tags</label>
-          <UInputTags
+          <UInputMenu
             id="detail-tags"
+            multiple
+            value-key="value"
             :model-value="draft.tags"
-            :max="maxTags"
-            add-on-blur
+            :items="tagItems"
+            :search-term="tagTerm"
+            create-item="always"
+            open-on-focus
+            :trailing-icon="false"
             placeholder="Add a tag, then press Enter"
             class="w-full"
             aria-describedby="detail-tags-hint"
-            @update:model-value="(v: string[]) => (draft.tags = normalizeTags(v))"
-          />
+            @update:model-value="setTags"
+            @update:search-term="typeTag"
+            @create="addTag(tagTerm)"
+            @update:open="(v: boolean) => (tagsOpen = v)"
+            @blur="addPendingTag"
+          >
+            <template #tags-item-text="{ item }">{{ item }}</template>
+            <template #item-trailing="{ item }">
+              <span class="field-hint">{{ postsLabel(item.count) }}</span>
+            </template>
+            <template #create-item-label="{ item }"
+              >Add “{{ normalizeTag(item) }}”</template
+            >
+            <template #empty>Type to add a new tag.</template>
+          </UInputMenu>
           <p id="detail-tags-hint" class="field-hint">
             Topics and categories in one list. Lowercase words joined by hyphens, up to
             {{ maxTags }} tags.

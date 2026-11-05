@@ -39,7 +39,11 @@ const show = (
           template:
             "<input :value='modelValue' @input='$emit(\"update:modelValue\", $event.target.value)' />",
         },
-        UInputTags: { name: "UInputTags", props: ["modelValue"], template: "<input />" },
+        UInputMenu: {
+          name: "UInputMenu",
+          props: ["modelValue", "items", "searchTerm"],
+          template: "<input />",
+        },
         UCollapsible: {
           props: ["open"],
           template:
@@ -61,9 +65,41 @@ describe("post settings: blog metadata", () => {
     const draft = draftWith();
     const wrapper = show(draft);
     wrapper
-      .findComponent({ name: "UInputTags" })
+      .findComponent({ name: "UInputMenu" })
       .vm.$emit("update:modelValue", ["Machine Learning", "go", "GO", "  "]);
     expect(draft.tags).toEqual(["machine-learning", "go"]);
+  });
+
+  it("creates a tag from typed text on Enter and on a comma", async () => {
+    const draft = draftWith({ tags: ["go"] });
+    const menu = show(draft).findComponent({ name: "UInputMenu" });
+    await menu.vm.$emit("update:searchTerm", "Machine Learning");
+    await menu.vm.$emit("create");
+    expect(draft.tags).toEqual(["go", "machine-learning"]);
+    await menu.vm.$emit("update:searchTerm", "rust, GO,wasm");
+    expect(draft.tags).toEqual(["go", "machine-learning", "rust"]);
+    expect(menu.props("searchTerm")).toBe("wasm");
+  });
+
+  it("adds text left in the field on blur, unless the menu is still open", async () => {
+    const draft = draftWith();
+    const menu = show(draft).findComponent({ name: "UInputMenu" });
+    await menu.vm.$emit("update:searchTerm", "golang");
+    await menu.vm.$emit("update:open", true);
+    await menu.vm.$emit("blur");
+    expect(draft.tags).toEqual([]);
+    await menu.vm.$emit("update:open", false);
+    await menu.vm.$emit("blur");
+    expect(draft.tags).toEqual(["golang"]);
+    expect(menu.props("searchTerm")).toBe("");
+  });
+
+  it("keeps the typed text out of the tags until it is finished", async () => {
+    const draft = draftWith();
+    const menu = show(draft).findComponent({ name: "UInputMenu" });
+    await menu.vm.$emit("update:searchTerm", "gol");
+    expect(draft.tags).toEqual([]);
+    expect(menu.props("searchTerm")).toBe("gol");
   });
 
   it("edits the author", async () => {
