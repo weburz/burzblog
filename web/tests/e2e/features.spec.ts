@@ -261,3 +261,59 @@ test("focus mode toggles with Ctrl+Shift+F and leaves with Esc", async ({
   await page.keyboard.press("Control+Shift+F");
   await expect(shell).toHaveAttribute("data-focus", "false");
 });
+
+test("media: search by name, filter by type, and edit alt text in place", async ({
+  page,
+  request,
+}) => {
+  const api = await apiAs(request);
+  const tag = unique();
+  // A PDF with unique bytes, so the server stores a new record each run.
+  const uploaded = await request.post("/api/media", {
+    headers: api.headers,
+    multipart: {
+      file: {
+        name: `menu-${tag}.pdf`,
+        mimeType: "application/pdf",
+        buffer: Buffer.from(
+          `%PDF-1.4\n% ${tag}\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF\n`,
+        ),
+      },
+    },
+  });
+  expect(uploaded.status()).toBe(201);
+
+  await signIn(page);
+  await page.getByRole("link", { name: "Media", exact: true }).click();
+  await page.getByLabel("Search files").fill(`MENU-${tag}`);
+  const card = page.getByRole("listitem").filter({ hasText: `menu-${tag}.pdf` });
+  await expect(card).toHaveCount(1);
+  await expect(card.getByText("Not used in any post")).toBeVisible();
+
+  await page.getByRole("button", { name: "Images", exact: true }).click();
+  await expect(card).toHaveCount(0);
+  await expect(page.getByText("No files match.")).toBeVisible();
+  await page.getByRole("button", { name: "PDFs", exact: true }).click();
+  await expect(card).toHaveCount(1);
+
+  const alt = card.getByLabel(`Alt text for menu-${tag}.pdf`);
+  await alt.fill("Lunch menu");
+  await alt.press("Enter");
+  await expect
+    .poll(async () => {
+      const list = await request.get(`/api/media?q=menu-${tag}`, {
+        headers: api.headers,
+      });
+      return (await list.json()).items[0]?.alt;
+    })
+    .toBe("Lunch menu");
+
+  // Escape puts the saved text back.
+  await alt.fill("changed my mind");
+  await alt.press("Escape");
+  await expect(alt).toHaveValue("Lunch menu");
+
+  // The alt text is searchable.
+  await page.getByLabel("Search files").fill("lunch menu");
+  await expect(card).toHaveCount(1);
+});

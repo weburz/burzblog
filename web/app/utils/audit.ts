@@ -21,6 +21,7 @@ const labels: Record<string, string> = {
   "post.delete": "Post deleted",
   "redirect.delete": "Redirect removed",
   "media.upload": "File uploaded",
+  "media.update": "File description changed",
   "media.delete": "File deleted",
   deploy: "Rebuild requested",
   "backup.download": "Backup downloaded",

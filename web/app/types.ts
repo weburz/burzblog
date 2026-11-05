@@ -249,9 +249,14 @@ export interface MediaItem {
   width?: number;
   height?: number;
   alt: string;
+  // How many posts mention the file.
+  usedIn: number;
   uploadedBy: string;
   createdAt: string;
 }
+
+// The Media page's type filter: empty means every kind.
+export type MediaKind = "" | "image" | "pdf";
 
 export interface MediaList {
   items: MediaItem[];

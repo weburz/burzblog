@@ -1,10 +1,13 @@
-import { ref } from "vue";
-import type { MediaItem, MediaList } from "../types";
+import { onScopeDispose, ref } from "vue";
+import type { MediaItem, MediaKind, MediaList } from "../types";
 import { ApiError, errorMessage, request } from "../utils/api";
 
 const pageSize = 48;
+// How long typing in the search box waits before asking the server.
+const searchDelay = 250;
 
-// The uploads library: a page at a time, newest first, plus upload and delete.
+// The uploads library: a page at a time, newest first, filtered by the search
+// text and kind, plus upload, alt text edits and delete.
 // Each call gets its own state, so the Media page and the picker do not share
 // a half-loaded list.
 export const useUploadedMedia = () => {
@@ -15,34 +18,55 @@ export const useUploadedMedia = () => {
   const error = ref("");
   // One entry per file the server refused, so a batch reports every failure.
   const failures = ref<string[]>([]);
+  const query = ref("");
+  const kind = ref<MediaKind>("");
+  // Only the newest request may fill the list, so a slow answer to an earlier
+  // search cannot replace a later one.
+  let latest = 0;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  onScopeDispose(() => clearTimeout(timer));
 
   const load = async (more = false) => {
+    const mine = ++latest;
     loading.value = true;
     error.value = "";
     try {
       const offset = more ? items.value.length : 0;
-      const page = await request<MediaList>(
-        `/api/media?limit=${pageSize}&offset=${offset}`,
-      );
+      const params = new URLSearchParams({
+        limit: String(pageSize),
+        offset: String(offset),
+      });
+      if (query.value.trim()) params.set("q", query.value.trim());
+      if (kind.value) params.set("type", kind.value);
+      const page = await request<MediaList>(`/api/media?${params}`);
+      if (mine !== latest) return;
       items.value = more ? [...items.value, ...page.items] : page.items;
       total.value = page.total;
     } catch (cause) {
-      error.value = errorMessage(cause);
+      if (mine === latest) error.value = errorMessage(cause);
     } finally {
-      loading.value = false;
+      if (mine === latest) loading.value = false;
     }
   };
 
+  // Reloads the first page for the current search text and kind. Typing waits
+  // a moment (delay), so a fast typist sends one request, not one per key.
+  const refine = (delay = 0) => {
+    clearTimeout(timer);
+    if (delay) timer = setTimeout(() => void load(), delay);
+    else void load();
+  };
+  const typeAhead = () => refine(searchDelay);
+
   // Uploads files one at a time and returns the records, in order. A repeated
   // upload comes back as the existing record and is not listed twice.
-  const upload = async (files: File[], alt = ""): Promise<MediaItem[]> => {
+  const upload = async (files: File[]): Promise<MediaItem[]> => {
     uploading.value = true;
     failures.value = [];
     const done: MediaItem[] = [];
     for (const file of files) {
       const form = new FormData();
       form.append("file", file, file.name);
-      if (alt) form.append("alt", alt);
       try {
         const item = await request<MediaItem>("/api/media", "POST", form);
         done.push(item);
@@ -56,6 +80,19 @@ export const useUploadedMedia = () => {
     }
     uploading.value = false;
     return done;
+  };
+
+  // Saves an upload's alt text. message is empty on success.
+  const saveAlt = async (item: MediaItem, alt: string): Promise<string> => {
+    try {
+      const saved = await request<MediaItem>(`/api/media/${item.id}`, "PATCH", { alt });
+      items.value = items.value.map((existing) =>
+        existing.id === saved.id ? saved : existing,
+      );
+      return "";
+    } catch (cause) {
+      return errorMessage(cause);
+    }
   };
 
   // Deletes an upload. Without force the server refuses while posts use it
@@ -77,5 +114,20 @@ export const useUploadedMedia = () => {
     }
   };
 
-  return { items, total, loading, uploading, error, failures, load, upload, remove };
+  return {
+    items,
+    total,
+    loading,
+    uploading,
+    error,
+    failures,
+    query,
+    kind,
+    load,
+    refine,
+    typeAhead,
+    upload,
+    saveAlt,
+    remove,
+  };
 };

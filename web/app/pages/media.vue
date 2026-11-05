@@ -1,27 +1,49 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { nextTick, onMounted, ref } from "vue";
 import type { MediaItem } from "../types";
-import { detailLabel, isImage, markdownFor } from "../utils/media";
+import { detailLabel, isImage, markdownFor, usageLabel } from "../utils/media";
 import { exactTime } from "../utils/time";
 
 useHead({ title: "Media" });
 const toast = useToast();
 const media = useUploadedMedia();
 const { isAdmin } = useCurrentSession();
-const alt = ref("");
 const deleting = ref<MediaItem | null>(null);
 const deleteOpen = ref(false);
 const deleteError = ref("");
 const inUse = ref(false);
+// The cards of the last batch, which are asked for alt text.
+const fresh = ref<number[]>([]);
 
 onMounted(() => media.load());
 
 const add = async (files: File[]) => {
-  const done = await media.upload(files, alt.value.trim());
-  if (done.length)
+  const done = await media.upload(files);
+  fresh.value = done.map((item) => item.id);
+  if (!done.length) return;
+  toast.add({
+    title: done.length === 1 ? "Uploaded" : `Uploaded ${done.length} files`,
+    color: "success",
+  });
+  // Move to the first new image without a description, so it can be typed now.
+  const missing = done.find((item) => isImage(item) && !item.alt);
+  if (!missing) return;
+  await nextTick();
+  document.getElementById(`alt-${missing.id}`)?.focus();
+};
+
+const missingAlt = () =>
+  media.items.value.filter(
+    (item) => fresh.value.includes(item.id) && isImage(item) && !item.alt,
+  ).length;
+
+const saveAlt = async (item: MediaItem, alt: string) => {
+  const message = await media.saveAlt(item, alt);
+  if (message)
     toast.add({
-      title: done.length === 1 ? "Uploaded" : `Uploaded ${done.length} files`,
-      color: "success",
+      title: `Could not save the alt text for ${item.originalName || item.name}`,
+      description: message,
+      color: "error",
     });
 };
 
@@ -64,29 +86,34 @@ const confirmDelete = async () => {
       <h1 class="page-title">Media</h1>
     </div>
 
-    <div class="field media-alt">
-      <label for="media-alt">Alt text for new uploads (optional)</label>
-      <UInput
-        id="media-alt"
-        v-model="alt"
-        class="w-full"
-        maxlength="500"
-        aria-describedby="media-alt-hint"
-      />
-      <p id="media-alt-hint" class="field-hint">
-        Describes the image for people who cannot see it. It is saved with the file and
-        used when you copy the Markdown.
-      </p>
-    </div>
     <MediaDropzone input-id="media-upload" :busy="media.uploading.value" @files="add" />
 
+    <p v-if="missingAlt()" class="media-prompt" role="status">
+      Add alt text to the {{ missingAlt() === 1 ? "new image" : "new images" }} below. It
+      describes them for people who cannot see them and is used when you copy the
+      Markdown.
+    </p>
     <p v-for="line in media.failures.value" :key="line" class="field-error" role="alert">
       {{ line }}
     </p>
     <p v-if="media.error.value" class="alert" role="alert">{{ media.error.value }}</p>
 
+    <MediaFilters
+      v-model:query="media.query.value"
+      v-model:kind="media.kind.value"
+      id-prefix="media"
+      show-kind
+      @search="media.typeAhead()"
+      @kind="media.refine()"
+    />
+
     <ul v-if="media.items.value.length" class="media-grid" aria-label="Uploaded files">
-      <li v-for="item in media.items.value" :key="item.id" class="media-card">
+      <li
+        v-for="item in media.items.value"
+        :key="item.id"
+        class="media-card"
+        :class="{ 'is-new': fresh.includes(item.id) }"
+      >
         <img
           v-if="isImage(item)"
           :src="item.url"
@@ -102,6 +129,13 @@ const confirmDelete = async () => {
             item.createdAt.slice(0, 10)
           }}</time></span
         >
+        <span class="field-hint">{{ usageLabel(item) }}</span>
+        <MediaAltField
+          :input-id="`alt-${item.id}`"
+          :alt="item.alt"
+          :label="item.originalName || item.name"
+          @save="saveAlt(item, $event)"
+        />
         <div class="media-actions">
           <UButton
             size="sm"
@@ -133,9 +167,16 @@ const confirmDelete = async () => {
         </div>
       </li>
     </ul>
-    <p v-else-if="!media.loading.value && !media.error.value" class="field-hint">
-      Nothing uploaded yet. Uploaded files are served publicly at a permanent address, so
-      posts can use them.
+    <p
+      v-else-if="!media.loading.value && !media.error.value"
+      class="field-hint"
+      role="status"
+    >
+      {{
+        media.query.value.trim() || media.kind.value
+          ? "No files match."
+          : "Nothing uploaded yet. Uploaded files are served publicly at a permanent address, so posts can use them."
+      }}
     </p>
     <UButton
       v-if="media.items.value.length < media.total.value"

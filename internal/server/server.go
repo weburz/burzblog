@@ -179,6 +179,7 @@ func (s *Server) routes() {
 	m.HandleFunc("POST /api/preview", s.write(s.preview))
 	m.HandleFunc("GET /api/media", s.write(s.listMedia))
 	m.HandleFunc("POST /api/media", s.write(s.uploadMedia))
+	m.HandleFunc("PATCH /api/media/{id}", s.write(s.updateMedia))
 	m.HandleFunc("DELETE /api/media/{id}", s.write(adminOnly(s.deleteMedia)))
 	m.HandleFunc("GET /api/export.tar.gz", s.reader(adminOnly(s.export)))
 	m.HandleFunc("GET /api/content/posts", s.reader(s.contentList))

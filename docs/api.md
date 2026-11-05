@@ -221,12 +221,15 @@ browser); export tokens get 403 `scope`.
 | | |
 |---|---|
 | `POST /api/media` | `multipart/form-data` with a `file` part and an optional `alt` text field (at most 1000 bytes). 201 with the record, or 200 with the existing record when the same bytes were uploaded before (the first upload's `alt` and name stay) |
-| `GET /api/media` | `{items, total}`, newest first; `?limit=` (1 to 500) and `?offset=` page it, without `limit` every upload is returned |
+| `GET /api/media` | `{items, total}`, newest first; `?limit=` (1 to 500) and `?offset=` page it, without `limit` every upload is returned. `?q=` keeps the uploads whose file name or alt text contain it (ignoring case, at most 200 characters) and `?type=image` or `?type=pdf` one kind; any other `type` is 422. `total` counts the matches |
+| `PATCH /api/media/{id}` | JSON `{"alt": "..."}` (at most 1000 bytes; control characters are dropped and the text is trimmed, so `""` clears it). Admins and authors; 200 with the record, 404 for an unknown id, 422 `validation` for a missing or too long `alt`. Audited as `media.update` |
 | `DELETE /api/media/{id}` | admins only (403 `role`); deletes the record and the file. 409 `in_use` names up to ten posts (any status) whose body or cover mention the file; `?force=true` deletes anyway and leaves those links broken. Earlier revisions are not checked |
 | `GET /media/{name}` | the file itself. **Public, no sign-in** (see [security](security.md#uploaded-files)) |
 
 A record is `{id, name, url, originalName, mime, size, width, height, alt,
-uploadedBy, createdAt}`. `url` is absolute, built from the configured origin
+usedIn, uploadedBy, createdAt}`. `usedIn` is how many posts, whatever their
+status, mention the file in their body or cover (earlier revisions are not
+counted). `url` is absolute, built from the configured origin
 (`--origin`), so a post that embeds it keeps working in an export or on the
 website. `width` and `height` are present for JPEG, PNG and GIF only; BurzBlog
 does no image processing.
