@@ -261,3 +261,60 @@ test("focus mode toggles with Ctrl+Shift+F and leaves with Esc", async ({
   await page.keyboard.press("Control+Shift+F");
   await expect(shell).toHaveAttribute("data-focus", "false");
 });
+
+test("the tags field suggests existing tags and still takes new ones", async ({
+  page,
+  request,
+}) => {
+  const api = await apiAs(request);
+  const id = unique();
+  const existing = `suggest-${id}-golang`;
+  const other = await api.createPost(`tagged-${id}`, "Tagged elsewhere");
+  const tagged = await request.put(`/api/posts/tagged-${id}`, {
+    headers: api.headers,
+    data: {
+      version: other.version,
+      slug: `tagged-${id}`,
+      title: "Tagged elsewhere",
+      tags: [existing],
+    },
+  });
+  expect(tagged.status()).toBe(200);
+  const slug = `suggest-${id}`;
+  await api.createPost(slug, "Suggest tags");
+
+  await signIn(page);
+  await openPost(page, slug);
+  await page.getByRole("button", { name: "Post settings" }).click();
+  const dialog = page.getByRole("dialog");
+  const tags = dialog.getByRole("combobox", { name: "Tags" });
+  await tags.fill(`suggest-${id}-go`);
+  await expect(
+    page.getByRole("option", { name: new RegExp(`${existing}.*1 post`) }),
+  ).toBeVisible();
+  await page.getByRole("option", { name: new RegExp(existing) }).click();
+  await expect(dialog.getByText(existing)).toBeVisible();
+
+  // Text left in the field when the writer clicks elsewhere becomes a tag.
+  await tags.fill("Left Alone");
+  await dialog.getByRole("heading", { name: "Post settings" }).click();
+  await expect(dialog.getByText("left-alone")).toBeVisible();
+  await expect(tags).toHaveValue("");
+
+  // Text no tag matches becomes a new tag, cleaned like before.
+  await tags.fill("Brand New");
+  await tags.press("Enter");
+  await tags.fill("typed, ");
+  await expect(dialog.getByText("brand-new")).toBeVisible();
+  await expect(dialog.getByText("typed", { exact: true })).toBeVisible();
+
+  // The draft saves itself once typing stops.
+  await expect
+    .poll(
+      async () =>
+        (await (await request.get(`/api/posts/${slug}`, { headers: api.headers })).json())
+          .tags,
+      { timeout: 15_000 },
+    )
+    .toEqual([existing, "left-alone", "brand-new", "typed"]);
+});
