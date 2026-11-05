@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { examplePostUrl, fetchCommand, siteFiles } from "../../app/utils/site";
+import {
+  examplePostUrl,
+  fetchCommand,
+  publicPostUrl,
+  siteFiles,
+} from "../../app/utils/site";
 import type { SiteSettings } from "../../app/types";
 
 const configured: SiteSettings = {
@@ -48,5 +53,24 @@ describe("fetchCommand", () => {
     expect(fetchCommand("https://blog.example.com", feed!)).toBe(
       'curl -fsSL -H "Authorization: Bearer $BURZBLOG_TOKEN" \\\n  https://blog.example.com/api/content/feed.xml -o feed.xml',
     );
+  });
+});
+
+describe("publicPostUrl", () => {
+  it("fills the slug into the template", () => {
+    expect(publicPostUrl("https://example.com/blog/{slug}", "hello-world")).toBe(
+      "https://example.com/blog/hello-world",
+    );
+  });
+
+  it("escapes characters that are not safe in a path", () => {
+    expect(publicPostUrl("https://example.com/{slug}/", "a b")).toBe(
+      "https://example.com/a%20b/",
+    );
+  });
+
+  it("is empty without a site URL or a slug", () => {
+    expect(publicPostUrl("", "hello-world")).toBe("");
+    expect(publicPostUrl("https://example.com/blog/{slug}", "")).toBe("");
   });
 });

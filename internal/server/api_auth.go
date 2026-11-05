@@ -17,6 +17,18 @@ type sessionReply struct {
 	Username      string `json:"username,omitempty"`
 	Role          string `json:"role,omitempty"`
 	CSRF          string `json:"csrf,omitempty"`
+	// PostURL is the public address of a post with {slug} in it; left out when
+	// no site URL is configured.
+	PostURL string `json:"postUrl,omitempty"`
+}
+
+// signedIn is the session body of an authenticated caller.
+func (s *Server) signedIn(user *store.User, csrf string) sessionReply {
+	out := sessionReply{Authenticated: true, Username: user.Username, Role: user.Role, CSRF: csrf}
+	if s.site != nil {
+		out.PostURL = s.site.url + s.site.postPath
+	}
+	return out
 }
 
 func (s *Server) session(w http.ResponseWriter, r *http.Request) {
@@ -25,11 +37,11 @@ func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 		reply(w, http.StatusOK, sessionReply{})
 		return
 	}
-	out := sessionReply{Authenticated: true, Username: id.user.Username, Role: id.user.Role}
+	csrf := ""
 	if id.session != nil {
-		out.CSRF = id.session.CSRF
+		csrf = id.session.CSRF
 	}
-	reply(w, http.StatusOK, out)
+	reply(w, http.StatusOK, s.signedIn(id.user, csrf))
 }
 
 type credentials struct {
@@ -111,7 +123,7 @@ func (s *Server) startSession(w http.ResponseWriter, r *http.Request, user *stor
 		SameSite: http.SameSiteStrictMode,
 	})
 	s.recordAs(r, user, "login.success", "")
-	reply(w, status, sessionReply{Authenticated: true, Username: user.Username, Role: user.Role, CSRF: sess.CSRF})
+	reply(w, status, s.signedIn(user, sess.CSRF))
 }
 
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
