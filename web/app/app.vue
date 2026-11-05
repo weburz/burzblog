@@ -134,10 +134,10 @@ useHead({
             aria-keyshortcuts="Control+K Meta+K"
             @click="paletteOpen = true"
           >
-            <span class="max-sm:hidden">Search or jump…</span>
-            <UKbd value="meta" class="max-sm:hidden" /><UKbd
+            <span class="max-md:hidden">Search or jump…</span>
+            <UKbd value="meta" class="max-md:hidden" /><UKbd
               value="k"
-              class="max-sm:hidden"
+              class="max-md:hidden"
             />
           </UButton>
           <UDropdownMenu
@@ -154,7 +154,7 @@ useHead({
               <span class="avatar" aria-hidden="true">{{
                 state.username.slice(0, 1).toUpperCase()
               }}</span>
-              <span class="max-sm:hidden">{{ state.username }}</span>
+              <span class="max-md:hidden">{{ state.username }}</span>
             </UButton>
           </UDropdownMenu>
         </div>
