@@ -117,13 +117,17 @@ specific cause when there is one.</p>
 <pre><code class="language-json">{ &quot;error&quot;: { &quot;code&quot;: &quot;validation&quot;, &quot;message&quot;: &quot;Fix the highlighted field, then save again.&quot;, &quot;detail&quot;: &quot;title must not be empty.&quot; } }
 </code></pre>
 <p>Codes include <code>bad_request</code> (400: invalid JSON, an unknown <code>status</code>, a missing
-<code>?version=</code>), <code>authentication</code> (401), <code>credentials</code> (401), <code>code</code>,
+<code>?version=</code>, or a post action or revision restore without <code>version</code>), <code>authentication</code> (401), <code>credentials</code> (401), <code>code</code>,
 <code>challenge</code> and <code>second_factor_required</code> (401: a wrong two-factor code, a missing
 or expired sign-in challenge, a token request without its code), <code>rate_limited</code>
 (429), <code>origin</code>/<code>csrf</code>/<code>scope</code>/<code>role</code>/<code>setup_token</code> (403), <code>not_found</code> (404), <code>validation</code> and
 <code>preview_limit</code> (422), <code>busy</code> (503), <code>slug_taken</code>, <code>conflict</code>, <code>state</code>, <code>setup_done</code> and
 <code>deploy_unconfigured</code> and <code>in_use</code> (409), <code>version_required</code> (428), <code>too_large</code>
 (413), <code>content_type</code> and <code>unsupported_type</code> (415) and <code>media_disabled</code> (501).</p>
+<p><code>detail</code> of a 400 for a request body is plain English: it names the field and
+what it must be (<code>The field &quot;version&quot; must be a whole number.</code>), and for an
+unknown field keeps that field's name. It never quotes Go type names or raw
+multipart headers.</p>
 <p>A <code>conflict</code> also carries the post as it is now, so clients can show both
 versions: <code>{ &quot;error&quot;: {...}, &quot;current&quot;: { ...post } }</code>.</p>
 <h2 id="sessions-and-tokens">Sessions and tokens</h2>
@@ -249,7 +253,11 @@ the time a draft publishes itself (UTC, RFC 3339), or <code>null</code>; see
 </tr>
 <tr>
 <td><code>canonicalUrl</code></td>
-<td>an absolute <code>https://</code> address, or empty</td>
+<td>an absolute <code>https://</code> address without spaces or other whitespace (encode them, <code>%20</code>), or empty</td>
+</tr>
+<tr>
+<td><code>publishedOn</code>, <code>updatedOn</code></td>
+<td>optional. Each must fall between 1 January 1990 and two years from now, and <code>updatedOn</code> must not be earlier than <code>publishedOn</code>; otherwise a 422 <code>validation</code> whose <code>detail</code> names the date</td>
 </tr>
 <tr>
 <td><code>featured</code></td>
@@ -312,7 +320,7 @@ the time a draft publishes itself (UTC, RFC 3339), or <code>null</code>; see
 </tr>
 <tr>
 <td><code>DELETE /api/posts/{slug}?version=N</code></td>
-<td>admins only (403 <code>role</code>), and only archived posts; removes its history and its redirects too. The one exception, open to authors as well: a draft that was never published and has no title and no body, now or in any earlier revision, so no writing is lost (409 <code>state</code> for anything else)</td>
+<td>admins only (403 <code>role</code>), and only archived posts; removes its history and its redirects too. The one exception, open to authors as well: a draft that was never published and has no title and no body, now or in any earlier revision, so no writing is lost. An author asking to delete a draft that looks empty but once held writing gets 403 <code>role</code>, since only an admin can delete it after archiving it; an admin gets 409 <code>state</code> until the post is archived</td>
 </tr>
 <tr>
 <td><code>GET /api/posts/{slug}/redirects</code></td>
@@ -432,7 +440,7 @@ browser); export tokens get 403 <code>scope</code>.</p>
 <tbody>
 <tr>
 <td><code>POST /api/media</code></td>
-<td><code>multipart/form-data</code> with a <code>file</code> part and an optional <code>alt</code> text field (at most 1000 bytes). 201 with the record, or 200 with the existing record when the same bytes were uploaded before (the first upload's <code>alt</code> and name stay)</td>
+<td><code>multipart/form-data</code> with a <code>file</code> part and an optional <code>alt</code> text field (at most 1000 bytes; cleaned like <code>PATCH</code> below). 201 with the record, or 200 with the existing record when the same bytes were uploaded before (the first upload's <code>alt</code> and name stay)</td>
 </tr>
 <tr>
 <td><code>GET /api/media</code></td>
@@ -440,7 +448,7 @@ browser); export tokens get 403 <code>scope</code>.</p>
 </tr>
 <tr>
 <td><code>PATCH /api/media/{id}</code></td>
-<td>JSON <code>{&quot;alt&quot;: &quot;...&quot;}</code> (at most 1000 bytes; control characters are dropped and the text is trimmed, so <code>&quot;&quot;</code> clears it). Admins and authors; 200 with the record, 404 for an unknown id, 422 <code>validation</code> for a missing or too long <code>alt</code>. Audited as <code>media.update</code></td>
+<td>JSON <code>{&quot;alt&quot;: &quot;...&quot;}</code> (at most 1000 bytes; control characters and invisible format characters such as bidi overrides and zero-width spaces are dropped, joiners U+200C and U+200D stay, and the text is trimmed, so <code>&quot;&quot;</code> clears it). Admins and authors; 200 with the record, 404 for an unknown id, 422 <code>validation</code> for a missing or too long <code>alt</code>. Audited as <code>media.update</code></td>
 </tr>
 <tr>
 <td><code>DELETE /api/media/{id}</code></td>
@@ -454,7 +462,7 @@ browser); export tokens get 403 <code>scope</code>.</p>
 </table>
 <p>A record is <code>{id, name, url, originalName, mime, size, width, height, alt, usedIn, uploadedBy, createdAt}</code>. <code>usedIn</code> is how many posts, whatever their
 status, mention the file in their body or cover (earlier revisions are not
-counted). <code>url</code> is absolute, built from the configured origin
+counted); it is read from an index that is kept up to date as posts are saved and deleted, so listing a page costs the same however many posts there are. <code>url</code> is absolute, built from the configured origin
 (<code>--origin</code>), so a post that embeds it keeps working in an export or on the
 website. <code>width</code> and <code>height</code> are present for JPEG, PNG and GIF only; BurzBlog
 does no image processing.</p>

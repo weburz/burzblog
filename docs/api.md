@@ -39,13 +39,18 @@ specific cause when there is one.
 ```
 
 Codes include `bad_request` (400: invalid JSON, an unknown `status`, a missing
-`?version=`), `authentication` (401), `credentials` (401), `code`,
+`?version=`, or a post action or revision restore without `version`), `authentication` (401), `credentials` (401), `code`,
 `challenge` and `second_factor_required` (401: a wrong two-factor code, a missing
 or expired sign-in challenge, a token request without its code), `rate_limited`
 (429), `origin`/`csrf`/`scope`/`role`/`setup_token` (403), `not_found` (404), `validation` and
 `preview_limit` (422), `busy` (503), `slug_taken`, `conflict`, `state`, `setup_done` and
 `deploy_unconfigured` and `in_use` (409), `version_required` (428), `too_large`
 (413), `content_type` and `unsupported_type` (415) and `media_disabled` (501).
+
+`detail` of a 400 for a request body is plain English: it names the field and
+what it must be (`The field "version" must be a whole number.`), and for an
+unknown field keeps that field's name. It never quotes Go type names or raw
+multipart headers.
 
 A `conflict` also carries the post as it is now, so clients can show both
 versions: `{ "error": {...}, "current": { ...post } }`.
@@ -99,7 +104,8 @@ Blog metadata, all optional:
 | `tags` | topics and categories in one list. Each tag is trimmed and lowercased, runs of anything but letters and digits become one hyphen (`Machine Learning` is saved as `machine-learning`, `#x` as `x`), text is composed to Unicode NFC so `é` typed either way is one tag, repeated tags are dropped, and the order is kept. A tag with no letter or digit left, such as `😀`, `!!` or an empty string, is a 422 `validation` that names it instead of vanishing. At most 20 tags of 40 characters each, otherwise a 422 `validation` |
 | `author` | display name, one line, at most 100 characters. A new post's author is the account that created it unless the request names one |
 | `seoTitle`, `seoDescription` | one line each, at most 120 and 320 characters; empty means the site uses the title and description |
-| `canonicalUrl` | an absolute `https://` address, or empty |
+| `canonicalUrl` | an absolute `https://` address without spaces or other whitespace (encode them, `%20`), or empty |
+| `publishedOn`, `updatedOn` | optional. Each must fall between 1 January 1990 and two years from now, and `updatedOn` must not be earlier than `publishedOn`; otherwise a 422 `validation` whose `detail` names the date |
 | `featured` | `true` marks a post a site should lead with, `false` (the default) does not. Saving it is a change like any other: it makes a new version and the previous one is kept as a revision. A `PUT` that leaves `featured` out keeps the post's current value (unlike `tags` and `author`), so clients written before the flag cannot unfeature a post by accident |
 
 Single-line fields reject control characters, tabs included, like `title`.
@@ -117,7 +123,7 @@ Single-line fields reject control characters, tabs included, like `title`.
 | `POST /api/posts/{slug}/duplicate` | no body → 201 and a new draft copy; its slug is `{slug}-copy`, then `{slug}-copy-2`, `-3` and so on until one is free (the slug is shortened to fit the 120 character limit), its title is the original's with ` (copy)` added; description, body, cover, tags, author, SEO fields and `extra` are copied unchanged. Status, `publishedOn`, `updatedOn`, `publishAt` and `featured` are not: the copy is an unscheduled, unfeatured draft at version 1 with no dates. 404 `not_found` for an unknown slug; any signed-in role may duplicate |
 | `POST /api/posts/{slug}/schedule` | `{version, at}` → the draft with `publishAt` set; see below |
 | `POST /api/posts/{slug}/unschedule` | `{version}` → the draft without a `publishAt`; a no-op if it had none |
-| `DELETE /api/posts/{slug}?version=N` | admins only (403 `role`), and only archived posts; removes its history and its redirects too. The one exception, open to authors as well: a draft that was never published and has no title and no body, now or in any earlier revision, so no writing is lost (409 `state` for anything else) |
+| `DELETE /api/posts/{slug}?version=N` | admins only (403 `role`), and only archived posts; removes its history and its redirects too. The one exception, open to authors as well: a draft that was never published and has no title and no body, now or in any earlier revision, so no writing is lost. An author asking to delete a draft that looks empty but once held writing gets 403 `role`, since only an admin can delete it after archiving it; an admin gets 409 `state` until the post is archived |
 | `GET /api/posts/{slug}/redirects` | `{items: ["old-slug", ...]}`: the old slugs that redirect to the post, by slug, whatever the post's status; see [slug redirects](#slug-redirects) |
 | `DELETE /api/posts/{slug}/redirects/{from}` | removes the redirect from one old slug of this post → `{deleted: true}`; 404 `not_found` if the post has no such redirect |
 | `GET /api/posts/{slug}/revisions` | `{items, current}`: earlier versions, newest first, without bodies; see below |
@@ -227,16 +233,16 @@ browser); export tokens get 403 `scope`.
 
 | | |
 |---|---|
-| `POST /api/media` | `multipart/form-data` with a `file` part and an optional `alt` text field (at most 1000 bytes). 201 with the record, or 200 with the existing record when the same bytes were uploaded before (the first upload's `alt` and name stay) |
+| `POST /api/media` | `multipart/form-data` with a `file` part and an optional `alt` text field (at most 1000 bytes; cleaned like `PATCH` below). 201 with the record, or 200 with the existing record when the same bytes were uploaded before (the first upload's `alt` and name stay) |
 | `GET /api/media` | `{items, total}`, newest first; `?limit=` (1 to 500) and `?offset=` page it, without `limit` every upload is returned. `?q=` keeps the uploads whose file name or alt text contain it (ignoring case, at most 200 characters) and `?type=image` or `?type=pdf` one kind; any other `type` is 422. `total` counts the matches |
-| `PATCH /api/media/{id}` | JSON `{"alt": "..."}` (at most 1000 bytes; control characters are dropped and the text is trimmed, so `""` clears it). Admins and authors; 200 with the record, 404 for an unknown id, 422 `validation` for a missing or too long `alt`. Audited as `media.update` |
+| `PATCH /api/media/{id}` | JSON `{"alt": "..."}` (at most 1000 bytes; control characters and invisible format characters such as bidi overrides and zero-width spaces are dropped, joiners U+200C and U+200D stay, and the text is trimmed, so `""` clears it). Admins and authors; 200 with the record, 404 for an unknown id, 422 `validation` for a missing or too long `alt`. Audited as `media.update` |
 | `DELETE /api/media/{id}` | admins only (403 `role`); deletes the record and the file. 409 `in_use` names up to ten posts (any status) whose body or cover mention the file; `?force=true` deletes anyway and leaves those links broken. Earlier revisions are not checked |
 | `GET /media/{name}` | the file itself. **Public, no sign-in** (see [security](security.md#uploaded-files)) |
 
 A record is `{id, name, url, originalName, mime, size, width, height, alt,
 usedIn, uploadedBy, createdAt}`. `usedIn` is how many posts, whatever their
 status, mention the file in their body or cover (earlier revisions are not
-counted). `url` is absolute, built from the configured origin
+counted); it is read from an index that is kept up to date as posts are saved and deleted, so listing a page costs the same however many posts there are. `url` is absolute, built from the configured origin
 (`--origin`), so a post that embeds it keeps working in an export or on the
 website. `width` and `height` are present for JPEG, PNG and GIF only; BurzBlog
 does no image processing.

@@ -347,6 +347,42 @@ var migrations = []string{
 	// are always kept.
 	`ALTER TABLE posts ADD COLUMN autosaved INTEGER NOT NULL DEFAULT 0 CHECK (autosaved IN (0, 1));
 	ALTER TABLE revisions ADD COLUMN autosaved INTEGER NOT NULL DEFAULT 0;`,
+	// media_uses records which posts mention which upload in their body or
+	// cover, so the media list counts uses with an index lookup instead of
+	// scanning every post per file. Triggers keep it exact inside the
+	// transaction of every write to posts or media, so concurrent saves
+	// cannot leave it stale. It is filled here for existing data.
+	`CREATE TABLE media_uses (
+		file_name TEXT NOT NULL,
+		post_id INTEGER NOT NULL,
+		PRIMARY KEY (file_name, post_id)
+	) WITHOUT ROWID;
+	CREATE INDEX media_uses_post ON media_uses (post_id);
+	INSERT INTO media_uses (file_name, post_id)
+		SELECT m.file_name, p.id FROM media m JOIN posts p
+		ON instr(p.body, m.file_name) > 0 OR instr(p.cover_url, m.file_name) > 0;
+	CREATE TRIGGER media_uses_post_insert AFTER INSERT ON posts BEGIN
+		INSERT INTO media_uses (file_name, post_id)
+			SELECT m.file_name, NEW.id FROM media m
+			WHERE instr(NEW.body, m.file_name) > 0 OR instr(NEW.cover_url, m.file_name) > 0;
+	END;
+	CREATE TRIGGER media_uses_post_update AFTER UPDATE OF body, cover_url ON posts BEGIN
+		DELETE FROM media_uses WHERE post_id = NEW.id;
+		INSERT INTO media_uses (file_name, post_id)
+			SELECT m.file_name, NEW.id FROM media m
+			WHERE instr(NEW.body, m.file_name) > 0 OR instr(NEW.cover_url, m.file_name) > 0;
+	END;
+	CREATE TRIGGER media_uses_post_delete AFTER DELETE ON posts BEGIN
+		DELETE FROM media_uses WHERE post_id = OLD.id;
+	END;
+	CREATE TRIGGER media_uses_media_insert AFTER INSERT ON media BEGIN
+		INSERT INTO media_uses (file_name, post_id)
+			SELECT NEW.file_name, p.id FROM posts p
+			WHERE instr(p.body, NEW.file_name) > 0 OR instr(p.cover_url, NEW.file_name) > 0;
+	END;
+	CREATE TRIGGER media_uses_media_delete AFTER DELETE ON media BEGIN
+		DELETE FROM media_uses WHERE file_name = OLD.file_name;
+	END;`,
 }
 
 // migrationSteps run in the migration's transaction after its SQL, for work

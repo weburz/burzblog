@@ -104,6 +104,33 @@ func ValidateSchedule(at, now time.Time) error {
 	return nil
 }
 
+// MinPublishYear is the earliest year a post's dates may name.
+const MinPublishYear = 1990
+
+// ValidateDates checks that publishedOn and updatedOn, when set, fall between
+// January 1 of MinPublishYear and MaxScheduleAhead after now, and that the
+// post was not updated before it was published.
+func ValidateDates(p *Post, now time.Time) error {
+	earliest := time.Date(MinPublishYear, time.January, 1, 0, 0, 0, 0, time.UTC)
+	latest := now.Add(MaxScheduleAhead)
+	for _, d := range []struct {
+		field string
+		at    *time.Time
+	}{{"published date", p.PublishedOn}, {"updated date", p.UpdatedOn}} {
+		switch {
+		case d.at == nil:
+		case d.at.Before(earliest):
+			return &FieldError{d.field, fmt.Sprintf("must be in %d or later.", MinPublishYear)}
+		case d.at.After(latest):
+			return &FieldError{d.field, "must be within 2 years from now."}
+		}
+	}
+	if p.PublishedOn != nil && p.UpdatedOn != nil && p.UpdatedOn.Before(*p.PublishedOn) {
+		return &FieldError{"updated date", "must not be earlier than the published date."}
+	}
+	return nil
+}
+
 // FieldError is a validation failure people can act on.
 type FieldError struct {
 	Field   string
@@ -268,6 +295,9 @@ func validateMetadata(p *Post) error {
 	if p.CanonicalURL != "" {
 		if u, err := url.Parse(p.CanonicalURL); err != nil || u.Scheme != "https" || u.Host == "" {
 			return &FieldError{"canonical URL", "must be a full https address such as https://example.com/post."}
+		}
+		if strings.ContainsFunc(p.CanonicalURL, unicode.IsSpace) {
+			return &FieldError{"canonical URL", "must not contain spaces; encode them as %20."}
 		}
 	}
 	return validateTags(p.Tags)
