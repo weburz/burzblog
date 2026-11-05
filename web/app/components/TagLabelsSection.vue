@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import type { TagCount, TagLabel } from "../types";
+import { collapsedRows, toggleLabel, visibleRows } from "../utils/collapse";
 import { errorMessage, request } from "../utils/api";
 import { maxTagLabel } from "../utils/metadata";
 
@@ -12,6 +13,8 @@ const loadError = ref("");
 // What each label field holds, by tag, while it is being edited.
 const edits = ref<Record<string, string>>({});
 const busy = ref("");
+const showAll = ref(false);
+const shown = computed(() => visibleRows(tags.value ?? [], showAll.value));
 
 const load = async () => {
   try {
@@ -100,7 +103,7 @@ const reset = async (t: TagCount) => {
         No tags yet. Add tags in a post's settings and they appear here.
       </p>
       <ul v-else-if="tags" class="token-list">
-        <li v-for="t in tags" :key="t.tag">
+        <li v-for="t in shown" :key="t.tag">
           <form class="tag-label-row" @submit.prevent="save(t)">
             <div class="tag-label-slug">
               <span class="mono">{{ t.tag }}</span>
@@ -139,6 +142,15 @@ const reset = async (t: TagCount) => {
           </form>
         </li>
       </ul>
+      <UButton
+        v-if="tags && tags.length > collapsedRows"
+        color="neutral"
+        variant="ghost"
+        size="sm"
+        :aria-expanded="showAll"
+        @click="showAll = !showAll"
+        >{{ toggleLabel(tags.length, showAll) }}</UButton
+      >
     </div>
   </section>
 </template>

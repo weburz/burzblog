@@ -18,8 +18,8 @@ const tags: TagCount[] = [
   { tag: "go", count: 1, label: "Golang", custom: true },
 ];
 
-const show = async () => {
-  request.mockResolvedValueOnce({ items: structuredClone(tags) });
+const show = async (items: TagCount[] = tags) => {
+  request.mockResolvedValueOnce({ items: structuredClone(items) });
   const wrapper = mount(TagLabelsSection, {
     global: {
       stubs: {
@@ -54,6 +54,26 @@ describe("tag labels", () => {
     const field = wrapper.get<HTMLInputElement>("#tag-label-constitutional-law");
     expect(field.element.value).toBe("Constitutional Law");
     expect(wrapper.find("label[for='tag-label-go']").text()).toBe("Label for go");
+  });
+
+  it("shows the first eight tags until all are asked for", async () => {
+    const many = Array.from({ length: 12 }, (_, i) => ({
+      tag: `tag-${i}`,
+      count: 1,
+      label: `Tag ${i}`,
+      custom: false,
+    }));
+    const wrapper = await show(many);
+    expect(wrapper.findAll("form")).toHaveLength(8);
+    const toggle = wrapper.findAll("button").find((b) => b.text() === "Show all 12")!;
+    await toggle.trigger("click");
+    expect(wrapper.findAll("form")).toHaveLength(12);
+    expect(wrapper.text()).toContain("Show fewer");
+  });
+
+  it("does not offer to expand a short list", async () => {
+    const wrapper = await show();
+    expect(wrapper.text()).not.toContain("Show all");
   });
 
   it("saves only a changed, non-empty label", async () => {

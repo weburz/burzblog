@@ -35,17 +35,17 @@ const choose = (value: MediaKind) => {
         @update:model-value="emit('search')"
       />
     </div>
-    <div v-if="showKind" role="group" aria-label="File type" class="media-kinds">
-      <UButton
+    <div v-if="showKind" role="group" aria-label="File type" class="segment">
+      <button
         v-for="option in kinds"
         :key="option.value"
-        size="sm"
-        color="neutral"
-        :variant="kind === option.value ? 'solid' : 'outline'"
+        type="button"
+        class="segment-item"
         :aria-pressed="kind === option.value"
         @click="choose(option.value)"
-        >{{ option.label }}</UButton
       >
+        {{ option.label }}
+      </button>
     </div>
   </div>
 </template>

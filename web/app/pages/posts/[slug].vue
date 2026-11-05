@@ -5,6 +5,7 @@ import { ApiError, errorMessage, request } from "../../utils/api";
 import { returnFocusTo } from "../../utils/focus";
 import { countWords, lengthLabel } from "../../utils/markdown";
 import { sameDraft } from "../../utils/metadata";
+import { copyText } from "../../utils/clipboard";
 import { duplicatePost } from "../../utils/duplicate";
 import { noSiteUrlNotice, publicPostUrl } from "../../utils/site";
 import { matchesTitle, slugify, untitledPattern } from "../../utils/slug";
@@ -574,36 +575,29 @@ const liveUrl = computed(() =>
   post.value ? publicPostUrl(session.value.postUrl, post.value.slug) : "",
 );
 const noSiteUrl = () => toast.add(noSiteUrlNotice);
+// What the browser would not copy; shown in a dialog that stays open.
+const manualCopy = ref<{ title: string; label: string; text: string } | null>(null);
 const copyLink = async () => {
   if (!liveUrl.value) return noSiteUrl();
-  try {
-    await navigator.clipboard.writeText(liveUrl.value);
+  if (await copyText(liveUrl.value)) {
     toast.add({ title: "Link copied", description: liveUrl.value, color: "success" });
-  } catch {
-    toast.add({
-      title: "Could not copy",
-      description: liveUrl.value,
-      color: "neutral",
-    });
+    return;
   }
+  manualCopy.value = {
+    title: "Copy the link",
+    label: "the link to the post",
+    text: liveUrl.value,
+  };
 };
 
 const copyCommand = async () => {
   if (!post.value) return;
-  try {
-    await navigator.clipboard.writeText(`burzblog edit ${post.value.slug}`);
-    toast.add({
-      title: "Copied",
-      description: `burzblog edit ${post.value.slug}`,
-      color: "success",
-    });
-  } catch {
-    toast.add({
-      title: "Could not copy",
-      description: `Run: burzblog edit ${post.value.slug}`,
-      color: "neutral",
-    });
+  const command = `burzblog edit ${post.value.slug}`;
+  if (await copyText(command)) {
+    toast.add({ title: "Copied", description: command, color: "success" });
+    return;
   }
+  manualCopy.value = { title: "Copy the command", label: "the command", text: command };
 };
 const download = async () => {
   if (!post.value) return;
@@ -1417,6 +1411,13 @@ const primary = computed(() => {
       :busy="acting"
       :close-focus="closeFocus"
       @confirm="schedule"
+    />
+    <CopyFallbackDialog
+      :open="Boolean(manualCopy)"
+      :title="manualCopy?.title ?? ''"
+      :label="manualCopy?.label ?? ''"
+      :value="manualCopy?.text ?? ''"
+      @update:open="manualCopy = null"
     />
     <ConfirmDialog
       v-model:open="confirm.open"

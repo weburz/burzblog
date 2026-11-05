@@ -300,7 +300,7 @@ the time a draft publishes itself (UTC, RFC 3339), or <code>null</code>; see
 </tr>
 <tr>
 <td><code>POST /api/posts/{slug}/duplicate</code></td>
-<td>no body → 201 and a new draft copy; its slug is <code>{slug}-copy</code>, then <code>{slug}-copy-2</code>, <code>-3</code> and so on until one is free (the slug is shortened to fit the 120 character limit), its title is the original's with <code> (copy)</code> added; description, body, cover, tags, author, SEO fields and <code>extra</code> are copied unchanged. Status, <code>publishedOn</code>, <code>updatedOn</code>, <code>publishAt</code> and <code>featured</code> are not: the copy is an unscheduled, unfeatured draft at version 1 with no dates. 404 <code>not_found</code> for an unknown slug; any signed-in role may duplicate</td>
+<td>no body → 201 and a new draft copy; its slug is <code>{slug}-copy</code>, then <code>{slug}-copy-2</code>, <code>-3</code> and so on until one is free (the slug is shortened to fit the 120 character limit), its title is the original's with <code> (copy)</code> added (<code> (copy 2)</code>, <code> (copy 3)</code> when the original already ends in a copy mark; a long title is cut at a word boundary); description, body, cover, tags, author, SEO fields and <code>extra</code> are copied unchanged. Status, <code>publishedOn</code>, <code>updatedOn</code>, <code>publishAt</code> and <code>featured</code> are not: the copy is an unscheduled, unfeatured draft at version 1 with no dates. 404 <code>not_found</code> for an unknown slug; any signed-in role may duplicate</td>
 </tr>
 <tr>
 <td><code>POST /api/posts/{slug}/schedule</code></td>

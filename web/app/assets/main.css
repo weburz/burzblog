@@ -377,7 +377,7 @@ code {
   display: grid;
   gap: 18px;
   max-width: 400px;
-  margin: 12vh auto 0;
+  margin: 12vh 0 0;
 }
 .login-intro {
   margin-bottom: 10px;
@@ -1550,9 +1550,8 @@ code {
   flex: 1 1 260px;
   max-width: 420px;
 }
-.media-kinds {
-  display: flex;
-  gap: 6px;
+.media .page-head {
+  margin-bottom: 0;
 }
 .media-prompt {
   margin: 0;
