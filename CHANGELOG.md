@@ -6,6 +6,68 @@ All notable changes are recorded here, following
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-11-06
+
+### Added
+
+- Drafts save themselves two seconds after typing stops and when the tab is
+  hidden or closed; published posts keep the explicit Save. Consecutive
+  autosaves by one writer within half an hour fold into one revision, so
+  History shows one entry per writing session. A save that fails while
+  offline or signed out is retried when the connection or session returns.
+- Paste an image from the clipboard or drop files onto the body: they upload
+  and the Markdown is inserted at the caret, with a placeholder while the
+  upload runs.
+- **New post** opens the editor at once on an untitled draft; the slug
+  follows the title until it is edited or the post is published. Empty
+  untitled drafts are removed when the writer leaves, and any left behind
+  are swept after a day.
+- Posts list: a row menu (Publish, Unpublish, Archive, Restore, Duplicate,
+  Copy link, Delete), row ticks with Select all and a bulk bar (Publish with
+  a confirmation, Unpublish and Archive with Undo, Restore, Delete, Add tag),
+  and `j`/`k`/`x`/Enter/Escape keys.
+- Duplicate a post from the editor or the list: `POST
+  /api/posts/{slug}/duplicate` makes an unpublished copy with its content,
+  tags and frontmatter.
+- View on site and Copy link for published posts when a site URL is set;
+  `GET /api/session` carries the post address template as `postUrl`. When
+  the clipboard is unavailable a dialog shows the text to copy by hand.
+- Media: edit alt text per file (`PATCH /api/media/{id}`), search by file
+  name or alt text, filter images or PDFs, and see where each file is used.
+- Post settings suggest existing tags while typing and explain the limits
+  (20 tags, 40 characters) instead of trimming silently.
+- The split preview follows the block at the caret rather than the scroll
+  ratio; preview HTML carries `data-line` markers (never in published HTML).
+- Relative times ("3 min ago") keep moving without a reload.
+
+### Changed
+
+- Tags are composed to NFC, so both spellings of an accented letter are one
+  tag, and a tag with nothing usable left (emoji or punctuation only) is a
+  422 naming it.
+- `publishedOn` and `updatedOn` must lie between 1990 and two years ahead,
+  `updatedOn` cannot precede `publishedOn`, and a canonical URL with
+  whitespace is rejected. JSON and multipart errors are plain English.
+- `DELETE /api/posts/{slug}`: any writer may delete a never-published draft
+  that has always been blank; an author deleting anything else gets 403, and
+  an admin gets 409 until the post is archived.
+- Media usage counts come from an indexed `media_uses` table kept by
+  triggers (migration 14) instead of scanning every post.
+- Renaming a never-published draft records no redirect.
+
+### Fixed
+
+- Selected row ticks were invisible, the media filter was unreadable in light
+  mode, and the list, editor and settings scrolled sideways at 320 px, on
+  phone settings and at 200 % zoom.
+- Reloading while writing a new post no longer lands on "Post not found".
+- Keyboard focus is kept after dialogs, bulk actions, row deletion and Back
+  from the editor; clipped titles, slugs and tags show the full text on
+  hover.
+- Duplicate titles count up ("(copy 2)") instead of stacking "(copy)".
+- On phones all four nav tabs fit at 390 px, and narrower screens show a
+  visible shadow where the nav scrolls.
+
 ## [2.2.0] - 2026-11-02
 
 ### Added
