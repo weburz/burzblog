@@ -336,6 +336,45 @@ test("media: search by name, filter by type, and edit alt text in place", async 
   await expect(card).toHaveCount(1);
 });
 
+test("media: copying without the clipboard API opens a dialog that shows the address", async ({
+  page,
+  request,
+}) => {
+  const api = await apiAs(request);
+  const tag = unique();
+  const uploaded = await request.post("/api/media", {
+    headers: api.headers,
+    multipart: {
+      file: {
+        name: `copy-${tag}.pdf`,
+        mimeType: "application/pdf",
+        buffer: Buffer.from(
+          `%PDF-1.4\n% ${tag}\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF\n`,
+        ),
+      },
+    },
+  });
+  expect(uploaded.status()).toBe(201);
+  const { url } = await uploaded.json();
+
+  // Plain http on a LAN host has no clipboard API, and copying is refused too.
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", { value: undefined });
+    document.execCommand = () => false;
+  });
+  await signIn(page);
+  await page.getByRole("link", { name: "Media", exact: true }).click();
+  await page.getByLabel("Search files").fill(`copy-${tag}`);
+  await page.getByRole("button", { name: `Copy address of copy-${tag}.pdf` }).click();
+  const dialog = page.getByRole("dialog", { name: /Copy the address/ });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText(url)).toBeVisible();
+  await page.waitForTimeout(7000);
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await expect(dialog).toBeHidden();
+});
+
 test("the tags field suggests existing tags and still takes new ones", async ({
   page,
   request,

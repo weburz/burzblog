@@ -56,6 +56,46 @@ func TestDuplicatePostFitsLimits(t *testing.T) {
 	}
 }
 
+func TestCopyTitle(t *testing.T) {
+	long := strings.Repeat("word ", 70) // 350 characters
+	tests := map[string]string{
+		"Source":               "Source (copy)",
+		"Source (copy)":        "Source (copy 2)",
+		"Source (copy 2)":      "Source (copy 3)",
+		"Source (copy 9)":      "Source (copy 10)",
+		"(copy)":               "(copy 2)",
+		"Copy of (copy) notes": "Copy of (copy) notes (copy)",
+	}
+	for in, want := range tests {
+		if got := copyTitle(in); got != want {
+			t.Errorf("copyTitle(%q) = %q, want %q", in, got, want)
+		}
+	}
+	got := copyTitle(long)
+	if n := len([]rune(got)); n > post.MaxTitle || !strings.HasSuffix(got, "word (copy)") {
+		t.Errorf("long title not cut at a word: %d characters, %q", n, got[len(got)-20:])
+	}
+	if got := copyTitle(strings.Repeat("x", post.MaxTitle)); len([]rune(got)) != post.MaxTitle {
+		t.Errorf("title without spaces has %d characters", len([]rune(got)))
+	}
+}
+
+func TestDuplicatePostCountsUpInsteadOfStacking(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+	if _, err := s.CreatePost(ctx, &post.Post{Slug: "src", Title: "Source"}, "u"); err != nil {
+		t.Fatal(err)
+	}
+	slug := "src"
+	for _, want := range []string{"Source (copy)", "Source (copy 2)", "Source (copy 3)"} {
+		copied, err := s.DuplicatePost(ctx, slug, "u")
+		if err != nil || copied.Title != want {
+			t.Fatalf("duplicate of %q = %+v, %v; want title %q", slug, copied, err, want)
+		}
+		slug = copied.Slug
+	}
+}
+
 func TestDuplicatePostUnknown(t *testing.T) {
 	s := open(t)
 	if _, err := s.DuplicatePost(context.Background(), "missing", "u"); !errors.Is(err, ErrNotFound) {

@@ -4,6 +4,7 @@ import type { Settings, Token } from "../types";
 import { errorMessage, request } from "../utils/api";
 import { MIN_PASSWORD, passwordStrength } from "../utils/password-strength";
 import { examplePostUrl, fetchCommand, siteFiles } from "../utils/site";
+import { collapsedRows, toggleLabel, visibleRows } from "../utils/collapse";
 import { everyLabel, snapshotState } from "../utils/backup";
 import { themeOptions } from "../utils/theme";
 import { editedLabel, exactTime } from "../utils/time";
@@ -82,6 +83,8 @@ const cliTokens = computed(() => tokens.value?.filter((t) => t.scope === "write"
 const buildTokens = computed(
   () => tokens.value?.filter((t) => t.scope === "export") ?? [],
 );
+const showAllCli = ref(false);
+const shownCli = computed(() => visibleRows(cliTokens.value, showAllCli.value));
 const revoking = ref<Token | null>(null);
 const revoke = async () => {
   const token = revoking.value;
@@ -250,7 +253,7 @@ const scopeUse = (t: Token) =>
           <span class="mono">burzblog login</span> appears here.
         </p>
         <ul v-else class="token-list">
-          <li v-for="t in cliTokens" :key="t.id" class="token-row">
+          <li v-for="t in shownCli" :key="t.id" class="token-row">
             <UIcon name="i-lucide-laptop" class="size-5 text-[var(--bb-text-2)]" />
             <div class="token-main">
               <span class="token-name">{{ t.name }}</span>
@@ -259,11 +262,25 @@ const scopeUse = (t: Token) =>
                 {{ scopeUse(t) }}.</span
               >
             </div>
-            <UButton color="error" variant="ghost" size="sm" @click="revoking = t"
+            <UButton
+              color="error"
+              variant="ghost"
+              size="sm"
+              :aria-label="`Revoke ${t.name}`"
+              @click="revoking = t"
               >Revoke</UButton
             >
           </li>
         </ul>
+        <UButton
+          v-if="cliTokens.length > collapsedRows"
+          color="neutral"
+          variant="ghost"
+          size="sm"
+          :aria-expanded="showAllCli"
+          @click="showAllCli = !showAllCli"
+          >{{ toggleLabel(cliTokens.length, showAllCli) }}</UButton
+        >
       </div>
     </section>
 
@@ -337,7 +354,12 @@ const scopeUse = (t: Token) =>
                 >Added {{ exactTime(t.createdAt) }}. {{ scopeUse(t) }}.</span
               >
             </div>
-            <UButton color="error" variant="ghost" size="sm" @click="revoking = t"
+            <UButton
+              color="error"
+              variant="ghost"
+              size="sm"
+              :aria-label="`Revoke ${t.name}`"
+              @click="revoking = t"
               >Revoke</UButton
             >
           </li>
