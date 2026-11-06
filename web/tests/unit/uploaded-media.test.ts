@@ -1,4 +1,4 @@
-import { mount } from "@vue/test-utils";
+import { flushPromises, mount } from "@vue/test-utils";
 import { defineComponent, effectScope, h } from "vue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import MediaAltField from "../../app/components/MediaAltField.vue";
@@ -107,48 +107,60 @@ const UInput = defineComponent({
       }),
 });
 
-const field = (alt = "Saved") =>
+const UButton = defineComponent({
+  setup:
+    (_, { attrs, slots }) =>
+    () =>
+      h("button", attrs, slots.default?.()),
+});
+
+const field = (save: (alt: string) => Promise<string>, alt = "Saved") =>
   mount(MediaAltField, {
-    props: { inputId: "alt-1", alt, label: "a.png" },
-    global: { stubs: { UInput } },
+    props: { inputId: "alt-1", alt, label: "a.png", save },
+    global: { stubs: { UInput, UButton } },
   });
+const saved = () => vi.fn<(alt: string) => Promise<string>>().mockResolvedValue("");
 
 describe("MediaAltField", () => {
   it("saves a change on Enter and on blur, but only once", async () => {
-    const wrapper = field();
+    const save = saved();
+    const wrapper = field(save);
     const input = wrapper.find("input");
     await input.setValue("New text ");
     await input.trigger("keydown", { key: "Enter" });
     await input.trigger("blur");
-    expect(wrapper.emitted("save")).toEqual([["New text"]]);
+    expect(save.mock.calls).toEqual([["New text"]]);
+    await flushPromises();
     await input.setValue("Other");
     await input.trigger("blur");
-    expect(wrapper.emitted("save")).toHaveLength(2);
+    expect(save).toHaveBeenCalledTimes(2);
   });
 
   it("does not save when nothing changed", async () => {
-    const wrapper = field();
+    const save = saved();
+    const wrapper = field(save);
     const input = wrapper.find("input");
     await input.trigger("blur");
     await input.setValue("Saved");
     await input.trigger("blur");
-    expect(wrapper.emitted("save")).toBeUndefined();
+    expect(save).not.toHaveBeenCalled();
   });
 
   it("puts the saved text back on Escape", async () => {
-    const wrapper = field();
+    const save = saved();
+    const wrapper = field(save);
     const input = wrapper.find("input");
     await input.setValue("Typing");
     await input.trigger("keydown", { key: "Escape" });
     await input.trigger("blur");
-    expect(wrapper.emitted("save")).toBeUndefined();
+    expect(save).not.toHaveBeenCalled();
     expect((input.element as HTMLInputElement).value).toBe("Saved");
   });
 
   it("keeps focus in the field on Escape", async () => {
     const wrapper = mount(MediaAltField, {
-      props: { inputId: "alt-1", alt: "Saved", label: "a.png" },
-      global: { stubs: { UInput } },
+      props: { inputId: "alt-1", alt: "Saved", label: "a.png", save: saved() },
+      global: { stubs: { UInput, UButton } },
       attachTo: document.body,
     });
     const input = wrapper.find("input");
@@ -156,5 +168,26 @@ describe("MediaAltField", () => {
     await input.trigger("keydown", { key: "Escape" });
     expect(document.activeElement).toBe(input.element);
     wrapper.unmount();
+  });
+
+  it("keeps the typed text after a failed save and retries from the button", async () => {
+    const save = vi
+      .fn<(alt: string) => Promise<string>>()
+      .mockResolvedValueOnce("Cannot reach BurzBlog.")
+      .mockResolvedValueOnce("");
+    const wrapper = field(save);
+    const input = wrapper.find("input");
+    await input.setValue("My description");
+    await input.trigger("blur");
+    await flushPromises();
+    expect((input.element as HTMLInputElement).value).toBe("My description");
+    expect(wrapper.get("[role=alert]").text()).toContain("Cannot reach BurzBlog.");
+    // Leaving the field again does not send a second time by itself.
+    await input.trigger("blur");
+    expect(save).toHaveBeenCalledTimes(1);
+    await wrapper.get("[role=alert] button").trigger("click");
+    await flushPromises();
+    expect(save.mock.calls).toEqual([["My description"], ["My description"]]);
+    expect(wrapper.find("[role=alert]").exists()).toBe(false);
   });
 });

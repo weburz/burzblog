@@ -23,6 +23,39 @@ describe("authenticated requests", () => {
       headers: { "X-CSRF-Token": "session-bound" },
     });
   });
+  it("sends keepalive only when asked and the body fits", async () => {
+    rememberSession({ authenticated: true, csrf: "token" });
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockImplementation(() => Promise.resolve(Response.json({ ok: true })));
+    vi.stubGlobal("fetch", fetch);
+    await request("/api/posts/a", "PUT", { body: "x" });
+    await request("/api/posts/a", "PUT", { body: "x" }, true);
+    await request("/api/posts/a", "PUT", { body: "x".repeat(70_000) }, true);
+    expect(fetch.mock.calls.map((call) => call[1]?.keepalive)).toEqual([
+      false,
+      true,
+      false,
+    ]);
+  });
+  it("carries the new slug of a renamed draft on its 404", async () => {
+    rememberSession({ authenticated: true, csrf: "token" });
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn<typeof globalThis.fetch>()
+        .mockResolvedValue(
+          Response.json(
+            { error: { code: "not_found", message: "x", renamedTo: "my-title" } },
+            { status: 404 },
+          ),
+        ),
+    );
+    await expect(request("/api/posts/untitled")).rejects.toMatchObject({
+      status: 404,
+      renamedTo: "my-title",
+    });
+  });
   it("sends a form as multipart, with the CSRF token and no JSON Content-Type", async () => {
     rememberSession({ authenticated: true, csrf: "token" });
     const fetch = vi

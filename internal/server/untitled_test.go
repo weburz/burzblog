@@ -1,7 +1,11 @@
 package server
 
 import (
+	"context"
 	"testing"
+	"time"
+
+	"github.com/weburz/burzblog/internal/post"
 )
 
 func TestCreateUntitledDraft(t *testing.T) {
@@ -104,5 +108,78 @@ func TestAuthorMayDeleteOnlyAnEmptyNeverPublishedDraft(t *testing.T) {
 	last := h.audit()[len(h.audit())-1]
 	if last.ActorName != "grace" || last.Action != "post.delete" || last.Target != "untitled" {
 		t.Errorf("last audit entry = %+v, want grace post.delete untitled", last)
+	}
+}
+
+func TestAuthorCannotDeleteAMetadataOnlyDraft(t *testing.T) {
+	h := newHarness(t, nil)
+	withRoles(t, h)
+	h.signInAs("grace", false)
+	h.do("POST", "/api/posts", map[string]any{"untitled": true})
+	resp, out := h.do("PUT", "/api/posts/untitled", map[string]any{
+		"version": 1, "slug": "untitled", "description": "Only a summary", "tags": []string{"notes"}, "author": "grace",
+	})
+	if resp.StatusCode != 200 {
+		t.Fatalf("save metadata = %d %v", resp.StatusCode, out)
+	}
+	if status, raw := h.send("DELETE", "/api/posts/untitled?version=2", "", nil); status != 403 {
+		t.Errorf("author DELETE metadata-only draft = %d %s, want 403", status, raw)
+	}
+	if status, _ := h.send("GET", "/api/posts/untitled", "", nil); status != 200 {
+		t.Errorf("GET after refused delete = %d, want 200", status)
+	}
+}
+
+func TestMissingSlugOfRenamedDraftNamesTheNewOne(t *testing.T) {
+	h := newHarness(t, nil)
+	h.login()
+	h.do("POST", "/api/posts", map[string]any{"untitled": true})
+	h.do("PUT", "/api/posts/untitled", map[string]any{"version": 1, "slug": "my-title", "title": "My title", "autosave": true})
+
+	resp, out := h.do("GET", "/api/posts/untitled", nil)
+	errBody, _ := out["error"].(map[string]any)
+	if resp.StatusCode != 404 || errBody["code"] != "not_found" || errBody["renamedTo"] != "my-title" {
+		t.Errorf("GET renamed draft = %d %v, want 404 not_found renamedTo my-title", resp.StatusCode, out)
+	}
+	resp, out = h.do("GET", "/api/posts/never-existed", nil)
+	errBody, _ = out["error"].(map[string]any)
+	if resp.StatusCode != 404 || errBody["renamedTo"] != nil {
+		t.Errorf("GET unknown slug = %d %v, want 404 without renamedTo", resp.StatusCode, out)
+	}
+}
+
+func TestSweepRemovesStaleEmptyUntitledDraftsAndAuditsThem(t *testing.T) {
+	h, c := scheduleHarness(t, nil)
+	bg := context.Background()
+	for range 3 {
+		if _, err := h.store.CreateUntitled(bg, "ada"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// untitled-2 gets writing; it must stay even though it is just as old.
+	if _, err := h.store.UpdatePost(bg, "untitled-2", 1, "ada", func(p *post.Post) error { p.Body = "words"; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	c.advance(23 * time.Hour)
+	h.srv.sweepEmptyDrafts(bg)
+	if _, err := h.store.GetPost(bg, "untitled"); err != nil {
+		t.Errorf("draft younger than a day was swept: %v", err)
+	}
+	c.advance(2 * time.Hour)
+	h.srv.sweepEmptyDrafts(bg)
+	for slug, want := range map[string]bool{"untitled": false, "untitled-2": true, "untitled-3": false} {
+		_, err := h.store.GetPost(bg, slug)
+		if (err == nil) != want {
+			t.Errorf("after sweep %s exists = %v, want %v", slug, err == nil, want)
+		}
+	}
+	var swept []string
+	for _, e := range h.audit() {
+		if e.Action == "post.delete" && e.ActorName == "scheduler" {
+			swept = append(swept, e.Target)
+		}
+	}
+	if len(swept) != 2 {
+		t.Errorf("audited sweeps = %v, want untitled and untitled-3", swept)
 	}
 }

@@ -66,6 +66,9 @@ const list = ref<PostList | null>(null);
 const loading = ref(true);
 const loadingMore = ref(false);
 const error = ref("");
+// Whether the rows shown belong to an earlier query than the one that failed.
+const stale = ref(false);
+let listKey = "";
 const { creating, create: createPost } = useCreatedPost();
 
 // The server sends one page at a time, so a big blog opens fast; "Show more"
@@ -89,12 +92,20 @@ const load = async (more = false, quiet = false) => {
   if (search.value.trim()) query.set("q", search.value.trim());
   if (tag.value) query.set("tag", tag.value);
   if (sort.value !== "updated") query.set("sort", sort.value);
+  const key = [status.value, search.value.trim(), tag.value, sort.value].join("|");
   try {
     const result = await request<PostList>(`/api/posts?${query}`);
     // A slower, older request must not overwrite a newer one.
-    if (ticket === sequence) list.value = more ? appendPage(list.value, result) : result;
+    if (ticket === sequence) {
+      list.value = more ? appendPage(list.value, result) : result;
+      listKey = key;
+      stale.value = false;
+    }
   } catch (cause) {
-    if (ticket === sequence) error.value = errorMessage(cause);
+    if (ticket === sequence) {
+      error.value = errorMessage(cause);
+      stale.value = key !== listKey;
+    }
   } finally {
     if (ticket === sequence) {
       loading.value = false;
@@ -601,6 +612,8 @@ const origin = typeof window === "undefined" ? "" : window.location.origin;
       class="post-list"
       :aria-busy="loading"
       @focusin="trackRow"
+      :data-stale="stale"
+      :inert="stale || undefined"
     >
       <li
         v-for="post in list.items"
