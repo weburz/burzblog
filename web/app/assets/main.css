@@ -1500,7 +1500,7 @@ code {
   }
   .nav-tabs {
     margin-left: 8px;
-    gap: 14px;
+    gap: 10px;
   }
   .page-head {
     margin-top: 28px;
@@ -1592,13 +1592,13 @@ code {
   background-image:
     linear-gradient(to right, var(--hint-bg), transparent),
     linear-gradient(to left, var(--hint-bg), transparent),
-    linear-gradient(to right, var(--bb-border-strong), transparent),
-    linear-gradient(to left, var(--bb-border-strong), transparent);
+    linear-gradient(to right, var(--hint-shadow), transparent),
+    linear-gradient(to left, var(--hint-shadow), transparent);
   background-size:
     28px 100%,
     28px 100%,
-    10px 100%,
-    10px 100%;
+    var(--hint-shadow-width, 10px) 100%,
+    var(--hint-shadow-width, 10px) 100%;
   background-position:
     left center,
     right center,
@@ -1608,8 +1608,20 @@ code {
   background-attachment: local, local, scroll, scroll;
 }
 .nav-tabs,
+.segment,
+.md-tools,
+.bulk-bar {
+  --hint-shadow: var(--bb-border-strong);
+}
+.nav-tabs,
 .bulk-bar {
   --hint-bg: var(--bb-bg);
+}
+/* The nav sits on the page background with nothing beside it to frame the cut,
+   so its shadow is darker and wider than the strips inside bordered boxes. */
+.nav-tabs {
+  --hint-shadow: color-mix(in srgb, var(--bb-text-2) 38%, transparent);
+  --hint-shadow-width: 16px;
 }
 .segment {
   --hint-bg: var(--bb-surface-2);
