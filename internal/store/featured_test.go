@@ -51,8 +51,8 @@ func TestMigrationMovesFeaturedOutOfExtra(t *testing.T) {
 	}
 	defer s.Close()
 	var version int
-	if err := s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != len(migrations) || version != 13 {
-		t.Fatalf("schema version = %d, %v; want 13", version, err)
+	if err := s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != len(migrations) || version != 14 {
+		t.Fatalf("schema version = %d, %v; want 14", version, err)
 	}
 
 	lead, err := s.GetPost(ctx, "lead")

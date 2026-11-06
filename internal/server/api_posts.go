@@ -351,20 +351,24 @@ func (s *Server) updateWith(w http.ResponseWriter, r *http.Request, save postUpd
 
 func (s *Server) postAction(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Version int64 `json:"version"`
+		Version *int64 `json:"version"`
 		// At is the publish time for the schedule action.
 		At *time.Time `json:"at"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
+	version, ok := requireVersion(w, body.Version)
+	if !ok {
+		return
+	}
 	action := r.PathValue("action")
 	switch action {
 	case "schedule":
-		s.schedule(w, r, body.Version, body.At)
+		s.schedule(w, r, version, body.At)
 		return
 	case "unschedule":
-		s.update(w, r, r.PathValue("slug"), body.Version, func(p *post.Post) error {
+		s.update(w, r, r.PathValue("slug"), version, func(p *post.Post) error {
 			p.PublishAt = nil
 			return nil
 		})
@@ -385,7 +389,7 @@ func (s *Server) postAction(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusNotFound, "not_found", "There is no such post action.", "")
 		return
 	}
-	s.update(w, r, r.PathValue("slug"), body.Version, func(p *post.Post) error {
+	s.update(w, r, r.PathValue("slug"), version, func(p *post.Post) error {
 		for _, f := range from {
 			if p.Status == f {
 				p.Status = next
@@ -394,6 +398,16 @@ func (s *Server) postAction(w http.ResponseWriter, r *http.Request) {
 		}
 		return &post.FieldError{Field: "status", Message: fmt.Sprintf("is %s, so the post cannot be %s.", p.Status, pastTense(action))}
 	})
+}
+
+// requireVersion answers 400 itself when a request left out the version it
+// started from, instead of letting 0 read as a stale edit.
+func requireVersion(w http.ResponseWriter, version *int64) (int64, bool) {
+	if version == nil {
+		fail(w, http.StatusBadRequest, "bad_request", "Send the version you started from.", "version")
+		return 0, false
+	}
+	return *version, true
 }
 
 // schedule gives a draft a publish time; the scheduler publishes it then.
@@ -454,6 +468,12 @@ func (s *Server) deletePost(w http.ResponseWriter, r *http.Request) {
 		err = s.store.DeleteEmptyDraft(r.Context(), slug, version)
 	} else {
 		err = s.store.DeletePost(r.Context(), slug, version)
+	}
+	// A draft that looks empty but once held writing is not the writer's to
+	// delete, and a writer can never delete it after archiving it either.
+	if empty && !isAdmin(r) && errors.Is(err, store.ErrState) {
+		forbidRole(w)
+		return
 	}
 	if err != nil {
 		s.postError(w, r, err, nil)
@@ -643,16 +663,20 @@ func (s *Server) getRevision(w http.ResponseWriter, r *http.Request) {
 // version. The slug and status stay as they are now.
 func (s *Server) restoreRevision(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Version int64 `json:"version"`
+		Version *int64 `json:"version"`
 	}
 	if !decode(w, r, &body) {
+		return
+	}
+	version, ok := requireVersion(w, body.Version)
+	if !ok {
 		return
 	}
 	rev := s.revision(w, r)
 	if rev == nil {
 		return
 	}
-	s.update(w, r, r.PathValue("slug"), body.Version, func(p *post.Post) error {
+	s.update(w, r, r.PathValue("slug"), version, func(p *post.Post) error {
 		old := rev.Post
 		p.Title, p.Description, p.Body = old.Title, old.Description, old.Body
 		p.CoverURL, p.CoverAlt, p.Extra = old.CoverURL, old.CoverAlt, old.Extra

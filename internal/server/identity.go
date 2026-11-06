@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
+	"reflect"
 	"strings"
+	"time"
 
 	"github.com/weburz/burzblog/internal/auth"
 	"github.com/weburz/burzblog/internal/store"
@@ -161,7 +164,7 @@ func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 			fail(w, http.StatusRequestEntityTooLarge, "too_large", "That is more than BurzBlog accepts in one request.", "")
 			return false
 		}
-		fail(w, http.StatusBadRequest, "bad_request", "The request was not valid JSON for this endpoint.", err.Error())
+		fail(w, http.StatusBadRequest, "bad_request", "The request was not valid JSON for this endpoint.", decodeProblem(err))
 		return false
 	}
 	if dec.Decode(&struct{}{}) != io.EOF {
@@ -169,6 +172,56 @@ func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 		return false
 	}
 	return true
+}
+
+// decodeProblem describes a JSON decoding failure in plain words, without Go
+// type names. An unknown field keeps its name so clients can find the typo.
+func decodeProblem(err error) string {
+	var syntax *json.SyntaxError
+	var typeErr *json.UnmarshalTypeError
+	var timeErr *time.ParseError
+	switch {
+	case errors.Is(err, io.EOF), errors.Is(err, io.ErrUnexpectedEOF):
+		return "The request body is empty or ends too early."
+	case errors.As(err, &syntax):
+		return "The request body is not valid JSON."
+	case errors.As(err, &timeErr):
+		return "A date or time must look like 2026-11-03T09:00:00Z."
+	case errors.As(err, &typeErr):
+		field := typeErr.Field
+		if i := strings.LastIndex(field, "."); i >= 0 {
+			field = field[i+1:]
+		}
+		want := "a different kind of value"
+		if typeErr.Type != nil {
+			switch typeErr.Type.Kind() {
+			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+				reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+				want = "a whole number"
+			case reflect.Float32, reflect.Float64:
+				want = "a number"
+			case reflect.String:
+				want = "text"
+			case reflect.Bool:
+				want = "true or false"
+			case reflect.Slice, reflect.Array:
+				want = "a list"
+			case reflect.Struct, reflect.Map:
+				want = "an object"
+			}
+			if typeErr.Type == reflect.TypeOf(time.Time{}) {
+				want = "a date and time such as 2026-11-03T09:00:00Z"
+			}
+		}
+		if field == "" {
+			return "The request body has a value of the wrong type; expected " + want + "."
+		}
+		return fmt.Sprintf("The field %q must be %s.", field, want)
+	}
+	if name, ok := strings.CutPrefix(err.Error(), "json: unknown field "); ok {
+		return "The field " + name + " is not accepted by this endpoint."
+	}
+	return "The request body could not be read as JSON for this endpoint."
 }
 
 func reply(w http.ResponseWriter, status int, v any) {

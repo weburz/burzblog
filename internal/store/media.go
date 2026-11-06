@@ -120,9 +120,9 @@ type MediaFilter struct {
 	Type string
 }
 
-// mediaUsedIn counts the posts whose body or cover mention the media row m.
-const mediaUsedIn = `(SELECT count(*) FROM posts p
-	WHERE instr(p.body, m.file_name) > 0 OR instr(p.cover_url, m.file_name) > 0)`
+// mediaUsedIn counts the posts whose body or cover mention the media row m,
+// from media_uses (see the migration that keeps it).
+const mediaUsedIn = `(SELECT count(*) FROM media_uses u WHERE u.file_name = m.file_name)`
 
 // FindMedia lists the uploads that match f, newest first, with how many posts
 // use each (UsedIn) and how many match in all. A zero limit lists every match.
@@ -171,8 +171,7 @@ func (s *Store) FindMedia(ctx context.Context, f MediaFilter, limit, offset int)
 // their body or cover.
 func (s *Store) MediaUseCount(ctx context.Context, fileName string) (int, error) {
 	var n int
-	if err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM posts
-		WHERE instr(body, ?1) > 0 OR instr(cover_url, ?1) > 0`, fileName).Scan(&n); err != nil {
+	if err := s.db.QueryRowContext(ctx, "SELECT count(*) FROM media_uses WHERE file_name = ?", fileName).Scan(&n); err != nil {
 		return 0, fmt.Errorf("count uploads in use: %w", err)
 	}
 	return n, nil

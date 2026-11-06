@@ -75,17 +75,23 @@ func (s *Server) maxUpload() int64 {
 	return DefaultMaxUpload
 }
 
+// dropUnsafe is a strings.Map function that removes control characters and
+// invisible format characters (bidi overrides, isolates, zero-width spaces).
+// The zero-width joiners (U+200C, U+200D) stay: emoji sequences and Persian or
+// Indic words need them.
+func dropUnsafe(r rune) rune {
+	if unicode.IsControl(r) || (unicode.Is(unicode.Cf, r) && r != '\u200c' && r != '\u200d') {
+		return -1
+	}
+	return r
+}
+
 // cleanOriginalName reduces a client-supplied file name to a harmless label:
-// the last path element, without control characters. It is only ever shown,
+// the last path element, without control or format characters. It is only ever shown,
 // never used to build a path.
 func cleanOriginalName(name string) string {
 	name = path.Base(strings.ReplaceAll(name, `\`, "/"))
-	name = strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
-			return -1
-		}
-		return r
-	}, name)
+	name = strings.Map(dropUnsafe, name)
 	if name == "." || name == "/" {
 		return ""
 	}
@@ -94,6 +100,10 @@ func cleanOriginalName(name string) string {
 	}
 	return name
 }
+
+// malformedUpload is the detail for a multipart body that does not parse. The
+// parser's own text quotes raw headers, so it is not sent.
+const malformedUpload = "The multipart body is malformed or was cut off. Send a \"file\" field and an optional \"alt\" field."
 
 // readUpload reads the multipart form: one "file" part and an optional "alt"
 // text. It answers the error itself and reports false on failure.
@@ -106,7 +116,7 @@ func (s *Server) readUpload(w http.ResponseWriter, r *http.Request) (data []byte
 	r.Body = http.MaxBytesReader(w, r.Body, limit+uploadOverhead)
 	mr, err := r.MultipartReader()
 	if err != nil {
-		fail(w, http.StatusBadRequest, "bad_request", "The upload was not valid multipart/form-data.", err.Error())
+		fail(w, http.StatusBadRequest, "bad_request", "The upload was not valid multipart/form-data.", malformedUpload)
 		return nil, "", "", false
 	}
 	tooBig := func() {
@@ -124,7 +134,7 @@ func (s *Server) readUpload(w http.ResponseWriter, r *http.Request) (data []byte
 			if errors.As(err, &big) {
 				tooBig()
 			} else {
-				fail(w, http.StatusBadRequest, "bad_request", "The upload was not valid multipart/form-data.", err.Error())
+				fail(w, http.StatusBadRequest, "bad_request", "The upload was not valid multipart/form-data.", malformedUpload)
 			}
 			return nil, "", "", false
 		}
@@ -140,7 +150,7 @@ func (s *Server) readUpload(w http.ResponseWriter, r *http.Request) (data []byte
 				if errors.As(err, &big) {
 					tooBig()
 				} else {
-					fail(w, http.StatusBadRequest, "bad_request", "The upload could not be read.", err.Error())
+					fail(w, http.StatusBadRequest, "bad_request", "The upload could not be read.", "The upload was cut off or malformed.")
 				}
 				return nil, "", "", false
 			}
@@ -155,7 +165,7 @@ func (s *Server) readUpload(w http.ResponseWriter, r *http.Request) (data []byte
 				fail(w, http.StatusUnprocessableEntity, "validation", "Alt text must be text of at most 1000 bytes.", "")
 				return nil, "", "", false
 			}
-			alt = strings.TrimSpace(string(b))
+			alt = cleanAlt(string(b))
 		}
 	}
 	if !found || len(data) == 0 {
@@ -249,15 +259,10 @@ func (s *Server) listMedia(w http.ResponseWriter, r *http.Request) {
 	reply(w, http.StatusOK, map[string]any{"items": items, "total": total})
 }
 
-// cleanAlt drops control characters (line breaks included) from alt text and
-// trims it.
+// cleanAlt drops control characters (line breaks included) and invisible
+// format characters from alt text and trims it.
 func cleanAlt(alt string) string {
-	return strings.TrimSpace(strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
-			return -1
-		}
-		return r
-	}, alt))
+	return strings.TrimSpace(strings.Map(dropUnsafe, alt))
 }
 
 // updateMedia changes an upload's alt text. The file itself never changes.
