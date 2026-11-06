@@ -65,6 +65,8 @@ All notable changes are recorded here, following
   from the editor; clipped titles, slugs and tags show the full text on
   hover.
 - Duplicate titles count up ("(copy 2)") instead of stacking "(copy)".
+- On phones all four nav tabs fit at 390 px, and narrower screens show a
+  visible shadow where the nav scrolls.
 
 ## [2.2.0] - 2026-11-02
 
