@@ -251,6 +251,26 @@ func checkAnchors(pages []Page) error {
 	return errors.Join(errs...)
 }
 
+// Sitemap lists the landing page and every docs page for search engines.
+// It belongs at the site root, beside robots.txt, which points to it.
+func Sitemap(pages []Page) []byte {
+	var buf bytes.Buffer
+	buf.WriteString(`<?xml version="1.0" encoding="UTF-8"?>` + "\n")
+	buf.WriteString(`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">` + "\n")
+	add := func(path string) {
+		buf.WriteString("  <url><loc>" + Site + path + "</loc></url>\n")
+	}
+	add("")
+	add("docs/")
+	for _, g := range Groups {
+		for _, n := range g.Names {
+			add("docs/" + n + ".html")
+		}
+	}
+	buf.WriteString("</urlset>\n")
+	return buf.Bytes()
+}
+
 // Files is every page of the docs section, keyed by file name.
 func Files(pages []Page) (map[string][]byte, error) {
 	byName := map[string]Page{}
@@ -310,7 +330,18 @@ var layout = template.Must(template.New("page").Parse(`<!doctype html>
     <meta name="theme-color" content="#fafaf8" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#12171d" media="(prefers-color-scheme: dark)" />
     <link rel="canonical" href="` + Site + `docs/{{.File}}" />
+    <link rel="icon" href="../favicon.ico" sizes="16x16 32x32 48x48" />
     <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="../assets/apple-touch-icon.png" />
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="BurzBlog" />
+    <meta property="og:url" content="` + Site + `docs/{{.File}}" />
+    <meta property="og:title" content="{{.Title}} · BurzBlog docs" />
+    <meta property="og:description" content="{{.Summary}}" />
+    <meta property="og:image" content="` + Site + `assets/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
     <link rel="stylesheet" href="../style.css" />
   </head>
   <body>
