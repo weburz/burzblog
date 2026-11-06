@@ -15,7 +15,7 @@ import {
 } from "../utils/metadata";
 import { publicPostUrl } from "../utils/site";
 import { slugify } from "../utils/slug";
-import { suggestTags } from "../utils/tags";
+import { suggestTags, tagLimitProblem } from "../utils/tags";
 import { fromLocalInput, toLocalInput } from "../utils/time";
 
 const open = defineModel<boolean>("open", { default: false });
@@ -49,16 +49,31 @@ const tagItems = computed(() =>
     label: t.tag,
     value: t.tag,
     count: t.count,
+    disabled: tagsFull.value,
     description: t.label.toLowerCase() === t.tag ? undefined : t.label,
   })),
 );
 const postsLabel = (count: number) => `${count} ${count === 1 ? "post" : "posts"}`;
-// Tags are cleaned and without repeats, up to the limit.
-const setTags = (tags: string[]) =>
-  (draft.value.tags = normalizeTags(tags).slice(0, maxTags));
+const tagsFull = computed(() => draft.value.tags.length >= maxTags);
+// Why the tag being typed cannot be added, or what the last refused tag ran into.
+const tagRefused = ref("");
+const tagProblem = computed(
+  () => tagLimitProblem(draft.value.tags, tagTerm.value) || tagRefused.value,
+);
+// Tags are cleaned and without repeats.
+const setTags = (tags: string[]) => (draft.value.tags = normalizeTags(tags));
+// Adds tags until one runs into a limit, which is said rather than skipped.
+const addTags = (raws: string[]): boolean => {
+  tagRefused.value = "";
+  for (const raw of raws) {
+    tagRefused.value = tagLimitProblem(draft.value.tags, raw);
+    if (tagRefused.value) return false;
+    setTags([...draft.value.tags, raw]);
+  }
+  return true;
+};
 const addTag = (raw: string) => {
-  tagTerm.value = "";
-  setTags([...draft.value.tags, raw]);
+  if (addTags([raw])) tagTerm.value = "";
 };
 // Text left in the field when the writer moves on becomes a tag. While the menu is
 // open a blur is only a click on a suggestion, which takes care of the text itself.
@@ -70,7 +85,8 @@ const addPendingTag = () => {
 const typeTag = (text: string) => {
   const parts = text.split(",");
   tagTerm.value = parts.pop() ?? "";
-  if (parts.length) setTags([...draft.value.tags, ...parts]);
+  tagRefused.value = "";
+  if (parts.length) addTags(parts);
 };
 // An uploaded image becomes the cover; its alt text fills an empty description.
 const coverPicked = (item: MediaItem) => {
@@ -167,12 +183,14 @@ const setUpdatedNow = () => {
             :model-value="draft.tags"
             :items="tagItems"
             :search-term="tagTerm"
-            create-item="always"
+            :create-item="tagProblem ? false : 'always'"
             open-on-focus
             :trailing-icon="false"
             placeholder="Add a tag, then press Enter"
             class="w-full"
-            aria-describedby="detail-tags-hint"
+            :aria-describedby="
+              tagProblem ? 'detail-tags-problem detail-tags-hint' : 'detail-tags-hint'
+            "
             @update:model-value="setTags"
             @update:search-term="typeTag"
             @create="addTag(tagTerm)"
@@ -188,6 +206,9 @@ const setUpdatedNow = () => {
             >
             <template #empty>Type to add a new tag.</template>
           </UInputMenu>
+          <p v-if="tagProblem" id="detail-tags-problem" class="field-error" role="status">
+            {{ tagProblem }}
+          </p>
           <p id="detail-tags-hint" class="field-hint">
             Topics and categories in one list. Lowercase words joined by hyphens, up to
             {{ maxTags }} tags.

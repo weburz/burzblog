@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
+import { useExistingTags } from "../composables/useExistingTags";
 import type { PostSummary } from "../types";
 import { actionLabels, availableActions, type PostAction } from "../utils/post-actions";
+import { normalizeTag } from "../utils/metadata";
+import { suggestTags, tagLimitProblem } from "../utils/tags";
 
 const props = defineProps<{
   selected: PostSummary[];
@@ -17,9 +20,21 @@ const emit = defineEmits<{
 const actions = computed(() => availableActions(props.selected, props.admin));
 const tagging = ref(false);
 const tagText = ref("");
-const submitTag = () => {
-  if (!tagText.value.trim()) return;
-  emit("tag", tagText.value);
+const { existing, refresh } = useExistingTags();
+watch(tagging, (open) => open && refresh());
+const tagItems = computed(() =>
+  suggestTags(existing.value, tagText.value, []).map((t) => ({
+    label: t.tag,
+    value: t.tag,
+    count: t.count,
+    description: t.label.toLowerCase() === t.tag ? undefined : t.label,
+  })),
+);
+const postsLabel = (count: number) => `${count} ${count === 1 ? "post" : "posts"}`;
+const tagProblem = computed(() => tagLimitProblem([], tagText.value));
+const submitTag = (raw = tagText.value) => {
+  if (!raw.trim() || tagLimitProblem([], raw)) return;
+  emit("tag", raw);
   tagText.value = "";
   tagging.value = false;
 };
@@ -48,17 +63,36 @@ const submitTag = () => {
       @click="tagging = !tagging"
       >Add tag</UButton
     >
-    <form v-if="tagging" class="bulk-tag" @submit.prevent="submitTag">
-      <UInput
+    <form v-if="tagging" class="bulk-tag" @submit.prevent="submitTag()">
+      <UInputMenu
         id="bulk-tag"
-        v-model="tagText"
+        v-model:search-term="tagText"
+        :items="tagItems"
+        value-key="value"
+        :create-item="tagProblem ? false : 'always'"
+        open-on-focus
+        :trailing-icon="false"
         size="sm"
         placeholder="Tag name"
         aria-label="Tag to add to the selected posts"
+        :aria-describedby="tagProblem ? 'bulk-tag-problem' : undefined"
         autofocus
+        @update:model-value="submitTag"
+        @create="submitTag()"
         @keydown.esc.stop="tagging = false"
-      />
-      <UButton type="submit" size="sm" :disabled="busy || !tagText.trim()">Add</UButton>
+      >
+        <template #item-trailing="{ item }">
+          <span class="field-hint">{{ postsLabel(item.count) }}</span>
+        </template>
+        <template #create-item-label="{ item }">Add “{{ normalizeTag(item) }}”</template>
+        <template #empty>Type to add a new tag.</template>
+      </UInputMenu>
+      <UButton type="submit" size="sm" :disabled="busy || !tagText.trim() || !!tagProblem"
+        >Add</UButton
+      >
+      <span v-if="tagProblem" id="bulk-tag-problem" class="field-error" role="status">{{
+        tagProblem
+      }}</span>
     </form>
     <UButton size="sm" color="neutral" variant="ghost" @click="emit('clear')"
       >Clear</UButton

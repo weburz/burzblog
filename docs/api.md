@@ -96,7 +96,7 @@ Blog metadata, all optional:
 
 | Field | Rules |
 |---|---|
-| `tags` | topics and categories in one list. Each tag is trimmed and lowercased, runs of anything but letters and digits become one hyphen (`Machine Learning` is saved as `machine-learning`), empty and repeated tags are dropped, and the order is kept. At most 20 tags of 40 characters each, otherwise a 422 `validation` |
+| `tags` | topics and categories in one list. Each tag is trimmed and lowercased, runs of anything but letters and digits become one hyphen (`Machine Learning` is saved as `machine-learning`, `#x` as `x`), text is composed to Unicode NFC so `é` typed either way is one tag, repeated tags are dropped, and the order is kept. A tag with no letter or digit left, such as `😀`, `!!` or an empty string, is a 422 `validation` that names it instead of vanishing. At most 20 tags of 40 characters each, otherwise a 422 `validation` |
 | `author` | display name, one line, at most 100 characters. A new post's author is the account that created it unless the request names one |
 | `seoTitle`, `seoDescription` | one line each, at most 120 and 320 characters; empty means the site uses the title and description |
 | `canonicalUrl` | an absolute `https://` address, or empty |

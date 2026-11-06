@@ -168,8 +168,10 @@ func (a *App) importOne(cl *client.Client, path string, seen map[string]bool, as
 	}
 	p := &post.Post{Slug: slug}
 	doc.Apply(p)
-	post.Normalize(p)
-	err = post.RequireTitle(p)
+	err = post.Normalize(p)
+	if err == nil {
+		err = post.RequireTitle(p)
+	}
 	if err == nil {
 		err = post.Validate(p)
 	}

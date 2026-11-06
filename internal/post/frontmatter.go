@@ -396,8 +396,7 @@ func MoveMetadataFromExtra(extra string) (moved *Post, rest string, ok bool) {
 	}
 	p := &Post{}
 	d.Apply(p)
-	Normalize(p)
-	if validateMetadata(p) != nil {
+	if Normalize(p) != nil || validateMetadata(p) != nil {
 		return nil, extra, false
 	}
 	return p, d.Extra, true

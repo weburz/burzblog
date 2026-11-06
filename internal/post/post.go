@@ -13,6 +13,8 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 // Status is the editorial state of a post.
@@ -281,11 +283,13 @@ func validateURL(raw string) error {
 
 // NormalizeTag turns text into a tag: lowercase letters, digits and marks,
 // with single hyphens between words. "Machine Learning" becomes
-// "machine-learning". The result is empty when nothing usable is left.
+// "machine-learning". Text is composed to NFC first, so "é" typed as one
+// character or as e plus an accent is one tag. The result is empty when
+// nothing usable is left.
 func NormalizeTag(raw string) string {
 	var b strings.Builder
 	hyphen := false
-	for _, r := range strings.ToLower(raw) {
+	for _, r := range strings.ToLower(norm.NFC.String(raw)) {
 		switch {
 		case unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.IsMark(r):
 			b.WriteRune(r)
@@ -298,20 +302,24 @@ func NormalizeTag(raw string) string {
 	return strings.Trim(b.String(), "-")
 }
 
-// normalizeTags normalizes each tag, drops empty ones and repeats, and keeps
-// the author's order.
-func normalizeTags(tags []string) []string {
+// normalizeTags normalizes each tag, drops repeats and keeps the author's
+// order. A tag with nothing usable left, such as "😀" or "", is an error that
+// names it rather than a silent drop.
+func normalizeTags(tags []string) ([]string, error) {
 	var out []string
 	seen := map[string]bool{}
 	for _, raw := range tags {
 		tag := NormalizeTag(raw)
-		if tag == "" || seen[tag] {
+		if tag == "" {
+			return nil, &FieldError{"tags", fmt.Sprintf("can't use %q: a tag needs at least one letter or digit.", raw)}
+		}
+		if seen[tag] {
 			continue
 		}
 		seen[tag] = true
 		out = append(out, tag)
 	}
-	return out
+	return out, nil
 }
 
 func validateTags(tags []string) error {
@@ -362,8 +370,9 @@ func NormalizeTagLabel(raw string) (string, error) {
 }
 
 // Normalize trims incidental whitespace from single-line fields, cleans the
-// tags and uses LF line endings in the body.
-func Normalize(p *Post) {
+// tags and uses LF line endings in the body. It fails when a tag has nothing
+// usable in it; the tags are then left as they were.
+func Normalize(p *Post) error {
 	p.Title = strings.TrimSpace(p.Title)
 	p.Description = strings.TrimSpace(p.Description)
 	p.CoverURL = strings.TrimSpace(p.CoverURL)
@@ -372,12 +381,16 @@ func Normalize(p *Post) {
 	p.SEOTitle = strings.TrimSpace(p.SEOTitle)
 	p.SEODescription = strings.TrimSpace(p.SEODescription)
 	p.CanonicalURL = strings.TrimSpace(p.CanonicalURL)
-	p.Tags = normalizeTags(p.Tags)
+	tags, err := normalizeTags(p.Tags)
+	if err == nil {
+		p.Tags = tags
+	}
 	p.Body = strings.ReplaceAll(p.Body, "\r\n", "\n")
 	p.Extra = strings.ReplaceAll(p.Extra, "\r\n", "\n")
 	if strings.TrimSpace(p.Extra) == "" {
 		p.Extra = ""
 	}
+	return err
 }
 
 // SameContent reports whether a and b would read the same to an author, so a
