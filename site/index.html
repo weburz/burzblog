@@ -16,8 +16,11 @@
     <meta name="theme-color" content="#fafaf8" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#12171d" media="(prefers-color-scheme: dark)" />
     <link rel="canonical" href="https://burzblog.weburz.com/" />
+    <link rel="icon" href="favicon.ico" sizes="16x16 32x32 48x48" />
     <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="BurzBlog" />
     <meta property="og:url" content="https://burzblog.weburz.com/" />
     <meta property="og:title" content="BurzBlog" />
     <meta
@@ -28,6 +31,21 @@
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "BurzBlog",
+        "url": "https://burzblog.weburz.com/",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "Linux, macOS, Windows",
+        "license": "https://www.apache.org/licenses/LICENSE-2.0",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "description": "A small, self-hosted place to write blog posts. One Go binary runs the server, the browser panel and the terminal client. Posts are Markdown in one SQLite file.",
+        "softwareHelp": "https://burzblog.weburz.com/docs/",
+        "codeRepository": "https://github.com/weburz/burzblog"
+      }
+    </script>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>

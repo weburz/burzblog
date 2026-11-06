@@ -28,6 +28,26 @@ func TestCommittedPagesMatchTheGuides(t *testing.T) {
 	}
 }
 
+func TestCommittedSitemapMatchesTheGuides(t *testing.T) {
+	pages, err := Render("../../docs")
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	want := Sitemap(pages)
+	have, err := os.ReadFile("../../site/sitemap.xml")
+	if err != nil || !bytes.Equal(want, have) {
+		t.Errorf("site/sitemap.xml is out of date: run task site:docs")
+	}
+	for _, loc := range []string{Site + "</loc>", Site + "docs/</loc>", Site + "docs/api.html</loc>"} {
+		if !strings.Contains(string(want), loc) {
+			t.Errorf("sitemap lacks %s", loc)
+		}
+	}
+	if strings.Contains(string(want), "index.html") {
+		t.Errorf("sitemap lists index.html instead of the folder")
+	}
+}
+
 func TestRewrite(t *testing.T) {
 	for dest, want := range map[string]string{
 		"security.md":              "security.html",
