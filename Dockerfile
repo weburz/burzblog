@@ -4,7 +4,7 @@
 # primary deployment; see docs/self-hosting.md.
 
 # The browser panel. Node.js and pnpm exist only in this stage.
-FROM --platform=$BUILDPLATFORM node:26.12.0-bookworm-slim@sha256:742a0fe7320e09e0321222b68165e6ac731d30470e7ea7f98f9bfc3a6e1034fe AS web
+FROM --platform=$BUILDPLATFORM node:26.12.1-bookworm-slim@sha256:88e480776c6149ff1d098cd304f44bf18057fb5d284a3329b78162d29821e28c AS web
 WORKDIR /web
 RUN npm install --global --no-fund --no-audit pnpm@11.15.1
 COPY web/ ./
