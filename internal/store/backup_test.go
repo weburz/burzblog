@@ -195,3 +195,52 @@ func TestBackupsKeepTheNewestFive(t *testing.T) {
 		t.Errorf("%d backups kept; want %d", matching, keepBackups)
 	}
 }
+
+func TestMigrationRetainsPublishedInstantAndPostVersion(t *testing.T) {
+	_, path := oldDatabase(t, 14)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec("UPDATE posts SET published_on='2026-01-01T23:00:00.25-05:00', version=3"); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	s, err := OpenPath(t.Context(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	var stamp string
+	var version int
+	if err := s.db.QueryRow("SELECT published_on,version FROM posts").Scan(&stamp, &version); err != nil || stamp != "2026-01-02T04:00:00.250000000Z" || version != 3 {
+		t.Fatalf("migrated to %s, version %d: %v", stamp, version, err)
+	}
+}
+
+func TestLateMigrationFailureKeepsOriginalSchema(t *testing.T) {
+	dir, path := oldDatabase(t, 13)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// An invalid legacy date makes migration 15 fail, after 14 succeeded.
+	if _, err := db.Exec("UPDATE posts SET published_on='broken'"); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	for range 2 {
+		if s, err := OpenPath(t.Context(), path); err == nil {
+			s.Close()
+			t.Fatal("expected migration to fail")
+		}
+		if got := schemaOf(t, path); got != 13 {
+			t.Fatalf("partly upgraded to %d", got)
+		}
+	}
+	for _, name := range backupFiles(t, dir) {
+		if got := schemaOf(t, filepath.Join(dir, BackupDir, name)); got != 13 {
+			t.Fatalf("backup is at schema %d", got)
+		}
+	}
+}

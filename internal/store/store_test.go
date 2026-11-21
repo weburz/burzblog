@@ -524,3 +524,21 @@ func TestAutosaveFoldsRevisionsWithinASession(t *testing.T) {
 		t.Fatalf("revisions after a long pause = %v, want [12 10 9 8 7 6 5 4 2 1]", got)
 	}
 }
+
+func TestListingUsesInstantsAndStandaloneOffset(t *testing.T) {
+	s := open(t)
+	for slug, raw := range map[string]string{"newest": "2026-01-01T23:00:00-05:00", "middle": "2026-01-02T01:00:00.000000001Z", "oldest": "2026-01-02T01:00:00Z"} {
+		at, err := time.Parse(time.RFC3339Nano, raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = s.CreatePost(t.Context(), &post.Post{Slug: slug, Title: slug, Status: post.Published, PublishedOn: &at}, "ada")
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	list, total, err := s.ListPublished(t.Context(), "", "", 0, 1)
+	if err != nil || total != 3 || len(list) != 2 || list[0].Post.Slug != "middle" || list[1].Post.Slug != "oldest" {
+		t.Fatalf("page = %+v, total %d, err %v", list, total, err)
+	}
+}

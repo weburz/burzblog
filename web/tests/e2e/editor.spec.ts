@@ -44,6 +44,7 @@ test("writing in the browser and the terminal never loses work", async ({
   await page.getByLabel("Title", { exact: true }).fill(`${title} `);
   await body.fill("# Hello\n\nWritten in the browser.\n");
   await autosaved();
+  await expect(page.getByLabel("Title", { exact: true })).toHaveValue(title + " ");
   // The slug followed the title.
   await expect(page).toHaveURL(new RegExp(`/posts/${slug}$`));
   await page.reload();

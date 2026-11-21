@@ -123,7 +123,11 @@ func (s *Server) reader(next http.HandlerFunc) http.HandlerFunc {
 		id, err := s.resolve(r)
 		if errors.Is(err, auth.ErrNoSession) {
 			w.Header().Set("WWW-Authenticate", `Bearer realm="burzblog"`)
-			fail(w, http.StatusUnauthorized, "authentication", "Send an API token as 'Authorization: Bearer <token>'.", "")
+			message := "Send an API token as 'Authorization: Bearer <token>'."
+			if r.Header.Get("Authorization") != "" {
+				message = "This token was not recognized. Check that it belongs to this server and is still active."
+			}
+			fail(w, http.StatusUnauthorized, "authentication", message, "")
 			return
 		}
 		if err != nil {
@@ -246,6 +250,11 @@ func fail(w http.ResponseWriter, status int, code, message, detail string) {
 
 func (s *Server) internal(w http.ResponseWriter, r *http.Request, err error) {
 	if errors.Is(err, context.Canceled) {
+		return
+	}
+	if store.IsBusy(err) {
+		w.Header().Set("Retry-After", "5")
+		fail(w, http.StatusServiceUnavailable, "busy", "The database is busy. Try again in a few seconds.", "")
 		return
 	}
 	s.log.Error("request failed", "method", r.Method, "path", r.URL.Path, "err", err)

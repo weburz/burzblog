@@ -30,15 +30,17 @@ func (a *App) loginCmd() *cobra.Command {
 			}
 			if username == "" {
 				if username, err = a.prompt("Username: "); err != nil {
-					return errors.New("enter a username, or pass --username")
+					return usagef("enter a username, or pass --username")
 				}
 			}
-			password, err := a.secret("Password: ")
-			if passwordStdin && err == nil {
-				password = strings.TrimSpace(password)
+			var password string
+			if passwordStdin {
+				password, err = a.line()
+			} else {
+				password, err = a.secret("Password: ")
 			}
 			if err != nil || password == "" {
-				return errors.New("enter your password")
+				return usagef("enter your password")
 			}
 			host, _ := os.Hostname()
 			name := "CLI"
@@ -63,14 +65,14 @@ func (a *App) loginCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			old, _ := a.loadConfig()
+			old, _ := a.savedConfig()
 			if err := a.saveConfig(&Config{Server: server, Token: tok.Secret, TokenID: tok.ID, Username: tok.Username}); err != nil {
 				return err
 			}
 			// Signing in again replaces the old token; revoke it so it does
 			// not linger in the panel's token list.
-			if old != nil && old.Server == server && old.TokenID != 0 && old.TokenID != tok.ID {
-				_ = client.New(server, tok.Secret, "").RevokeToken(c, old.TokenID)
+			if old != nil && old.TokenID != 0 && old.Token != "" && (old.Server != server || old.TokenID != tok.ID) {
+				_ = client.New(old.Server, old.Token, "").RevokeToken(c, old.TokenID)
 			}
 			fmt.Fprintf(a.Out, "%s Signed in to %s as %s.\n", a.paint(green, "✓"), server, a.paint(bold, clean(tok.Username)))
 			fmt.Fprintln(a.Out, "  Try: burzblog list")
@@ -107,7 +109,7 @@ func (a *App) logoutCmd() *cobra.Command {
 		Short: "Sign this computer out and revoke its token",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := a.loadConfig()
+			cfg, err := a.savedConfig()
 			if err != nil {
 				return err
 			}
@@ -151,6 +153,13 @@ func (a *App) whoamiCmd() *cobra.Command {
 			name, err := cl.Whoami(c)
 			if err != nil {
 				return err
+			}
+			if name == "" {
+				if a.asJSON {
+					return a.emit(map[string]string{"scope": "export", "server": cfg.Server})
+				}
+				fmt.Fprintf(a.Out, "Build token on %s (published content only)\n", cfg.Server)
+				return nil
 			}
 			if a.asJSON {
 				return a.emit(struct {

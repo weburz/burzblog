@@ -364,11 +364,18 @@ func Restore(ctx context.Context, r io.Reader, pass PassphraseFunc, dataDir stri
 		for i := len(moved) - 1; i >= 0; i-- {
 			os.Rename(moved[i][1], moved[i][0])
 		}
+		// Remove the empty directory only when every moved file was recovered.
+		if res.Replaced != "" {
+			_ = os.Remove(res.Replaced)
+		}
 	}
 	if existing {
 		res.Replaced = filepath.Join(dataDir, store.BackupDir,
 			ReplacedPrefix+now().UTC().Format("20060102T150405.000Z"))
-		if err := os.MkdirAll(res.Replaced, 0o700); err != nil {
+		if err := os.MkdirAll(filepath.Dir(res.Replaced), 0o700); err != nil {
+			return nil, fmt.Errorf("create restore backup directory: %w", err)
+		}
+		if err := os.Mkdir(res.Replaced, 0o700); err != nil {
 			return nil, fmt.Errorf("make %s: %w", res.Replaced, err)
 		}
 		for _, name := range []string{store.FileName, store.FileName + "-wal", store.FileName + "-shm", media.DirName} {

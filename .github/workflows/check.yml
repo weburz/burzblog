@@ -32,6 +32,7 @@ jobs:
         with:
           version: '3.54.0'
       - run: task go:check
+      - run: task vuln
   web:
     runs-on: ubuntu-24.04
     timeout-minutes: 15

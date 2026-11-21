@@ -357,6 +357,10 @@ func TestExportWithEnvironmentToken(t *testing.T) {
 	}
 	e.vars["BURZBLOG_SERVER"] = e.url
 	e.vars["BURZBLOG_TOKEN"] = secret
+	who := decode(t, e.must("", "whoami", "--json"))
+	if who["scope"] != "export" || who["server"] != e.url || who["username"] != nil {
+		t.Fatalf("export token identity: %v", who)
+	}
 	out := e.must("", "export", "--out", t.TempDir())
 	if !strings.Contains(out, "Exported 1") {
 		t.Errorf("export with env token = %q", out)
