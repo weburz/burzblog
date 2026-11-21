@@ -67,7 +67,7 @@
           <nav class="doc-toc" aria-label="On this page">
             <p>On this page</p>
             <ul>
-              <li><a href="#build-and-run-with-compose">Build and run with Compose</a></li>
+              <li><a href="#run-the-published-image">Run the published image</a></li>
               <li><a href="#published-images">Published images</a></li>
               <li><a href="#coolify">Coolify</a></li>
               <li><a href="#backups">Backups</a></li>
@@ -77,10 +77,12 @@
 <p>The plain binary under systemd is the simplest way to run BurzBlog (see
 <a href="self-hosting.html">self-hosting</a>). If you prefer containers, the image holds the
 same single binary on a distroless base, under 20 MB.</p>
-<h2 id="build-and-run-with-compose">Build and run with Compose</h2>
-<pre><code class="language-sh">cp .env.example .env          # set BURZBLOG_ORIGIN, BURZBLOG_UID/GID
-mkdir -m 700 data             # owned by BURZBLOG_UID
-task docker:build
+<h2 id="run-the-published-image">Run the published image</h2>
+<pre><code class="language-sh">curl -fsSLo compose.yaml https://raw.githubusercontent.com/weburz/burzblog/main/compose.dist.yaml
+curl -fsSLo .env https://raw.githubusercontent.com/weburz/burzblog/main/.env.example
+chmod 600 .env
+# Set BURZBLOG_ORIGIN in .env and set BURZBLOG_UID/GID to your id -u and id -g.
+mkdir -m 700 data
 docker compose up -d
 docker compose logs burzblog       # open the &quot;/setup#token=...&quot; link it prints
 </code></pre>
@@ -100,8 +102,13 @@ replacing the image never touches your posts;</li>
 <li>publishes port 8080 on host loopback only, for your HTTPS reverse proxy;</li>
 <li>reports health with <code>burzblog healthcheck</code> against <code>/healthz</code>.</li>
 </ul>
-<p><code>compose.dist.yaml</code> is the same service for a published image; pin
-<code>BURZBLOG_IMAGE</code> to a digest.</p>
+<p>To build from a checkout, copy <code>.env.example</code> to <code>.env</code>, set the same
+origin and ownership, create <code>data/</code> and run <code>docker compose up -d --build</code>.
+The repository’s <code>compose.yaml</code> builds the local image.</p>
+<p>To supply a file-backed secret, mount the secret read-only in the container
+and set the matching <code>_FILE</code> variable to its path inside the container.
+For example, mount <code>snapshot-passphrase</code> at <code>/run/secrets/snapshot-passphrase</code>
+and set <code>BURZBLOG_SNAPSHOT_PASSPHRASE_FILE=/run/secrets/snapshot-passphrase</code>.</p>
 <h2 id="published-images">Published images</h2>
 <p>Each release is published to <code>ghcr.io/weburz/burzblog</code> for <code>linux/amd64</code> and
 <code>linux/arm64</code> with the tags <code>X.Y.Z</code> (never overwritten), <code>X.Y</code>, <code>X</code> and
@@ -133,8 +140,7 @@ and <code>BURZBLOG_ORIGIN</code> is set from it, so there is nothing to copy by 
 create the first account (restart the service for a new link).</li>
 </ol>
 <p>Optional settings go in the environment variables of the resource:
-<code>BURZBLOG_SITE_URL</code> and <code>BURZBLOG_DEPLOY_HOOK</code> (uncomment them in the file; the
-hook is a secret, mark it as such), and <code>BURZBLOG_VERSION</code> to choose the image.</p>
+<code>BURZBLOG_SITE_URL</code> and <code>BURZBLOG_DEPLOY_HOOK</code> (mark the hook as a secret), and <code>BURZBLOG_VERSION</code> to choose the image.</p>
 <p>The database and uploads live in the <code>burzblog-data</code> named volume. Coolify's
 scheduled backups cover the databases it manages, not a Compose resource's
 volumes, so back the blog up yourself (see <a href="#backups">Backups</a>). One instance
@@ -176,7 +182,7 @@ docker compose start burzblog
 </code></pre>
 <p>From the bucket instead, pass the same <code>BURZBLOG_S3_*</code> settings and the
 passphrase to the one-off container and restore <code>s3://example-backups/blog-name/</code>.</p>
-<p>The root filesystem is read-only, so check a snapshot in the data volume:
+<p>The Compose files mount a temporary workspace at <code>/tmp</code>. To verify a large snapshot using space on the data volume:
 <code>docker compose run --rm -T burzblog snapshot verify - --work /data &lt; blog.tar.gz.enc</code>.</p>
 <h2 id="checks">Checks</h2>
 <p><code>task docker:check</code> lints the Dockerfile with Hadolint, validates the Caddy and

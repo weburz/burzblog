@@ -3,6 +3,7 @@ package sitedocs
 import (
 	"os"
 	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -27,6 +28,9 @@ func TestPinnedVersionsFollowTheChangelog(t *testing.T) {
 	latest := latestRelease(t)
 	for _, c := range []struct{ file, want string }{
 		{"../../deploy/coolify.yaml", "${BURZBLOG_VERSION:-" + latest + "}"},
+		{"../../.env.example", "BURZBLOG_IMAGE=ghcr.io/weburz/burzblog:" + latest},
+		{"../../site/index.html", "Download BurzBlog " + latest + "<"},
+		{"../../site/index.html", "BurzBlog " + latest + " downloads"},
 		{"../../docs/terminal.md", "BURZBLOG_VERSION=v" + latest},
 	} {
 		b, err := os.ReadFile(c.file)
@@ -36,5 +40,23 @@ func TestPinnedVersionsFollowTheChangelog(t *testing.T) {
 		if !regexp.MustCompile(regexp.QuoteMeta(c.want)).Match(b) {
 			t.Errorf("%s does not pin %s: update it to the newest CHANGELOG release", c.file, latest)
 		}
+	}
+}
+
+func TestWebsiteLinksDownloadTheCurrentRelease(t *testing.T) {
+	page, err := os.ReadFile("../../site/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	latest := latestRelease(t)
+	re := regexp.MustCompile(`href="https://github\.com/weburz/burzblog/releases/download/v([^/"]+)/([^"]+)"`)
+	links := re.FindAllStringSubmatch(string(page), -1)
+	for _, link := range links {
+		if link[1] != latest || !strings.Contains(link[2], "v"+latest) {
+			t.Errorf("outdated download: %s", link[0])
+		}
+	}
+	if len(links) < 7 {
+		t.Fatalf("found %d download links, want the six binaries and checksums", len(links))
 	}
 }
