@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
-import { errorMessage, request } from "../utils/api";
+import { computed, onMounted, onUnmounted, ref } from "vue";
+import { ApiError, errorMessage, request } from "../utils/api";
 import { minPassword, passwordProblem, setupTokenFromHash } from "../utils/setup";
 
 useHead({ title: "Create the first account" });
 const { createFirstAccount } = useCurrentSession();
 
+const toast = useToast();
 const ready = ref(false);
 // Held in memory only; the address bar is cleaned as soon as the page opens.
 const token = ref("");
@@ -15,17 +16,24 @@ const repeat = ref("");
 const busy = ref(false);
 const error = ref("");
 
-onMounted(async () => {
+const readSetupLink = () => {
+  if (!window.location.hash) return;
+  error.value = "";
   token.value = setupTokenFromHash(window.location.hash);
-  if (window.location.hash)
-    window.history.replaceState(
-      window.history.state,
-      "",
-      window.location.pathname + window.location.search,
-    );
+  window.history.replaceState(
+    window.history.state,
+    "",
+    window.location.pathname + window.location.search,
+  );
+};
+onUnmounted(() => window.removeEventListener("hashchange", readSetupLink));
+onMounted(async () => {
+  readSetupLink();
+  window.addEventListener("hashchange", readSetupLink);
   try {
     const { needed } = await request<{ needed: boolean }>("/api/setup");
     if (!needed) {
+      toast.add({ title: "Setup is complete. This server already has an account." });
       await navigateTo("/", { replace: true });
       return;
     }
@@ -42,13 +50,16 @@ const submit = async () => {
     error.value = problem;
     return;
   }
+  const submittedToken = token.value;
   busy.value = true;
   error.value = "";
   try {
-    await createFirstAccount(token.value, name.value.trim(), password.value);
+    await createFirstAccount(submittedToken, name.value.trim(), password.value);
     password.value = repeat.value = "";
     await navigateTo("/", { replace: true });
   } catch (cause) {
+    if (token.value !== submittedToken) return;
+    if (cause instanceof ApiError && cause.code === "setup_token") token.value = "";
     error.value = errorMessage(cause);
   } finally {
     busy.value = false;
@@ -72,7 +83,8 @@ const submit = async () => {
       <div class="login-intro">
         <h1 class="login-title">Create the first account</h1>
         <p class="muted">
-          This account can write, publish and sign others in. You only do this once.
+          This is the admin account. Add more people later with
+          <code>burzblog user add</code> on the server.
         </p>
       </div>
       <div class="field">
@@ -84,7 +96,7 @@ const submit = async () => {
           autocapitalize="none"
           spellcheck="false"
           required
-          maxlength="64"
+          maxlength="128"
           autofocus
           class="w-full"
           size="xl"

@@ -117,7 +117,10 @@ main() {
   machine=$(uname -m)
   case "$machine" in
     x86_64 | amd64) arch=amd64 ;;
-    aarch64 | arm64) arch=arm64 ;;
+    aarch64 | arm64)
+      arch=arm64
+      if [ "$os" = linux ] && [ "$(getconf LONG_BIT 2>/dev/null || true)" = 32 ]; then arch=arm; fi
+      ;;
     armv7l | armv6l) arch=arm ;;
     *) fail "unsupported architecture: $machine" ;;
   esac
@@ -185,6 +188,14 @@ main() {
     return 1
   fi
 
+  if [ -f "$dir/burzblog" ]; then
+    if [ -x "$dir/burzblog" ] && [ "$(sha256_of "$dir/burzblog")" = "$want" ]; then
+      say "BurzBlog $version is already installed at $dir/burzblog"
+      return 0
+    fi
+    say "Replacing the existing $dir/burzblog with $version. Pinning an older release downgrades this install."
+  fi
+
   # Stage inside $dir so the final mv is a same-filesystem rename: the old
   # binary is replaced atomically and never left truncated.
   staged=$dir/.burzblog.install.$$
@@ -204,7 +215,8 @@ main() {
 
   "$dir/burzblog" --version || true
   say ""
-  say "Next: burzblog login https://your-server"
+  say "To run a server: burzblog serve"
+  say "To connect to an existing server: burzblog login https://your-server"
 }
 
 main "$@"

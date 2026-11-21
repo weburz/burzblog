@@ -16,18 +16,19 @@ beforeEach(() => {
 describe("setup notice", () => {
   it("explains how to create the first account when none exists", async () => {
     request.mockResolvedValue({ needed: true });
-    const wrapper = mount(SetupNotice);
+    const wrapper = mount(SetupNotice, { slots: { default: "Sign in" } });
     await flushPromises();
     expect(request).toHaveBeenCalledWith("/api/setup");
     expect(wrapper.text()).toContain("No accounts yet");
+    expect(wrapper.text()).not.toContain("Sign in");
     expect(wrapper.text()).toContain("burzblog serve");
     expect(wrapper.text()).toContain("burzblog user add <name>");
   });
-  it("says nothing once accounts exist", async () => {
+  it("shows sign-in once accounts exist", async () => {
     request.mockResolvedValue({ needed: false });
-    const wrapper = mount(SetupNotice);
+    const wrapper = mount(SetupNotice, { slots: { default: "Sign in" } });
     await flushPromises();
-    expect(wrapper.text()).toBe("");
+    expect(wrapper.text()).toBe("Sign in");
   });
   it("says nothing when the server cannot be asked", async () => {
     request.mockRejectedValue(new ApiError(0, "network", "offline"));

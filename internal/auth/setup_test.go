@@ -185,3 +185,12 @@ func TestSetupGuessesAreLimited(t *testing.T) {
 		t.Errorf("another client is blocked too: %v", err)
 	}
 }
+
+func TestUsernameLengthCountsCharacters(t *testing.T) {
+	if err := CheckUsername(strings.Repeat("ü", 64)); err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckUsername(strings.Repeat("ü", 65)); err == nil {
+		t.Fatal("accepted 65 characters")
+	}
+}

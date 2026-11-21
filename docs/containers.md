@@ -4,12 +4,14 @@ The plain binary under systemd is the simplest way to run BurzBlog (see
 [self-hosting](self-hosting.md)). If you prefer containers, the image holds the
 same single binary on a distroless base, under 20 MB.
 
-## Build and run with Compose
+## Run the published image
 
 ```sh
-cp .env.example .env          # set BURZBLOG_ORIGIN, BURZBLOG_UID/GID
-mkdir -m 700 data             # owned by BURZBLOG_UID
-task docker:build
+curl -fsSLo compose.yaml https://raw.githubusercontent.com/weburz/burzblog/main/compose.dist.yaml
+curl -fsSLo .env https://raw.githubusercontent.com/weburz/burzblog/main/.env.example
+chmod 600 .env
+# Set BURZBLOG_ORIGIN in .env and set BURZBLOG_UID/GID to your id -u and id -g.
+mkdir -m 700 data
 docker compose up -d
 docker compose logs burzblog       # open the "/setup#token=..." link it prints
 ```
@@ -31,8 +33,14 @@ The container:
 - publishes port 8080 on host loopback only, for your HTTPS reverse proxy;
 - reports health with `burzblog healthcheck` against `/healthz`.
 
-`compose.dist.yaml` is the same service for a published image; pin
-`BURZBLOG_IMAGE` to a digest.
+To build from a checkout, copy `.env.example` to `.env`, set the same
+origin and ownership, create `data/` and run `docker compose up -d --build`.
+The repository’s `compose.yaml` builds the local image.
+
+To supply a file-backed secret, mount the secret read-only in the container
+and set the matching `_FILE` variable to its path inside the container.
+For example, mount `snapshot-passphrase` at `/run/secrets/snapshot-passphrase`
+and set `BURZBLOG_SNAPSHOT_PASSPHRASE_FILE=/run/secrets/snapshot-passphrase`.
 
 ## Published images
 
@@ -72,8 +80,7 @@ Compose resource:
    create the first account (restart the service for a new link).
 
 Optional settings go in the environment variables of the resource:
-`BURZBLOG_SITE_URL` and `BURZBLOG_DEPLOY_HOOK` (uncomment them in the file; the
-hook is a secret, mark it as such), and `BURZBLOG_VERSION` to choose the image.
+`BURZBLOG_SITE_URL` and `BURZBLOG_DEPLOY_HOOK` (mark the hook as a secret), and `BURZBLOG_VERSION` to choose the image.
 
 The database and uploads live in the `burzblog-data` named volume. Coolify's
 scheduled backups cover the databases it manages, not a Compose resource's
@@ -132,7 +139,7 @@ docker compose start burzblog
 From the bucket instead, pass the same `BURZBLOG_S3_*` settings and the
 passphrase to the one-off container and restore `s3://example-backups/blog-name/`.
 
-The root filesystem is read-only, so check a snapshot in the data volume:
+The Compose files mount a temporary workspace at `/tmp`. To verify a large snapshot using space on the data volume:
 `docker compose run --rm -T burzblog snapshot verify - --work /data < blog.tar.gz.enc`.
 
 ## Checks

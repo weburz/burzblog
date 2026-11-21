@@ -17,11 +17,14 @@ type Version struct {
 
 var versionPattern = regexp.MustCompile(`^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$`)
 
+// Git describes builds past a tag with a distance and an abbreviated commit.
+var gitDescribeSuffix = regexp.MustCompile(`-[0-9]+-g[0-9a-f]+(?:-dirty)?$|^v[0-9]+\.[0-9]+\.[0-9]+-dirty$`)
+
 // ParseVersion parses a release tag. The leading "v" is required, as in
 // every BurzBlog tag.
 func ParseVersion(s string) (Version, error) {
 	m := versionPattern.FindStringSubmatch(s)
-	if m == nil {
+	if m == nil || gitDescribeSuffix.MatchString(s) {
 		return Version{}, fmt.Errorf("%q is not a version like v1.4.0", s)
 	}
 	var v Version

@@ -142,6 +142,9 @@ func (a *App) upgrade(parent context.Context, src releaseSource, want string, ch
 			}{a.Version, target, available}); err != nil {
 				return err
 			}
+		} else if available && src.GOOS == "windows" {
+			asset := release.AssetName(target, src.GOOS, src.GOARCH)
+			fmt.Fprintf(a.Out, "Update available: %s (running %s). Download %s\n", target, a.Version, release.AssetURL(src.DownloadBase, target, asset))
 		} else if available {
 			fmt.Fprintf(a.Out, "Update available: %s (running %s). Run `burzblog upgrade`.\n", target, a.Version)
 		} else {

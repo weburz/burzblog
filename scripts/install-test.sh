@@ -167,6 +167,23 @@ else
   bad "install over existing binary leaves no temp files"; cat "$work/out"; ls -A "$work/bin"
 fi
 
+# The same release can be installed twice. Restore its executable bit if lost.
+repeat_install() {
+  env PATH="$fakebin:$PATH" BURZBLOG_BASE_URL="$base" BURZBLOG_INSTALL_DIR="$work/bin" BURZBLOG_VERSION=v2.0.0 \
+    sh "$installer" >"$work/out" 2>&1
+}
+if repeat_install && grep -q "already installed" "$work/out"; then
+  pass "identical release is recognized"
+else
+  bad "identical release is recognized"
+fi
+chmod 600 "$work/bin/burzblog"
+if repeat_install && [ -x "$work/bin/burzblog" ]; then
+  pass "reinstall repairs a missing executable bit"
+else
+  bad "reinstall repairs a missing executable bit"
+fi
+
 # A failed install (bad checksum) over an existing binary keeps the old one.
 if env PATH="$fakebin:$PATH" BURZBLOG_BASE_URL="$base" BURZBLOG_INSTALL_DIR="$work/bin" BURZBLOG_VERSION=v3.0.0 \
   sh "$installer" >"$work/out" 2>&1; then

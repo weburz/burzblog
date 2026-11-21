@@ -251,9 +251,8 @@ does no image processing.
 
 What is accepted is decided from the file's first bytes, never from the name or
 the `Content-Type` the client sends: JPEG, PNG, GIF, WebP, AVIF and PDF. JPEG,
-PNG and GIF must also decode. Anything else, SVG included, is 415
-`unsupported_type`; a file that starts like a PNG, JPEG or GIF but does not
-decode is 422 `validation`. The size limit is 10 MiB, set with
+PNG and GIF must have a readable image header with dimensions. Anything else, SVG included, is 415
+`unsupported_type`; a file that starts like a PNG, JPEG or GIF with an unreadable header is 422 `validation`. The size limit is 10 MiB, set with
 `burzblog serve --max-upload-mb` or `BURZBLOG_MAX_UPLOAD_MB` (up to 256); a
 bigger file is 413 `too_large`. A server without media storage answers 501
 `media_disabled`.
