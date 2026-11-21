@@ -642,4 +642,11 @@ test("edits made during a save reach the server on the next save", async ({
         (await (await request.get(endpoint, { headers: api.headers })).json()).body,
     )
     .toBe("Second edit");
+  const saved = page.waitForResponse(
+    (r) => r.request().method() === "PUT" && r.url().endsWith(endpoint),
+  );
+  await body.fill("Second edit\n");
+  await saved;
+  await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+  await expect(body).toHaveValue("Second edit\n");
 });

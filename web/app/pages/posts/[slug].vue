@@ -337,14 +337,18 @@ const persist = async (
     post.value = saved;
     const baseline = editable(saved);
     if (auto) {
+      // The store treats an optional final newline as the same Markdown.
+      baseline.body = sent.body;
       // Preserve whitespace in fields the writer can still be typing into.
       for (const field of [
         "title",
         "description",
+        "coverUrl",
         "coverAlt",
         "author",
         "seoTitle",
         "seoDescription",
+        "canonicalUrl",
       ] as const) {
         if (sent[field].trim() === baseline[field]) baseline[field] = sent[field];
       }
@@ -393,14 +397,13 @@ const save = async (
   auto = false,
   keepalive = false,
 ): Promise<boolean> => {
-  while (pendingSave) {
-    if (!(await pendingSave)) return false;
-  }
-  pendingSave = persist(version, auto, keepalive);
+  const write = () => persist(version, auto, keepalive);
+  const current = pendingSave ? pendingSave.then((ok) => ok && write()) : write();
+  pendingSave = current;
   try {
-    return await pendingSave;
+    return await current;
   } finally {
-    pendingSave = undefined;
+    if (pendingSave === current) pendingSave = undefined;
   }
 };
 
