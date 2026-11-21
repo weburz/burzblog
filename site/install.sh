@@ -189,7 +189,7 @@ main() {
   fi
 
   if [ -f "$dir/burzblog" ]; then
-    if [ "$(sha256_of "$dir/burzblog")" = "$want" ]; then
+    if [ -x "$dir/burzblog" ] && [ "$(sha256_of "$dir/burzblog")" = "$want" ]; then
       say "BurzBlog $version is already installed at $dir/burzblog"
       return 0
     fi
