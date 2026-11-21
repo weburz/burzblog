@@ -307,3 +307,15 @@ func TestHelpTexts(t *testing.T) {
 		t.Errorf("pull --help does not explain -o: %q", help)
 	}
 }
+
+func TestUnattendedLoginPreservesPasswordAndWritesJSONErrors(t *testing.T) {
+	e := newEnv(t)
+	const password = " leading and trailing "
+	e.must(password+"\n", "user", "add", "ci")
+	if _, errOut, code := e.run(password+"\n", "login", e.url, "-u", "ci", "--password-stdin", "--json"); code != 0 || errOut != "" {
+		t.Fatalf("login = %d, %q", code, errOut)
+	}
+	if _, errOut, code := e.run("wrong\n", "login", e.url, "-u", "ci", "--password-stdin", "--json"); code != ExitAuth || !json.Valid([]byte(errOut)) {
+		t.Fatalf("error = %d, %q", code, errOut)
+	}
+}

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -80,6 +79,9 @@ func TestInspectFile(t *testing.T) {
 	if err := s.CopyTo(ctx, copyPath); err == nil {
 		t.Error("CopyTo overwrote an existing file")
 	}
+	if _, err := InspectFile(ctx, copyPath); err != nil {
+		t.Fatalf("second copy damaged existing backup: %v", err)
+	}
 
 	garbage := filepath.Join(t.TempDir(), "garbage.db")
 	os.WriteFile(garbage, []byte(strings.Repeat("not a database ", 100)), 0o600)
@@ -94,9 +96,6 @@ func TestInspectFile(t *testing.T) {
 }
 
 func TestOpenSharedHoldsTheLock(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("no flock on Windows")
-	}
 	ctx := context.Background()
 	dir := t.TempDir()
 	s, err := OpenShared(ctx, dir)

@@ -56,7 +56,9 @@ const send = async (
       body: payload,
       // A request the page leaves behind (pagehide) survives it when small enough.
       keepalive:
-        keepalive && typeof payload === "string" && payload.length < keepaliveLimit,
+        keepalive &&
+        typeof payload === "string" &&
+        new TextEncoder().encode(payload).byteLength < keepaliveLimit,
     });
   } catch {
     throw new ApiError(

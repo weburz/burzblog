@@ -195,7 +195,7 @@ func (c *Client) RevokeToken(ctx context.Context, id int64) error {
 	return c.json(ctx, http.MethodDelete, "/api/tokens/"+strconv.FormatInt(id, 10), nil, nil)
 }
 
-// Whoami returns the username the token belongs to.
+// Whoami returns the account name for a write token, or an empty name for a valid export token.
 func (c *Client) Whoami(ctx context.Context) (string, error) {
 	var s struct {
 		Authenticated bool   `json:"authenticated"`
@@ -205,7 +205,12 @@ func (c *Client) Whoami(ctx context.Context) (string, error) {
 		return "", err
 	}
 	if !s.Authenticated {
-		return "", &Error{Status: 401, Code: "authentication", Message: "This token is not valid any more. Run `burzblog login` again."}
+		// Export tokens are anonymous on /api/session. Validate the token
+		// using its published-content permission without revealing an account.
+		if err := c.json(ctx, http.MethodGet, "/api/content/posts?limit=1", nil, nil); err != nil {
+			return "", err
+		}
+		return "", nil
 	}
 	return s.Username, nil
 }

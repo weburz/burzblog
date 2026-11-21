@@ -187,6 +187,9 @@ func unsafeRune(r rune) bool {
 // messages: line breaks are kept.
 func cleanLines(s string) string {
 	return strings.Map(func(r rune) rune {
+		if r == '\t' {
+			return ' '
+		}
 		if unsafeRune(r) && r != '\n' {
 			return unicode.ReplacementChar
 		}
@@ -207,7 +210,11 @@ func (a *App) failure(err error) {
 			fmt.Fprintln(a.Err, "      ", cleanLines(apiErr.Detail))
 		}
 		if apiErr.Status == 401 && apiErr.Code == "authentication" {
-			fmt.Fprintln(a.Err, "       Run `burzblog login <server>` to sign in again.")
+			if a.Getenv("BURZBLOG_TOKEN") != "" {
+				fmt.Fprintln(a.Err, "       Check BURZBLOG_TOKEN for this server.")
+			} else {
+				fmt.Fprintln(a.Err, "       Run `burzblog login <server>` to sign in again.")
+			}
 		}
 		return
 	}
@@ -226,7 +233,7 @@ func (a *App) configPath() string {
 	return filepath.Join(a.ConfigDir, "config.json")
 }
 
-func (a *App) loadConfig() (*Config, error) {
+func (a *App) savedConfig() (*Config, error) {
 	var c Config
 	raw, err := os.ReadFile(a.configPath())
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -237,14 +244,31 @@ func (a *App) loadConfig() (*Config, error) {
 			return nil, fmt.Errorf("%s is not valid JSON; delete it and run `burzblog login` again", a.configPath())
 		}
 	}
-	// Environment wins, so reader builds can run without a config file.
+	return &c, nil
+}
+
+// Environment overrides apply to requests, never to revoking a saved login.
+func (a *App) loadConfig() (*Config, error) {
+	c, err := a.savedConfig()
+	if err != nil {
+		return nil, err
+	}
 	if v := a.Getenv("BURZBLOG_SERVER"); v != "" {
-		c.Server = v
+		server, err := normalizeServer(v)
+		if err != nil {
+			return nil, fmt.Errorf("BURZBLOG_SERVER: %w", err)
+		}
+		if c.Server != server {
+			c.Token = ""
+			c.TokenID = 0
+			c.Username = ""
+		}
+		c.Server = server
 	}
 	if v := a.Getenv("BURZBLOG_TOKEN"); v != "" {
 		c.Token = v
 	}
-	return &c, nil
+	return c, nil
 }
 
 func (a *App) saveConfig(c *Config) error {
@@ -340,15 +364,21 @@ func (a *App) line() (string, error) {
 }
 
 func (a *App) prompt(label string) (string, error) {
-	fmt.Fprint(a.Err, label)
+	if a.terminal() && !a.asJSON {
+		fmt.Fprint(a.Err, label)
+	}
 	return a.line()
 }
 
 func (a *App) secret(label string) (string, error) {
-	fmt.Fprint(a.Err, label)
 	if f, ok := a.In.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
+		if !a.asJSON {
+			fmt.Fprint(a.Err, label)
+		}
 		b, err := term.ReadPassword(int(f.Fd()))
-		fmt.Fprintln(a.Err)
+		if !a.asJSON {
+			fmt.Fprintln(a.Err)
+		}
 		return string(b), err
 	}
 	return a.line()

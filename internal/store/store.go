@@ -15,7 +15,8 @@ import (
 	"time"
 
 	// Pure-Go SQLite driver, so one cross-compiled binary runs on a Pi.
-	_ "modernc.org/sqlite"
+	"modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 
 	"github.com/weburz/burzblog/internal/post"
 )
@@ -31,6 +32,12 @@ var (
 	// ErrLastAdmin means a change would leave BurzBlog without an admin.
 	ErrLastAdmin = errors.New("it is the last admin")
 )
+
+// IsBusy reports a SQLite write lock timeout, including extended BUSY codes.
+func IsBusy(err error) bool {
+	var dbErr *sqlite.Error
+	return errors.As(err, &dbErr) && dbErr.Code()&255 == sqlite3.SQLITE_BUSY
+}
 
 // Store is a handle on the database.
 type Store struct {
@@ -392,6 +399,9 @@ var migrations = []string{
 	CREATE TRIGGER media_uses_media_delete AFTER DELETE ON media BEGIN
 		DELETE FROM media_uses WHERE file_name = OLD.file_name;
 	END;`,
+	// Post writes now look up only the filenames that occur in their content.
+	`DROP TRIGGER media_uses_post_insert;
+	DROP TRIGGER media_uses_post_update;`,
 }
 
 // migrationSteps run in the migration's transaction after its SQL, for work
@@ -401,6 +411,32 @@ var migrationSteps = map[int]func(context.Context, *sql.Tx) error{
 	4:  backfillMetadata,
 	5:  backfillSearch,
 	11: backfillFeatured,
+	15: normalizePublishDates,
+}
+
+// normalizePublishDates updates only the indexed timestamp. Content versions
+// and revisions remain those of the original writes.
+func normalizePublishDates(ctx context.Context, tx *sql.Tx) error {
+	var lastID int64
+	for {
+		var id int64
+		var raw string
+		err := tx.QueryRowContext(ctx, "SELECT id,published_on FROM posts WHERE id > ? AND published_on IS NOT NULL ORDER BY id LIMIT 1", lastID).Scan(&id, &raw)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		stamp, err := time.Parse(time.RFC3339Nano, raw)
+		if err != nil {
+			return fmt.Errorf("read publish date of post %d: %w", id, err)
+		}
+		if _, err := tx.ExecContext(ctx, "UPDATE posts SET published_on = ? WHERE id = ?", publishedStamp(&stamp), id); err != nil {
+			return err
+		}
+		lastID = id
+	}
 }
 
 // backfillWords counts the words of the posts and revisions that existed
@@ -535,11 +571,13 @@ func backfillFeatured(ctx context.Context, tx *sql.Tx) error {
 	return nil
 }
 
-// schema reads the database's schema version, refusing one newer than this
+// readSchema reads the database's schema version, refusing one newer than this
 // BurzBlog.
-func (s *Store) schema(ctx context.Context) (int, error) {
+func readSchema(ctx context.Context, db interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}) (int, error) {
 	var version int
-	if err := s.db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
+	if err := db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
 		return 0, fmt.Errorf("read schema version: %w", err)
 	}
 	if version > len(migrations) {
@@ -551,7 +589,7 @@ func (s *Store) schema(ctx context.Context) (int, error) {
 // checkSchema accepts a database at any schema this BurzBlog knows, without
 // changing it.
 func (s *Store) checkSchema(ctx context.Context) error {
-	version, err := s.schema(ctx)
+	version, err := readSchema(ctx, s.db)
 	if err == nil && version == 0 {
 		err = errors.New("the database has no BurzBlog schema yet")
 	}
@@ -559,38 +597,48 @@ func (s *Store) checkSchema(ctx context.Context) error {
 }
 
 func (s *Store) migrate(ctx context.Context) error {
-	version, err := s.schema(ctx)
+	version, err := readSchema(ctx, s.db)
 	if err != nil {
 		return err
 	}
-	// A database with no schema yet is new and has nothing to lose.
-	if version > 0 && version < len(migrations) {
+	if version == len(migrations) {
+		return nil
+	}
+	// BEGIN IMMEDIATE serializes concurrent starts. Read the schema again
+	// after acquiring the lock, then commit all upgrades together so a retry
+	// always starts with the complete pre-upgrade database.
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin schema upgrade: %w", err)
+	}
+	defer tx.Rollback()
+	version, err = readSchema(ctx, tx)
+	if err != nil {
+		return err
+	}
+	if version == len(migrations) {
+		return nil
+	}
+	if version > 0 {
 		if err := s.backupBeforeMigrating(ctx, version); err != nil {
 			return err
 		}
 	}
 	for i := version; i < len(migrations); i++ {
-		tx, err := s.db.BeginTx(ctx, nil)
-		if err != nil {
-			return fmt.Errorf("begin migration %d: %w", i+1, err)
-		}
 		if _, err := tx.ExecContext(ctx, migrations[i]); err != nil {
-			tx.Rollback()
 			return fmt.Errorf("apply migration %d: %w", i+1, err)
 		}
 		if step := migrationSteps[i+1]; step != nil {
 			if err := step(ctx, tx); err != nil {
-				tx.Rollback()
 				return fmt.Errorf("apply migration %d: %w", i+1, err)
 			}
 		}
-		if _, err := tx.ExecContext(ctx, fmt.Sprintf("PRAGMA user_version = %d", i+1)); err != nil {
-			tx.Rollback()
-			return fmt.Errorf("record migration %d: %w", i+1, err)
-		}
-		if err := tx.Commit(); err != nil {
-			return fmt.Errorf("commit migration %d: %w", i+1, err)
-		}
+	}
+	if _, err := tx.ExecContext(ctx, fmt.Sprintf("PRAGMA user_version = %d", len(migrations))); err != nil {
+		return fmt.Errorf("record schema version: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit schema upgrade: %w", err)
 	}
 	return nil
 }
@@ -602,6 +650,15 @@ func (s *Store) stamp() string {
 func parseStamp(v string) time.Time {
 	t, _ := time.Parse(time.RFC3339Nano, v)
 	return t
+}
+
+// The published lists sort this column as text. Fixed-width UTC preserves
+// chronological order across offsets and fractional seconds.
+func publishedStamp(t *time.Time) sql.NullString {
+	if t == nil {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: t.UTC().Format("2006-01-02T15:04:05.000000000Z"), Valid: true}
 }
 
 func nullTime(t *time.Time) sql.NullString {

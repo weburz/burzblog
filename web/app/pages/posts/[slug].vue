@@ -100,9 +100,11 @@ const editable = (p: Post): PostDraft => ({
   updatedOn: p.updatedOn,
 });
 const same = sameDraft;
+// The editor can retain the writer’s spacing while the server stores normalized fields.
+const savedDraft = ref<PostDraft | null>(null);
 
 const dirty = computed(() =>
-  Boolean(post.value && draft.value && !same(draft.value, editable(post.value))),
+  Boolean(savedDraft.value && draft.value && !same(draft.value, savedDraft.value)),
 );
 watch(dirty, (value) => (dirtyFlag.value = value), { immediate: true });
 const archived = computed(() => post.value?.status === "archived");
@@ -118,23 +120,29 @@ useHead({
 // not lose it. It is cleared on save or discard.
 const backupKey = (slug: string) => `burzblog:unsaved:${slug}`;
 let backupTimer: ReturnType<typeof setTimeout> | undefined;
+const backupDraft = () => {
+  if (!post.value || !draft.value || recovered.value) return;
+  const key = backupKey(post.value.slug);
+  try {
+    if (dirty.value)
+      localStorage.setItem(
+        key,
+        JSON.stringify({
+          draft: draft.value,
+          version: post.value.version,
+          at: Date.now(),
+        }),
+      );
+    else localStorage.removeItem(key);
+  } catch {
+    // Storage can be unavailable or full.
+  }
+};
 watch(
   draft,
   () => {
-    if (!post.value || !draft.value) return;
     clearTimeout(backupTimer);
-    const key = backupKey(post.value.slug);
-    const value = { draft: draft.value, version: post.value.version, at: Date.now() };
-    backupTimer = setTimeout(() => {
-      try {
-        // A backup still on offer is never touched until the writer decides.
-        if (recovered.value) return;
-        if (dirty.value) localStorage.setItem(key, JSON.stringify(value));
-        else localStorage.removeItem(key);
-      } catch {
-        // Private windows may refuse storage; the editor still works.
-      }
-    }, 600);
+    backupTimer = setTimeout(backupDraft, 600);
   },
   { deep: true },
 );
@@ -149,6 +157,7 @@ const clearBackup = (slug: string) => {
 const show = (p: Post) => {
   post.value = p;
   draft.value = editable(p);
+  savedDraft.value = { ...draft.value, tags: [...draft.value.tags] };
 };
 
 const load = async () => {
@@ -297,7 +306,7 @@ const saveAs = async (
 // failed in a way that trying again later can fix.
 let autosaveTimer: ReturnType<typeof setTimeout> | undefined;
 let retryable = false;
-const save = async (
+const persist = async (
   overwriteVersion?: number,
   auto = false,
   keepalive = false,
@@ -309,7 +318,7 @@ const save = async (
   saveError.value = "";
   retryable = false;
   const from = post.value.slug;
-  const sent = { ...draft.value };
+  const sent = { ...draft.value, tags: [...draft.value.tags] };
   // A draft's slug follows its title until the writer picks one: the slug is
   // renamed with the title, and numbered when another post has it.
   const follow = followsTitle(sent);
@@ -322,14 +331,29 @@ const save = async (
       follow,
       keepalive,
     );
-    clearBackup(from);
     void refreshTags();
     conflict.value = null;
     comparing.value = false;
     post.value = saved;
-    // Take the server's copy (it trims stray spaces) unless the writer typed
-    // more while the save was in flight; that stays as unsaved changes.
-    if (same(draft.value, sent)) draft.value = editable(saved);
+    const baseline = editable(saved);
+    if (auto) {
+      // Preserve whitespace in fields the writer can still be typing into.
+      for (const field of [
+        "title",
+        "description",
+        "coverAlt",
+        "author",
+        "seoTitle",
+        "seoDescription",
+      ] as const) {
+        if (sent[field].trim() === baseline[field]) baseline[field] = sent[field];
+      }
+    }
+    savedDraft.value = baseline;
+    if (same(draft.value, sent)) draft.value = { ...baseline, tags: [...baseline.tags] };
+    else if (draft.value.slug === sent.slug) draft.value.slug = saved.slug;
+    backupDraft();
+    if (from !== saved.slug) clearBackup(from);
     if (saved.slug !== from) {
       remember(saved.slug);
       // Following the title happens while the writer types, so the address
@@ -361,6 +385,25 @@ const save = async (
   }
 };
 
+// Serialize saves. A timer or an explicit action arriving during a slow
+// request sees its result and then saves edits made since that request began.
+let pendingSave: Promise<boolean> | undefined;
+const save = async (
+  version?: number,
+  auto = false,
+  keepalive = false,
+): Promise<boolean> => {
+  while (pendingSave) {
+    if (!(await pendingSave)) return false;
+  }
+  pendingSave = persist(version, auto, keepalive);
+  try {
+    return await pendingSave;
+  } finally {
+    pendingSave = undefined;
+  }
+};
+
 const keepMine = () => conflict.value && save(conflict.value.version);
 
 // Drafts save themselves a moment after typing stops, so nothing depends on
@@ -388,6 +431,8 @@ watch(
 );
 // Switching tabs or closing the page flushes a pending autosave.
 const flushAutosave = () => {
+  clearTimeout(backupTimer);
+  backupDraft();
   if (autosaveTimer === undefined || !autosaves.value || !dirty.value) return;
   clearTimeout(autosaveTimer);
   autosaveTimer = undefined;

@@ -52,9 +52,13 @@ func (s *Store) ListPublishedFeatured(ctx context.Context, query, tag string, fe
 	}
 	stmt := `SELECT id, slug, title, description, cover_url, cover_alt, words, published_on, updated_on,
 		updated_at, version, author, seo_title, seo_description, canonical_url, featured FROM ` + from + ` WHERE ` + where + " ORDER BY " + order
-	if limit > 0 {
+	if limit > 0 || offset > 0 {
+		pageLimit := limit
+		if pageLimit == 0 {
+			pageLimit = -1
+		}
 		stmt += " LIMIT ? OFFSET ?"
-		args = append(args, limit, max(offset, 0))
+		args = append(args, pageLimit, max(offset, 0))
 	}
 	rows, err := s.db.QueryContext(ctx, stmt, args...)
 	if err != nil {

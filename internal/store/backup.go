@@ -82,6 +82,16 @@ func pruneBackups(dir string) {
 // this and other processes keep writing, where a plain file copy of a database
 // in WAL mode is not.
 func (s *Store) CopyTo(ctx context.Context, dest string) error {
+	// Reserve a new private destination. VACUUM INTO accepts an empty file.
+	// A failed second copy must never remove the existing backup.
+	f, err := os.OpenFile(dest, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		return fmt.Errorf("create database copy: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(dest)
+		return err
+	}
 	quoted := "'" + strings.ReplaceAll(dest, "'", "''") + "'"
 	if _, err := s.db.ExecContext(ctx, "VACUUM INTO "+quoted); err != nil {
 		os.Remove(dest)

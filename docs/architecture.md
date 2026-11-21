@@ -13,6 +13,11 @@ The panel and the terminal client are two ways into the same server. The
 database holds the only copy of each post; files the terminal client writes are
 working copies, never a second source of truth.
 
+Schema upgrades take the SQLite write lock, back up the original database and
+commit all outstanding migrations together. A failed upgrade rolls back to the
+original schema. Post saves update media references in the same transaction,
+looking up only filenames present in the body or cover.
+
 ## Goals
 
 - Writing in the browser that feels finished: post list, split editor with
