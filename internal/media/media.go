@@ -11,8 +11,10 @@ import (
 	"image/jpeg"
 	"image/png"
 	"io"
+	"iter"
 	"net/http"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -121,6 +123,33 @@ var nameRE = regexp.MustCompile(`^[0-9a-f]{32}\.(jpg|png|gif|webp|avif|pdf)$`)
 // produced, which also rules out any path separator or dot segment.
 func ValidName(name string) bool {
 	return nameRE.MatchString(name)
+}
+
+// ReferencedNames yields storage filenames occurring anywhere in text.
+func ReferencedNames(text string) iter.Seq[string] {
+	return func(yield func(string) bool) {
+		for start := 0; ; {
+			offset := strings.IndexByte(text[start:], '.')
+			if offset < 0 {
+				return
+			}
+			dot := start + offset
+			start = dot + 1
+			if dot < 32 {
+				continue
+			}
+			for _, kind := range kinds {
+				if !strings.HasPrefix(text[dot:], kind.Ext) {
+					continue
+				}
+				name := text[dot-32 : dot+len(kind.Ext)]
+				if ValidName(name) && !yield(name) {
+					return
+				}
+				break
+			}
+		}
+	}
 }
 
 // Name returns the storage name for a file with the given hex SHA-256 digest.

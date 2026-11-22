@@ -77,7 +77,7 @@ tasks:
     cmd: python3 -m http.server --bind 127.0.0.1 --directory site 8090
   vuln:
     desc: Scan Go dependencies for known vulnerabilities
-    cmd: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+    cmd: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
   hooks:install:
     desc: Install optional local pre-commit and Crisp commit-message hooks
     cmd: pre-commit install

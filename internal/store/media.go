@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/weburz/burzblog/internal/media"
+	"github.com/weburz/burzblog/internal/post"
 )
 
 // Media is one uploaded file. The bytes are not in the database: FileName
@@ -249,4 +252,25 @@ func (s *Store) MediaSizes(ctx context.Context, fileNames []string) (map[string]
 		}
 	}
 	return sizes, nil
+}
+
+// replaceMediaUses keeps the historical substring match, including bare names
+// and links on an old origin. The upload trigger handles files added later.
+func replaceMediaUses(ctx context.Context, tx *sql.Tx, p *post.Post) error {
+	if _, err := tx.ExecContext(ctx, "DELETE FROM media_uses WHERE post_id = ?", p.ID); err != nil {
+		return fmt.Errorf("clear post media references: %w", err)
+	}
+	seen := map[string]bool{}
+	for _, source := range []string{p.Body, p.CoverURL} {
+		for name := range media.ReferencedNames(source) {
+			if seen[name] {
+				continue
+			}
+			seen[name] = true
+			if _, err := tx.ExecContext(ctx, "INSERT INTO media_uses (post_id,file_name) SELECT ?,file_name FROM media WHERE file_name = ?", p.ID, name); err != nil {
+				return fmt.Errorf("record post media reference: %w", err)
+			}
+		}
+	}
+	return nil
 }
