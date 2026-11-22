@@ -145,7 +145,7 @@ func isYAML11Literal(value string) bool {
 }
 
 func timestamp(t time.Time) *yaml.Node {
-	return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!timestamp", Value: t.Format(time.RFC3339)}
+	return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!timestamp", Value: t.Format(time.RFC3339Nano)}
 }
 
 // Document is what Decode reads from a frontmatter document.
@@ -236,6 +236,9 @@ func Decode(doc string) (*Document, error) {
 	if root == nil {
 		// Only comments: there is no title.
 		return nil, &FieldError{"title", "must not be empty."}
+	}
+	if err := checkMappingKeys(root, "frontmatter"); err != nil {
+		return nil, err
 	}
 	if err := d.readMapping(root, false); err != nil {
 		return nil, err
@@ -546,6 +549,33 @@ func parseMapping(src, field string) (*yaml.Node, error) {
 		return nil, err
 	}
 	return root, nil
+}
+
+// checkMappingKeys runs on incoming documents. Existing extras can still be
+// exported verbatim and corrected by their author.
+func checkMappingKeys(n *yaml.Node, field string) error {
+	if n == nil {
+		return nil
+	}
+	if n.Kind == yaml.MappingNode {
+		seen := make(map[string]bool, len(n.Content)/2)
+		for i := 0; i < len(n.Content); i += 2 {
+			key := n.Content[i]
+			if key.Kind != yaml.ScalarNode {
+				return &FieldError{field, fmt.Sprintf("(line %d) keys must be plain text.", key.Line)}
+			}
+			if seen[key.Value] {
+				return &FieldError{field, fmt.Sprintf("(line %d) repeats the key %q.", key.Line, key.Value)}
+			}
+			seen[key.Value] = true
+		}
+	}
+	for _, child := range n.Content {
+		if err := checkMappingKeys(child, field); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // coreTags are the YAML core-schema tags every reader resolves the same way.

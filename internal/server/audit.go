@@ -53,6 +53,10 @@ func (s *Server) admin(next http.HandlerFunc) http.HandlerFunc {
 // addAudit appends an entry. A failure is logged, not shown: the action it
 // describes has already happened.
 func (s *Server) addAudit(ctx context.Context, a store.Audit) {
+	// The action has committed. Give its audit write its own deadline even
+	// when the originating request has already ended.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
 	if err := s.store.AddAudit(ctx, a); err != nil {
 		s.log.Error("audit entry not recorded", "action", a.Action, "err", err)
 	}
@@ -90,7 +94,7 @@ func (s *Server) recordStatus(r *http.Request, before, after *post.Post) {
 		action = "post.unpublish"
 	case before.Status == post.Archived && after.Status == post.Draft:
 		action = "post.restore"
-	case before.PublishAt == nil && after.PublishAt != nil:
+	case after.PublishAt != nil && (before.PublishAt == nil || !before.PublishAt.Equal(*after.PublishAt)):
 		action = "post.schedule"
 	case before.PublishAt != nil && after.PublishAt == nil && after.Status == post.Draft:
 		action = "post.unschedule"

@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -448,9 +447,6 @@ func TestRemoteRefusesPlainUploads(t *testing.T) {
 }
 
 func TestOneSnapshotAtATime(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("no flock on Windows")
-	}
 	b := newBlog(t)
 	unlock, err := store.LockSnapshots(b.dir)
 	if err != nil {

@@ -145,6 +145,9 @@ func (s *Server) publishScheduled(ctx context.Context, slug string, version int6
 			if p.PublishedOn == nil {
 				at := *p.PublishAt
 				p.PublishedOn = &at
+				if p.UpdatedOn != nil && p.UpdatedOn.Before(at) {
+					p.UpdatedOn = &at
+				}
 			}
 			p.Status = post.Published
 			return nil

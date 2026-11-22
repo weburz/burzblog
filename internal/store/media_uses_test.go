@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"sync"
 	"testing"
 
@@ -126,5 +128,37 @@ func TestMediaUsesStayExactUnderConcurrentSaves(t *testing.T) {
 	}
 	if got := usedIn(t, s, m); got != scanned {
 		t.Errorf("usedIn = %d, full scan = %d", got, scanned)
+	}
+}
+
+// Keep the content size constant while varying the size of the upload catalog.
+func BenchmarkAutosaveWithUploadCatalog(b *testing.B) {
+	for _, uploads := range []int{20, 2000} {
+		b.Run(fmt.Sprintf("%d-uploads", uploads), func(b *testing.B) {
+			ctx := b.Context()
+			s, err := Open(ctx, b.TempDir())
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer s.Close()
+			for i := range uploads {
+				if _, _, err := s.AddMedia(ctx, upload(fmt.Sprintf("%032x%032x", i, i))); err != nil {
+					b.Fatal(err)
+				}
+			}
+			body := strings.Repeat("word ", 20000)
+			p, err := s.CreatePost(ctx, &post.Post{Slug: "draft", Title: "Draft", Body: body}, "ada")
+			if err != nil {
+				b.Fatal(err)
+			}
+			edit := 0
+			for b.Loop() {
+				edit++
+				p, err = s.AutosavePost(ctx, p.Slug, p.Version, "ada", func(next *post.Post) error { next.Body = body + fmt.Sprint(edit); return nil })
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }
