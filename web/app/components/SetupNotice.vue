@@ -4,7 +4,7 @@ import { request } from "../utils/api";
 
 // Tells a first-time visitor why sign-in cannot work yet. If the server cannot
 // be asked, say nothing: the sign-in form reports connection problems itself.
-const needed = ref(false);
+const needed = ref<boolean | null>(null);
 onMounted(async () => {
   try {
     needed.value = (await request<{ needed: boolean }>("/api/setup")).needed;
@@ -15,9 +15,13 @@ onMounted(async () => {
 </script>
 
 <template>
-  <p v-if="needed" class="notice" role="status">
+  <p v-if="needed === true" class="notice" role="status">
     No accounts yet — open the setup link printed by
-    <code class="mono">burzblog serve</code>, or run
-    <code class="mono">burzblog user add &lt;name&gt;</code> on the host.
+    <code class="mono">burzblog serve</code> in the container or service logs, or run
+    <code class="mono"
+      >burzblog user add &lt;name&gt; --data &lt;server-data-directory&gt;</code
+    >
+    on the host.
   </p>
+  <slot v-else-if="needed === false" />
 </template>

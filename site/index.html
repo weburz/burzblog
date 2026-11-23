@@ -73,7 +73,7 @@
               ones when it builds.
             </p>
             <div class="actions">
-              <a class="button primary" href="#install">Download BurzBlog 2.1</a>
+              <a class="button primary" href="#install">Download BurzBlog 2.3.0</a>
               <a class="button" href="docs/">Read the guides</a>
             </div>
             <p class="fine">Open source under Apache-2.0. Builds for Linux, Raspberry Pi, macOS and Windows.</p>
@@ -256,7 +256,7 @@
               Pi or any Linux host. A container image is optional.
             </p>
             <ul class="facts">
-              <li><code>burzblog backup</code> downloads every post as Markdown files, drafts included.</li>
+              <li><code>burzblog snapshot create</code> backs up posts, revisions, accounts and uploads together.</li>
               <li>Passwords are hashed with Argon2id; browser changes need the right origin and a CSRF token.</li>
               <li>Upgrading is replacing one file and restarting the service.</li>
             </ul>
@@ -269,7 +269,7 @@
 New password for maya:
 Repeat it:
 <span class="p">$</span> curl -s localhost:8080/healthz
-{"status":"ok","version":"v2.2.0"}</pre>
+{"status":"ok","version":"v2.3.0"}</pre>
           </div>
         </div>
       </section>
@@ -278,7 +278,7 @@ Repeat it:
         <h2 id="not-yet">Not included yet</h2>
         <p class="section-lede">BurzBlog is deliberately small. Today it does not have:</p>
         <ul class="facts">
-          <li><strong>Image and video uploads.</strong> Use hosted image URLs; the editor inserts them for you.</li>
+          <li><strong>Video uploads.</strong> The editor accepts images and PDFs. Link to externally hosted videos.</li>
           <li><strong>Per-post permissions.</strong> Accounts are admins or authors, but any author can edit any post.</li>
           <li><strong>A public blog theme.</strong> Your own site renders the posts.</li>
         </ul>
@@ -292,22 +292,22 @@ Repeat it:
         <div class="split install">
           <div>
             <table class="downloads">
-              <caption>BurzBlog 2.2.0 downloads</caption>
+              <caption>BurzBlog 2.3.0 downloads</caption>
               <thead>
                 <tr><th scope="col">Computer</th><th scope="col">File</th></tr>
               </thead>
               <tbody>
-                <tr><td>Linux (Intel/AMD)</td><td><a href="https://github.com/weburz/burzblog/releases/download/v2.2.0/burzblog-v2.2.0-linux-amd64">linux-amd64</a></td></tr>
-                <tr><td>Raspberry Pi 4/5, Linux ARM 64-bit</td><td><a href="https://github.com/weburz/burzblog/releases/download/v2.2.0/burzblog-v2.2.0-linux-arm64">linux-arm64</a></td></tr>
-                <tr><td>Raspberry Pi, 32-bit OS</td><td><a href="https://github.com/weburz/burzblog/releases/download/v2.2.0/burzblog-v2.2.0-linux-arm">linux-arm</a></td></tr>
-                <tr><td>macOS, Apple silicon</td><td><a href="https://github.com/weburz/burzblog/releases/download/v2.2.0/burzblog-v2.2.0-darwin-arm64">darwin-arm64</a></td></tr>
-                <tr><td>macOS, Intel</td><td><a href="https://github.com/weburz/burzblog/releases/download/v2.2.0/burzblog-v2.2.0-darwin-amd64">darwin-amd64</a></td></tr>
-                <tr><td>Windows</td><td><a href="https://github.com/weburz/burzblog/releases/download/v2.2.0/burzblog-v2.2.0-windows-amd64.exe">windows-amd64.exe</a></td></tr>
+                <tr><td>Linux (Intel/AMD)</td><td><a href="https://github.com/weburz/burzblog/releases/download/v2.3.0/burzblog-v2.3.0-linux-amd64">linux-amd64</a></td></tr>
+                <tr><td>Raspberry Pi 4/5, Linux ARM 64-bit</td><td><a href="https://github.com/weburz/burzblog/releases/download/v2.3.0/burzblog-v2.3.0-linux-arm64">linux-arm64</a></td></tr>
+                <tr><td>Raspberry Pi, 32-bit OS</td><td><a href="https://github.com/weburz/burzblog/releases/download/v2.3.0/burzblog-v2.3.0-linux-arm">linux-arm</a></td></tr>
+                <tr><td>macOS, Apple silicon</td><td><a href="https://github.com/weburz/burzblog/releases/download/v2.3.0/burzblog-v2.3.0-darwin-arm64">darwin-arm64</a></td></tr>
+                <tr><td>macOS, Intel</td><td><a href="https://github.com/weburz/burzblog/releases/download/v2.3.0/burzblog-v2.3.0-darwin-amd64">darwin-amd64</a></td></tr>
+                <tr><td>Windows</td><td><a href="https://github.com/weburz/burzblog/releases/download/v2.3.0/burzblog-v2.3.0-windows-amd64.exe">windows-amd64.exe</a></td></tr>
               </tbody>
             </table>
             <p class="fine">
               Check a download against
-              <a href="https://github.com/weburz/burzblog/releases/download/v2.2.0/SHA256SUMS-v2.2.0">SHA256SUMS-v2.2.0</a>.
+              <a href="https://github.com/weburz/burzblog/releases/download/v2.3.0/SHA256SUMS-v2.3.0">SHA256SUMS-v2.3.0</a>.
               Older and newer versions are on the <a href="https://github.com/weburz/burzblog/releases">releases page</a>.
             </p>
           </div>

@@ -240,7 +240,7 @@ get 403). The body is capped at the upload limit (10 MiB by default) plus
 memory one upload takes. What a file is comes from its leading bytes
 (`http.DetectContentType`, plus a check for AVIF's `ftyp` box), never from the
 client's `Content-Type` or file name: only JPEG, PNG, GIF, WebP, AVIF and PDF
-are stored, and JPEG, PNG and GIF must decode, so HTML, scripts and archives
+are stored, and JPEG, PNG and GIF must have a readable image header, so HTML, scripts and archives
 renamed `.png` are refused. **SVG is refused outright.** It is an XML document
 that can carry script and external references, and an image served from the
 panel's own origin that runs script would act as the signed-in author.
@@ -250,7 +250,7 @@ export a PNG or host the SVG elsewhere. The stored name is
 label and never reaches the file system, so path traversal has nothing to
 grip. Files live in `media/` inside the data directory (`0700`, files `0600`),
 behind a small `media.Storage` interface so another backend can replace the
-disk without touching the handlers. Uploads are not scanned for malware.
+disk without touching the handlers. BurzBlog serves the original bytes, including any embedded location or author metadata. Remove private metadata before uploading. Uploads are not scanned for malware.
 
 *The one public file route.* `GET /media/{name}` answers without a sign-in.
 This is an exception to "never add an unauthenticated content route", and is

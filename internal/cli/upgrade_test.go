@@ -195,6 +195,7 @@ func TestUpgradeRefusals(t *testing.T) {
 		want          string
 	}{
 		{"downgrade", "v1.3.0", false, []string{"--version", "v1.2.0"}, ExitUsage, "--force"},
+		{"post-tag build", "v1.4.0-2-g123abcd", false, []string{"--check"}, ExitUsage, "development build"},
 		{"dev build", "dev", false, nil, ExitUsage, "development build"},
 		{"dev build check", "dev", false, []string{"--check"}, ExitUsage, "development build"},
 		{"container", "v1.3.0", true, nil, ExitError, "pull the new image"},

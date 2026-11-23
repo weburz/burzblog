@@ -54,7 +54,7 @@ func (s *Server) setup(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, auth.ErrSetupDone):
 		fail(w, http.StatusConflict, "setup_done", "This server already has an account. Sign in instead.", "")
 	case errors.Is(err, auth.ErrSetupToken):
-		fail(w, http.StatusForbidden, "setup_token", "This setup link is not valid. It may have expired or been used already; restart `burzblog serve` for a new one.", "")
+		fail(w, http.StatusForbidden, "setup_token", "This setup link is not valid. Restart BurzBlog and open the fresh link from the server log.", "")
 	case err != nil:
 		s.internal(w, r, err)
 	default:

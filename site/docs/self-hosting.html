@@ -78,16 +78,23 @@
 <p>BurzBlog is one binary and one SQLite file. These steps run it under systemd on
 a Raspberry Pi or any Linux host, behind HTTPS.</p>
 <h2 id="1-get-the-binary">1. Get the binary</h2>
-<p>Build it, or cross-compile for the Pi from another machine:</p>
+<p>Install the release into a temporary directory, then copy it into the service’s
+binary directory in step 2. The installer verifies the release checksum.</p>
+<pre><code class="language-sh">mkdir -p burzblog-install
+curl -fsSLo burzblog-install/install.sh https://burzblog.weburz.com/install.sh
+BURZBLOG_INSTALL_DIR=&quot;$PWD/burzblog-install&quot; sh burzblog-install/install.sh
+curl -fsSLo burzblog-install/burzblog.service https://raw.githubusercontent.com/weburz/burzblog/main/deploy/burzblog.service
+</code></pre>
+<p>To build from a source checkout instead:</p>
 <pre><code class="language-sh">task build                 # bin/burzblog for this machine
 task release               # dist/ for linux/arm64, linux/arm (Pi 2/3 32-bit), amd64, macOS, Windows
 </code></pre>
-<p>Copy the right file to the host and name it <code>burzblog</code>. A 64-bit Raspberry Pi OS
+<p>For a source build, copy the binary and <code>deploy/burzblog.service</code> into <code>burzblog-install/</code> on the host, naming the binary <code>burzblog</code>. A 64-bit Raspberry Pi OS
 uses <code>linux-arm64</code>.</p>
 <h2 id="2-install-the-service">2. Install the service</h2>
 <pre><code class="language-sh">sudo useradd --system --home-dir /var/lib/burzblog --shell /usr/sbin/nologin burzblog
-sudo install -m 0755 burzblog /usr/local/bin/burzblog
-sudo install -m 0644 deploy/burzblog.service /etc/systemd/system/burzblog.service
+sudo install -m 0755 burzblog-install/burzblog /usr/local/bin/burzblog
+sudo install -m 0644 burzblog-install/burzblog.service /etc/systemd/system/burzblog.service
 sudo systemctl edit burzblog
 </code></pre>
 <p>In the override, set the public address people will open:</p>
@@ -122,7 +129,7 @@ first-run setup:</p>
 <p>Later accounts are managed on the host only: <code>burzblog user add</code>, <code>user passwd</code>,
 <code>user role</code> and <code>user list</code>, always with <code>--data /var/lib/burzblog</code> and as the
 <code>burzblog</code> user. Passwords need at least 12 characters.
-<code>user passwd</code> also signs that account out of every browser.</p>
+<code>user passwd</code> ends that account’s browser and terminal logins.</p>
 <p>An account is an admin or an author. The account first-run setup creates is an
 admin, and so is the first account <code>user add</code> makes; later ones are authors
 unless you add <code>--role admin</code>. An author
@@ -184,6 +191,11 @@ address to download posts.</p>
 <td><code>--check-updates</code></td>
 <td><code>BURZBLOG_CHECK_UPDATES</code> (<code>true</code> or <code>false</code>)</td>
 <td>off</td>
+</tr>
+<tr>
+<td><code>--max-upload-mb</code></td>
+<td><code>BURZBLOG_MAX_UPLOAD_MB</code></td>
+<td>10 MiB (maximum 256)</td>
 </tr>
 <tr>
 <td><code>--site-url</code></td>

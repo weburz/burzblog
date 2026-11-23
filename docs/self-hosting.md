@@ -5,22 +5,32 @@ a Raspberry Pi or any Linux host, behind HTTPS.
 
 ## 1. Get the binary
 
-Build it, or cross-compile for the Pi from another machine:
+Install the release into a temporary directory, then copy it into the service’s
+binary directory in step 2. The installer verifies the release checksum.
+
+```sh
+mkdir -p burzblog-install
+curl -fsSLo burzblog-install/install.sh https://burzblog.weburz.com/install.sh
+BURZBLOG_INSTALL_DIR="$PWD/burzblog-install" sh burzblog-install/install.sh
+curl -fsSLo burzblog-install/burzblog.service https://raw.githubusercontent.com/weburz/burzblog/main/deploy/burzblog.service
+```
+
+To build from a source checkout instead:
 
 ```sh
 task build                 # bin/burzblog for this machine
 task release               # dist/ for linux/arm64, linux/arm (Pi 2/3 32-bit), amd64, macOS, Windows
 ```
 
-Copy the right file to the host and name it `burzblog`. A 64-bit Raspberry Pi OS
+For a source build, copy the binary and `deploy/burzblog.service` into `burzblog-install/` on the host, naming the binary `burzblog`. A 64-bit Raspberry Pi OS
 uses `linux-arm64`.
 
 ## 2. Install the service
 
 ```sh
 sudo useradd --system --home-dir /var/lib/burzblog --shell /usr/sbin/nologin burzblog
-sudo install -m 0755 burzblog /usr/local/bin/burzblog
-sudo install -m 0644 deploy/burzblog.service /etc/systemd/system/burzblog.service
+sudo install -m 0755 burzblog-install/burzblog /usr/local/bin/burzblog
+sudo install -m 0644 burzblog-install/burzblog.service /etc/systemd/system/burzblog.service
 sudo systemctl edit burzblog
 ```
 
@@ -74,7 +84,7 @@ sudo -u burzblog burzblog user add ada --data /var/lib/burzblog
 Later accounts are managed on the host only: `burzblog user add`, `user passwd`,
 `user role` and `user list`, always with `--data /var/lib/burzblog` and as the
 `burzblog` user. Passwords need at least 12 characters.
-`user passwd` also signs that account out of every browser.
+`user passwd` ends that account’s browser and terminal logins.
 
 An account is an admin or an author. The account first-run setup creates is an
 admin, and so is the first account `user add` makes; later ones are authors
@@ -117,6 +127,7 @@ address to download posts.
 | `--origin` | `BURZBLOG_ORIGIN` | `http://<addr>` |
 | `--deploy-hook` | `BURZBLOG_DEPLOY_HOOK` | none |
 | `--check-updates` | `BURZBLOG_CHECK_UPDATES` (`true` or `false`) | off |
+| `--max-upload-mb` | `BURZBLOG_MAX_UPLOAD_MB` | 10 MiB (maximum 256) |
 | `--site-url` | `BURZBLOG_SITE_URL` | none (feeds and sitemap answer 409) |
 | `--site-title` | `BURZBLOG_SITE_TITLE` | the site URL's host |
 | `--site-description` | `BURZBLOG_SITE_DESCRIPTION` | the title |

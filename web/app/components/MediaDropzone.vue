@@ -45,6 +45,10 @@ const onChange = (event: Event) => {
     <UButton :loading="busy" icon="i-lucide-plus" @click="input?.click()"
       >Choose files</UButton
     >
+    <p class="field-hint">
+      Uploads are public and keep metadata, including photo locations. Remove private
+      details before uploading.
+    </p>
     <p class="field-hint">JPEG, PNG, GIF, WebP, AVIF or PDF. SVG is not accepted.</p>
   </div>
 </template>

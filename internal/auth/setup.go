@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/weburz/burzblog/internal/post"
 	"github.com/weburz/burzblog/internal/store"
@@ -35,7 +36,7 @@ type setupToken struct {
 // CheckUsername returns an error people can act on if name cannot be an
 // account name. name must already be normalized.
 func CheckUsername(name string) error {
-	if name == "" || len(name) > 64 || strings.Contains(name, " ") || post.HasControl(name) {
+	if name == "" || utf8.RuneCountInString(name) > 64 || strings.Contains(name, " ") || post.HasControl(name) {
 		return errors.New("a username is 1 to 64 characters without spaces or control characters")
 	}
 	return nil
