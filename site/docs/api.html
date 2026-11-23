@@ -330,6 +330,10 @@ the time a draft publishes itself (UTC, RFC 3339), or <code>null</code>; see
 <td><code>{version}</code> → the draft without a <code>publishAt</code>; a no-op if it had none</td>
 </tr>
 <tr>
+<td><code>POST /api/preview</code></td>
+<td><code>{markdown}</code> → <code>{html}</code>, sanitized; see <a href="#preview-limits">preview limits</a></td>
+</tr>
+<tr>
 <td><code>DELETE /api/posts/{slug}?version=N</code></td>
 <td>admins only (403 <code>role</code>), and only archived posts; removes its history and its redirects too. The one exception, open to authors as well: a draft that was never published and has every writable field blank after trimming (title, body, description, tags, cover, SEO fields, canonical URL, <code>extra</code>, author, featured), now and in every earlier revision, so nothing is lost; an author that is only the account that saved the draft counts as blank. An author asking to delete a draft that is not blank, or that once held content, gets 403 <code>role</code>, since only an admin can delete it after archiving it; an admin gets 409 <code>state</code> until the post is archived</td>
 </tr>
@@ -364,8 +368,7 @@ made on its own while the writer typed. It is checked against <code>version</cod
 raises it like any save, but consecutive autosaves by the same account
 within 30 minutes of each other share one revision: each replaces the one
 the previous autosave left. A save without the flag always keeps its own
-revision, and is never folded. The browser panel autosaves drafts.
-| <code>POST /api/preview</code> | <code>{markdown}</code> → <code>{html}</code>, sanitized; see <a href="#preview-limits">preview limits</a> |</p>
+revision, and is never folded. The browser panel autosaves drafts.</p>
 <p>Each revision in the list carries <code>version</code>, <code>savedAt</code>, <code>savedBy</code> and a state:
 <code>slug</code>, <code>title</code>, <code>status</code>, <code>words</code> (the body's word count) and the digests
 <code>descriptionDigest</code>, <code>coverDigest</code> and <code>settingsDigest</code> (extra, dates, tags,

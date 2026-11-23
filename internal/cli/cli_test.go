@@ -420,3 +420,36 @@ func TestPasswdRevokesTerminalLogins(t *testing.T) {
 	e.vars["BURZBLOG_TOKEN"] = exportSecret
 	e.must("", "export", "--out", t.TempDir())
 }
+
+func TestHostVersionAndWildcardOrigin(t *testing.T) {
+	e := newEnv(t)
+	if got, want := e.must("", "version"), e.must("", "--version"); got != want {
+		t.Fatalf("version = %q, --version = %q", got, want)
+	}
+	for _, addr := range []string{"0.0.0.0:8080", "[::]:8080", ":8080"} {
+		dir := filepath.Join(t.TempDir(), "fresh")
+		_, msg, code := e.run("", "serve", "--addr", addr, "--data", dir)
+		if code == 0 || !strings.Contains(msg, "BURZBLOG_ORIGIN") {
+			t.Fatalf("serve %s: %d %s", addr, code, msg)
+		}
+		if _, err := os.Stat(dir); !os.IsNotExist(err) {
+			t.Errorf("invalid origin created %s", dir)
+		}
+	}
+}
+
+func TestDataDirectoryKeepsWindowsDrive(t *testing.T) {
+	const drive = `D:\burzblog\data`
+	env := map[string]string{"BURZBLOG_DATA": drive, "STATE_DIRECTORY": "/first:/second"}
+	app := App{Getenv: func(name string) string { return env[name] }}
+	if got := app.dataDir(drive); got != drive {
+		t.Errorf("--data = %q", got)
+	}
+	if got := app.dataDir(""); got != drive {
+		t.Errorf("BURZBLOG_DATA = %q", got)
+	}
+	delete(env, "BURZBLOG_DATA")
+	if got := app.dataDir(""); got != "/first" {
+		t.Errorf("STATE_DIRECTORY = %q", got)
+	}
+}

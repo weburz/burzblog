@@ -24,9 +24,8 @@
 - **A writing tool, not a website builder.** BurzBlog is where posts are
   written. Your site, whether Nuxt, Astro, Next or anything else, reads them
   and stays fast, static and up even when BurzBlog is not.
-- **Tiny.** One Go binary with the panel built in, about 25 MB of memory at
-  rest, and no runtime to install. It runs happily on a Raspberry Pi, and
-  dozens of instances fit on one small server.
+- **Tiny.** One Go binary includes the panel and runs on a Raspberry Pi
+  without a separate runtime.
 - **Your editor or ours.** A split Markdown editor in the browser, or
   `burzblog edit my-post` to open the post in `$EDITOR`. Both talk to the same
   server.
