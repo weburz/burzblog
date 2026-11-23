@@ -216,6 +216,10 @@ func (s *Store) GetPost(ctx context.Context, slug string) (*post.Post, error) {
 
 // Filter narrows ListPosts.
 type Filter struct {
+	// IncludeArchived adds archived posts to a listing without a status.
+	IncludeArchived bool
+	// FilterCounts applies the search, tag and featured filters to the status totals.
+	FilterCounts bool
 	// Status limits results to one status; empty means drafts and published.
 	Status post.Status
 	// Scheduled limits results to drafts with a publish time.
@@ -248,6 +252,7 @@ const (
 	SortPublished Sort = "published"
 	SortTitle     Sort = "title"
 	SortCreated   Sort = "created"
+	SortScheduled Sort = "scheduled"
 )
 
 // ValidSort reports whether s is a known ordering.
@@ -261,8 +266,9 @@ func ValidSort(s Sort) bool {
 var orderBy = map[Sort]string{
 	SortUpdated:   "updated_at DESC, id DESC",
 	SortPublished: "published_on IS NULL, published_on DESC, updated_at DESC, id DESC",
-	SortTitle:     "title COLLATE NOCASE ASC, id ASC",
+	SortTitle:     "title COLLATE burzblog_title ASC, id ASC",
 	SortCreated:   "created_at DESC, id DESC",
+	SortScheduled: "publish_at IS NULL, publish_at ASC, id ASC",
 }
 
 // Summary is a post without its body, for lists.
@@ -363,24 +369,11 @@ func (s *Store) ListPosts(ctx context.Context, f Filter) ([]Summary, Counts, err
 	if !ok {
 		return nil, Counts{}, fmt.Errorf("list posts: unknown sort %q", f.Sort)
 	}
-	counts, err := s.StatusCounts(ctx)
-	if err != nil {
-		return nil, counts, err
-	}
-
 	from, args := "posts", []any{}
 	if match != "" {
 		from, args = searchSource(match)
 	}
 	where := []string{}
-	if f.Scheduled {
-		where = append(where, "status = 'draft' AND publish_at IS NOT NULL")
-	} else if f.Status != "" {
-		where = append(where, "status = ?")
-		args = append(args, string(f.Status))
-	} else {
-		where = append(where, "status != 'archived'")
-	}
 	if f.Tag != "" {
 		// A tag that normalizes to nothing matches no post.
 		where = append(where, "id IN (SELECT post_id FROM post_tags WHERE tag = ?)")
@@ -390,8 +383,34 @@ func (s *Store) ListPosts(ctx context.Context, f Filter) ([]Summary, Counts, err
 		where = append(where, "featured = ?")
 		args = append(args, *f.Featured)
 	}
+	var counts Counts
+	var err error
+	if f.FilterCounts && (match != "" || len(where) > 0) {
+		query := "SELECT count(*) FILTER (WHERE status='draft'), count(*) FILTER (WHERE status='published'), count(*) FILTER (WHERE status='archived'), count(*) FILTER (WHERE status='draft' AND publish_at IS NOT NULL) FROM " + from
+		if len(where) > 0 {
+			query += " WHERE " + strings.Join(where, " AND ")
+		}
+		err = s.db.QueryRowContext(ctx, query, args...).Scan(&counts.Draft, &counts.Published, &counts.Archived, &counts.Scheduled)
+	} else {
+		counts, err = s.StatusCounts(ctx)
+	}
+	if err != nil {
+		return nil, counts, fmt.Errorf("count posts for listing: %w", err)
+	}
+	if f.Scheduled {
+		where = append(where, "status = 'draft' AND publish_at IS NOT NULL")
+	} else if f.Status != "" {
+		where = append(where, "status = ?")
+		args = append(args, string(f.Status))
+	} else if !f.IncludeArchived {
+		where = append(where, "status != 'archived'")
+	}
 	cond := strings.Join(where, " AND ")
-	page := " FROM " + from + " WHERE " + cond + " ORDER BY " + order
+	source := " FROM " + from
+	if cond != "" {
+		source += " WHERE " + cond
+	}
+	page := source + " ORDER BY " + order
 	listArgs := args
 	if f.Limit > 0 || f.Offset > 0 {
 		pageLimit := f.Limit
@@ -443,8 +462,8 @@ func (s *Store) ListPosts(ctx context.Context, f Filter) ([]Summary, Counts, err
 		}
 	}
 	counts.Matched = len(list)
-	if f.Limit > 0 && (f.Offset > 0 || len(list) == f.Limit) {
-		if err := s.db.QueryRowContext(ctx, "SELECT count(*) FROM "+from+" WHERE "+cond, args...).Scan(&counts.Matched); err != nil {
+	if f.Offset > 0 || (f.Limit > 0 && len(list) == f.Limit) {
+		if err := s.db.QueryRowContext(ctx, "SELECT count(*)"+source, args...).Scan(&counts.Matched); err != nil {
 			return nil, counts, fmt.Errorf("count matching posts: %w", err)
 		}
 	}

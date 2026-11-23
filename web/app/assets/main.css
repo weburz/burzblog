@@ -1585,7 +1585,6 @@ code {
 /* Strips that scroll sideways fade at the edge with more to see. The covers are
    local (they scroll away at the ends); the shadows stay put. Where nothing
    scrolls, the covers hide the shadows. Kept last so it beats the shorthands. */
-.nav-tabs,
 .segment,
 .md-tools,
 .bulk-bar {
@@ -1607,21 +1606,29 @@ code {
   background-repeat: no-repeat;
   background-attachment: local, local, scroll, scroll;
 }
-.nav-tabs,
 .segment,
 .md-tools,
 .bulk-bar {
   --hint-shadow: var(--bb-border-strong);
 }
-.nav-tabs,
 .bulk-bar {
   --hint-bg: var(--bb-bg);
 }
-/* The nav sits on the page background with nothing beside it to frame the cut,
-   so its shadow is darker and wider than the strips inside bordered boxes. */
-.nav-tabs {
-  --hint-shadow: color-mix(in srgb, var(--bb-text-2) 38%, transparent);
-  --hint-shadow-width: 16px;
+.nav-tabs.fade-start {
+  --nav-left: transparent;
+}
+.nav-tabs.fade-end {
+  --nav-right: transparent;
+}
+.nav-tabs.fade-start,
+.nav-tabs.fade-end {
+  mask-image: linear-gradient(
+    to right,
+    var(--nav-left, black),
+    black 16px,
+    black calc(100% - 16px),
+    var(--nav-right, black)
+  );
 }
 .segment {
   --hint-bg: var(--bb-surface-2);

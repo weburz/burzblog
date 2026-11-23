@@ -36,7 +36,7 @@ const { now } = useCurrentTime();
 
 type Filter = "" | PostStatus | "scheduled";
 const filters: { value: Filter; label: string }[] = [
-  { value: "", label: "All" },
+  { value: "", label: "Active" },
   { value: "draft", label: "Drafts" },
   { value: "scheduled", label: "Scheduled" },
   { value: "published", label: "Published" },
@@ -45,19 +45,28 @@ const filters: { value: Filter; label: string }[] = [
 const asFilter = (value: unknown): Filter =>
   filters.some((f) => f.value === value) ? (value as Filter) : "";
 
-type Sort = "updated" | "published" | "title" | "created";
+type Sort = "updated" | "published" | "title" | "created" | "scheduled";
 const sorts: { value: Sort; label: string }[] = [
   { value: "updated", label: "Recently edited" },
   { value: "published", label: "Publish date" },
   { value: "title", label: "Title A–Z" },
   { value: "created", label: "Newest created" },
+  { value: "scheduled", label: "Next scheduled" },
 ];
-const asSort = (value: unknown): Sort =>
-  sorts.find((s) => s.value === value)?.value ?? "updated";
+const asSort = (value: unknown) => sorts.find((s) => s.value === value)?.value;
 
 // The address holds the filter, search and sort, so Back and reload keep them.
 const status = ref<Filter>(asFilter(route.query.status));
-const sort = ref<Sort>(asSort(route.query.sort));
+const preferredSort = ref(asSort(route.query.sort));
+const defaultSort = computed<Sort>(() =>
+  status.value === "scheduled" ? "scheduled" : "updated",
+);
+const sort = computed<Sort>({
+  get: () => preferredSort.value ?? defaultSort.value,
+  set: (value) => {
+    preferredSort.value = value;
+  },
+});
 const search = ref(typeof route.query.q === "string" ? route.query.q : "");
 const tag = ref(typeof route.query.tag === "string" ? route.query.tag : "");
 // "*" stands for no tag: a select cannot hold an empty value, and no tag is "*".
@@ -92,7 +101,8 @@ const load = async (more = false, quiet = false) => {
   if (status.value) query.set("status", status.value);
   if (search.value.trim()) query.set("q", search.value.trim());
   if (tag.value) query.set("tag", tag.value);
-  if (sort.value !== "updated") query.set("sort", sort.value);
+  if (search.value.trim() || tag.value) query.set("counts", "filtered");
+  if (sort.value !== "updated" || preferredSort.value) query.set("sort", sort.value);
   const key = [status.value, search.value.trim(), tag.value, sort.value].join("|");
   try {
     const result = await request<PostList>(`/api/posts?${query}`);
@@ -132,7 +142,10 @@ const loadTags = async () => {
   }
 };
 const tagItems = computed(() => {
-  const known = tags.value.map((t) => ({ value: t.tag, label: `${t.tag} (${t.count})` }));
+  const known = tags.value.map((t) => ({
+    value: t.tag,
+    label: `${t.label || t.tag} (${t.count})`,
+  }));
   // A tag from the address that no post has still shows as the active filter.
   if (tag.value && !tags.value.some((t) => t.tag === tag.value))
     known.unshift({ value: tag.value, label: tag.value });
@@ -151,7 +164,7 @@ watch([status, search, sort, tag], ([s, q, o, t], [oldS, , oldO, oldT]) => {
     query: {
       ...(s ? { status: s } : {}),
       ...(q.trim() ? { q: q.trim() } : {}),
-      ...(o !== "updated" ? { sort: o } : {}),
+      ...(preferredSort.value ? { sort: o } : {}),
       ...(t ? { tag: t } : {}),
     },
   });
@@ -497,7 +510,12 @@ const origin = typeof window === "undefined" ? "" : window.location.origin;
       <div>
         <h1 ref="heading" class="page-title" tabindex="-1">Posts</h1>
         <p v-if="list && !fresh" class="muted">
-          <template v-if="total === 0">Nothing written yet.</template>
+          <template v-if="search.trim() || tag"
+            >{{ list.total }} matching {{ list.total === 1 ? "post" : "posts" }}</template
+          >
+          <template v-else-if="total === 0 && !list.counts.archived"
+            >Nothing written yet.</template
+          >
           <template v-else
             >{{ list.counts.published }} published, {{ list.counts.draft }}
             {{ list.counts.draft === 1 ? "draft" : "drafts"
@@ -606,7 +624,9 @@ const origin = typeof window === "undefined" ? "" : window.location.origin;
         @tag="tagSelected"
         @clear="clearSelection"
       />
-      <label v-else for="select-all-posts" class="muted">Select all</label>
+      <label v-else for="select-all-posts" class="muted"
+        >Select all {{ list.items.length }} shown</label
+      >
     </div>
 
     <ul

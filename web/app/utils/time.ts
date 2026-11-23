@@ -43,6 +43,20 @@ export const exactTime = (iso: string | null | undefined): string => {
   return Number.isNaN(then) ? "" : exact.format(then);
 };
 
+const auditFormat = new Intl.DateTimeFormat(undefined, {
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  second: "2-digit",
+  timeZoneName: "short",
+});
+export const auditTime = (iso: string): string => {
+  const time = Date.parse(iso);
+  return Number.isNaN(time) ? "" : auditFormat.format(time);
+};
+
 const pad = (n: number) => String(n).padStart(2, "0");
 
 // ISO timestamp to the value a datetime-local input shows, in local time.
