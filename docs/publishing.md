@@ -39,7 +39,12 @@ with the old addresses of renamed posts (see
 your website's address it also holds `feed.xml`, `feed.atom`, `feed.json` and
 `sitemap.xml` at the top level; see [Feeds and sitemap](#feeds-and-sitemap).
 `burzblog export` writes them all next to the posts, and `--clean` leaves them
-alone.
+alone. Keep the hidden `.burzblog-export/` directory between builds. It records
+which Markdown files BurzBlog wrote and their checksums. Cleanup removes an
+unpublished post only if its local copy still matches the recorded checksum.
+On the first export after upgrading from 2.3.0 or earlier, review stale files
+from the old export directory yourself. BurzBlog can only track posts it has
+exported since the upgrade.
 
 ## The file format
 

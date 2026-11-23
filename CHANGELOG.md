@@ -6,7 +6,17 @@ All notable changes are recorded here, following
 
 ## [Unreleased]
 
+## [2.3.1] - 2026-11-23
+
 ### Fixed
+
+- Export cleanup tracks the Markdown files BurzBlog wrote. Unpublishing removes
+  unchanged exports while preserving unrelated pages and local edits.
+- Creating a snapshot with an explicit `.enc` filename requires encryption.
+- The installer reports replacements and explains how to start a server or
+  connect a client. First-run setup accepts a fresh link in the same tab.
+  Compose and Coolify forward the documented settings and provide temporary
+  storage for snapshot verification.
 
 - Scheduled drafts with an imported update date publish on time. Published
   lists and feeds order timestamps by the instant, including fractional seconds.

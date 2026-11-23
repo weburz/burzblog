@@ -104,7 +104,12 @@ with the old addresses of renamed posts (see
 your website's address it also holds <code>feed.xml</code>, <code>feed.atom</code>, <code>feed.json</code> and
 <code>sitemap.xml</code> at the top level; see <a href="#feeds-and-sitemap">Feeds and sitemap</a>.
 <code>burzblog export</code> writes them all next to the posts, and <code>--clean</code> leaves them
-alone.</p>
+alone. Keep the hidden <code>.burzblog-export/</code> directory between builds. It records
+which Markdown files BurzBlog wrote and their checksums. Cleanup removes an
+unpublished post only if its local copy still matches the recorded checksum.
+On the first export after upgrading from 2.3.0 or earlier, review stale files
+from the old export directory yourself. BurzBlog can only track posts it has
+exported since the upgrade.</p>
 <h2 id="the-file-format">The file format</h2>
 <pre><code class="language-markdown">---
 title: &quot;Web Authentication Methods Explained: Pros, Cons, and Best Practices&quot;
