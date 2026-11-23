@@ -348,3 +348,25 @@ func TestScheduledPostStaysOutOfExportUntilPublished(t *testing.T) {
 		t.Errorf("PublishedPosts = %d after the time, want 1", len(posts))
 	}
 }
+
+func TestSchedulerPublishesImportedDraft(t *testing.T) {
+	h, c := scheduleHarness(t, nil)
+	ctx := context.Background()
+	edited := c.Now().Add(-time.Hour)
+	p, err := h.store.CreatePost(ctx, &post.Post{Slug: "imported", Title: "Imported", UpdatedOn: &edited}, "ada")
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := c.Now().Add(time.Hour)
+	if resp, out := h.schedule(p.Slug, int(p.Version), at); resp.StatusCode != 200 {
+		t.Fatal(out)
+	}
+	c.advance(time.Hour)
+	if n, _, err := h.srv.publishDue(ctx); err != nil || n != 1 {
+		t.Fatalf("published %d: %v", n, err)
+	}
+	got, err := h.store.GetPost(ctx, p.Slug)
+	if err != nil || got.PublishedOn == nil || got.UpdatedOn == nil || !got.PublishedOn.Equal(at) || !got.UpdatedOn.Equal(at) {
+		t.Fatalf("published dates: %+v, %v", got, err)
+	}
+}

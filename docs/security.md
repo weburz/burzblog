@@ -340,7 +340,7 @@ as regular files, so no entry can write outside the data directory; every size
 and SHA-256 checksum must match the manifest, the database must pass SQLite's
 integrity check, and its schema must not be newer than the binary's. A running
 server, and every host command that opens the database, holds a shared lock on
-`<data>/burzblog.lock` (on Linux, macOS and the BSDs); restore needs it
+`<data>/burzblog.lock` (on Linux, macOS, Windows and the BSDs); restore needs it
 exclusively, so it refuses while any of them runs, and they refuse to start
 during a restore. Restore keeps the lock until the restored database is
 upgraded and the restore is recorded. Replaced data is moved aside, never

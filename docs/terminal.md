@@ -365,7 +365,7 @@ failures are still JSON. `new` never opens an editor with `--json`.
 | Command | Output |
 |---|---|
 | `list` | `{"items":[{"slug","title","description","status","words","tags","author","publishedOn","publishAt","updatedAt","updatedBy","version"}],"counts":{"draft","published","archived","scheduled"}}`; `items` is `[]` when nothing matches |
-| `whoami` | `{"username","server"}` |
+| `whoami` | `{"username","server"}` for an account, `{"scope":"export","server"}` for a build token |
 | `new`, `publish`, `unpublish`, `archive`, `restore`, `schedule`, `unschedule` | the post: `{"slug","title","description","status","tags","author","publishedOn","publishAt","updatedAt","updatedBy","version"}` |
 | `push` | the same, plus `"created"` (`true` if the post did not exist) |
 | `pull` | `{"slug","version","path"}`; with `-o -` it is `{"slug","version","markdown"}` instead of the raw file |

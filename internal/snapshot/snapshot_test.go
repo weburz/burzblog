@@ -255,9 +255,6 @@ func TestRestoreRefusesAnExistingBlogUnlessForced(t *testing.T) {
 }
 
 func TestRestoreRefusesWhileAServerRuns(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("no flock on Windows")
-	}
 	from := newBlog(t)
 	data, _ := from.snapshot(t, "")
 	target := t.TempDir()

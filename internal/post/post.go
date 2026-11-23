@@ -251,7 +251,11 @@ func Validate(p *Post) error {
 	if len(p.Extra) > MaxExtra {
 		return &FieldError{"extra frontmatter", fmt.Sprintf("must be at most %d KiB.", MaxExtra>>10)}
 	}
-	if _, err := parseExtra(p.Extra); err != nil {
+	root, err := parseExtra(p.Extra)
+	if err != nil {
+		return err
+	}
+	if err := checkMappingKeys(root, "extra frontmatter"); err != nil {
 		return err
 	}
 	return nil

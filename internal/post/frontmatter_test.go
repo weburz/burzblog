@@ -114,3 +114,11 @@ func TestEncodeOmitsUnsafeStoredExtra(t *testing.T) {
 		}
 	}
 }
+
+func TestNestedExtraRejectsDuplicateKeys(t *testing.T) {
+	for _, extra := range []string{"hero:\n  title: A\n  title: B", "blocks:\n  - image: A\n    image: B"} {
+		if err := Validate(&Post{Slug: "post", Title: "Post", Status: Draft, Extra: extra}); err == nil {
+			t.Errorf("accepted duplicate in %q", extra)
+		}
+	}
+}

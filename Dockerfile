@@ -4,13 +4,13 @@
 # primary deployment; see docs/self-hosting.md.
 
 # The browser panel. Node.js and pnpm exist only in this stage.
-FROM --platform=$BUILDPLATFORM node:26.13.0-bookworm-slim@sha256:add5c17c14752c54d2f3d519ec46a3815684d41c33f198bcb09fb998f7dcbf68 AS web
+FROM --platform=$BUILDPLATFORM node:26.13.1-bookworm-slim@sha256:5df79989ed685e09f0a98019db4cebfb22fb9df1a53c0161664a011f7ff6b0f1 AS web
 WORKDIR /web
 RUN npm install --global --no-fund --no-audit pnpm@11.15.1
 COPY web/ ./
 RUN pnpm install --frozen-lockfile && pnpm build
 
-FROM --platform=$BUILDPLATFORM golang:1.27.3-bookworm@sha256:972b4110ba0f47539a975c31e52c64765e1ff19f2d74469ae4a595c6676e80a5 AS build
+FROM --platform=$BUILDPLATFORM golang:1.27.4-bookworm@sha256:4fa7c968ba93f1635670522dbb01a2c78150443e1385746924566079f36570ea AS build
 ARG VERSION=dev
 ARG TARGETOS
 ARG TARGETARCH

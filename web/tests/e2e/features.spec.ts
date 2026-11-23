@@ -608,3 +608,45 @@ test("reloading while typing keeps the draft reachable", async ({ page }) => {
   await expect(page.getByLabel("Title", { exact: true })).toHaveValue(`Reload ${tag}`);
   await expect(page.getByText("Nothing is saved at")).toHaveCount(0);
 });
+
+test("edits made during a save reach the server on the next save", async ({
+  page,
+  request,
+}) => {
+  const api = await apiAs(request);
+  const slug = "slow-save-" + unique();
+  await api.createPost(slug, "Slow save");
+  await signIn(page);
+  await openPost(page, slug);
+  const endpoint = "/api/posts/" + slug;
+  let release = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**" + endpoint, async (route) => {
+    if (route.request().method() === "PUT") await gate;
+    await route.continue();
+  });
+  const first = page.waitForRequest(
+    (r) => r.method() === "PUT" && r.url().endsWith(endpoint),
+  );
+  const body = page.getByLabel("Post body in Markdown");
+  await body.fill("First edit");
+  await first;
+  await body.fill("Second edit");
+  await page.keyboard.press("Control+s");
+  release();
+  await expect
+    .poll(
+      async () =>
+        (await (await request.get(endpoint, { headers: api.headers })).json()).body,
+    )
+    .toBe("Second edit");
+  const saved = page.waitForResponse(
+    (r) => r.request().method() === "PUT" && r.url().endsWith(endpoint),
+  );
+  await body.fill("Second edit\n");
+  await saved;
+  await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+  await expect(body).toHaveValue("Second edit\n");
+});

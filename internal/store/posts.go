@@ -136,7 +136,7 @@ func (s *Store) CreatePost(ctx context.Context, p *post.Post, by string) (*post.
 		ON CONFLICT (slug) DO NOTHING
 		RETURNING `+postColumns,
 		p.Slug, p.Title, p.Description, string(p.Status), p.Body, p.CoverURL, p.CoverAlt, p.Extra,
-		nullTime(p.PublishedOn), nullTime(p.UpdatedOn), now, now, by, post.CountWords(p.Body),
+		publishedStamp(p.PublishedOn), nullTime(p.UpdatedOn), now, now, by, post.CountWords(p.Body),
 		p.Author, p.SEOTitle, p.SEODescription, p.CanonicalURL, p.Featured)
 	created, err := scanPost(row)
 	if errors.Is(err, ErrNotFound) {
@@ -146,6 +146,9 @@ func (s *Store) CreatePost(ctx context.Context, p *post.Post, by string) (*post.
 		return nil, err
 	}
 	if err := insertTags(ctx, tx, created.ID, p.Tags); err != nil {
+		return nil, err
+	}
+	if err := replaceMediaUses(ctx, tx, created); err != nil {
 		return nil, err
 	}
 	created.Tags = p.Tags
@@ -390,9 +393,13 @@ func (s *Store) ListPosts(ctx context.Context, f Filter) ([]Summary, Counts, err
 	cond := strings.Join(where, " AND ")
 	page := " FROM " + from + " WHERE " + cond + " ORDER BY " + order
 	listArgs := args
-	if f.Limit > 0 {
+	if f.Limit > 0 || f.Offset > 0 {
+		pageLimit := f.Limit
+		if pageLimit == 0 {
+			pageLimit = -1
+		}
 		page += " LIMIT ? OFFSET ?"
-		listArgs = append(append([]any{}, args...), f.Limit, max(f.Offset, 0))
+		listArgs = append(append([]any{}, args...), pageLimit, max(f.Offset, 0))
 	}
 	query := `SELECT id, slug, title, description, status, words, published_on,
 		publish_at, updated_at, updated_by, version, author, featured` + page
@@ -563,11 +570,16 @@ func (s *Store) updatePost(ctx context.Context, slug string, version int64, by s
 		autosaved = ?, version = version + 1
 		WHERE id = ? RETURNING `+postColumns,
 		next.Slug, next.Title, next.Description, string(next.Status), next.Body, next.CoverURL, next.CoverAlt,
-		next.Extra, nullTime(next.PublishedOn), nullTime(next.UpdatedOn), nullTime(next.PublishAt), next.PublishBy,
+		next.Extra, publishedStamp(next.PublishedOn), nullTime(next.UpdatedOn), nullTime(next.PublishAt), next.PublishBy,
 		now, by, post.CountWords(next.Body), next.Author, next.SEOTitle, next.SEODescription, next.CanonicalURL,
 		next.Featured, autosave, current.ID))
 	if err != nil {
 		return nil, err
+	}
+	if current.Body != next.Body || current.CoverURL != next.CoverURL {
+		if err := replaceMediaUses(ctx, tx, updated); err != nil {
+			return nil, err
+		}
 	}
 	if !slices.Equal(current.Tags, next.Tags) {
 		if _, err := tx.ExecContext(ctx, "DELETE FROM post_tags WHERE post_id = ?", current.ID); err != nil {

@@ -10,6 +10,7 @@ the API.
 - `task build`: panel build, `scripts/embed-panel.sh`, then `bin/burzblog`.
 - `task check`: `go:check` (gofmt, vet, `go test -race`), `web:check` (oxfmt,
   oxlint, types, Vitest, build, Playwright E2E) and pre-commit hooks.
+- `task vuln`: check reachable Go vulnerabilities. The Go CI job runs this after its tests.
 - `task docker:check`: Hadolint, proxy examples, image build, `scripts/docker-smoke.sh`.
   Run it where Docker exists; otherwise report it as unrun.
 - `task format`: gofmt and oxfmt. Make targets are compatibility aliases.

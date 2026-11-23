@@ -431,9 +431,9 @@ const scopeUse = (t: Token) =>
               {{ site.url }}
             </p>
             <p class="muted">
-              Posts link to <span class="mono">{{ examplePostUrl(site) }}</span
-              >. Your site's build can fetch these files with a build token, and the
-              download from step 1 contains them too:
+              Posts link to <span class="mono">{{ examplePostUrl(site) }}</span>. Your
+              site's build can fetch these files with a build token, and the download from
+              step 1 contains them too:
             </p>
             <ul class="feed-list">
               <li v-for="file in feedFiles" :key="file.path">
@@ -534,8 +534,8 @@ const scopeUse = (t: Token) =>
               {{ settings.schedule!.lastError }}
             </p>
             <p v-if="settings.snapshot" class="muted">
-              <span class="mono">{{ settings.snapshot.file }}</span
-              >, {{ exactTime(settings.snapshot.at) }}.
+              <span class="mono">{{ settings.snapshot.file }}</span>,
+              {{ exactTime(settings.snapshot.at) }}.
               <template v-if="snapshotStatus === 'stale'">
                 Everything written since then is lost if this server's disk is.
               </template>

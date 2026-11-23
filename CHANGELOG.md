@@ -6,6 +6,23 @@ All notable changes are recorded here, following
 
 ## [Unreleased]
 
+### Fixed
+
+- Scheduled drafts with an imported update date publish on time. Published
+  lists and feeds order timestamps by the instant, including fractional seconds.
+- Draft saves look up referenced uploads by filename. Edits made during a save
+  can be saved on the next request, and the editor keeps title spacing while
+  the writer types. Disconnecting after a change allows its audit entry to finish.
+- Database schema upgrades commit together and preserve the pre-upgrade backup
+  on failure. Windows servers and restore commands coordinate through file locks.
+- The CLI recognizes build tokens and preserves passwords read from standard
+  input. The content API applies offsets to unbounded lists and new posts reject
+  duplicate keys nested inside custom frontmatter.
+
+### Security
+
+- Build with Go 1.27.4 and check reachable Go vulnerabilities in CI.
+
 ## [2.3.0] - 2026-11-06
 
 ### Added
