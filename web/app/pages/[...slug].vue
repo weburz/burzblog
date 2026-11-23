@@ -10,8 +10,8 @@ const paletteOpen = useState("palette-open", () => false);
       <div>
         <h1 class="page-title">Page not found</h1>
         <p class="muted">
-          Nothing lives at <span class="mono">{{ route.path }}</span
-          >. The link may be old, or the post may have been renamed or removed.
+          Nothing lives at <span class="mono">{{ route.path }}</span>. The link may be
+          old, or the post may have been renamed or removed.
         </p>
       </div>
     </div>

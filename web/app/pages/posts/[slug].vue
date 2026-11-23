@@ -1464,8 +1464,7 @@ const primary = computed(() => {
 
     <footer class="editor-foot muted">
       Version {{ post.version }}, last saved {{ exactTime(post.updatedAt)
-      }}<template v-if="post.updatedBy"> by {{ post.updatedBy }}</template
-      >.
+      }}<template v-if="post.updatedBy"> by {{ post.updatedBy }}</template>.
       <template v-if="post.status === 'published' && post.publishedOn">
         Published {{ exactTime(post.publishedOn) }}.</template
       >
