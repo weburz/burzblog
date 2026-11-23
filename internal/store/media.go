@@ -254,6 +254,34 @@ func (s *Store) MediaSizes(ctx context.Context, fileNames []string) (map[string]
 	return sizes, nil
 }
 
+// PostImageSizes looks up dimensions for a bounded feed page or a single post.
+func (s *Store) PostImageSizes(ctx context.Context, slugs []string) (map[string]MediaSize, error) {
+	sizes := make(map[string]MediaSize)
+	if len(slugs) == 0 {
+		return sizes, nil
+	}
+	args := make([]any, len(slugs))
+	for i, slug := range slugs {
+		args[i] = slug
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT m.file_name, m.width, m.height FROM posts p
+ JOIN media_uses u ON u.post_id=p.id JOIN media m ON m.file_name=u.file_name
+ WHERE m.width>0 AND m.height>0 AND p.slug IN (?`+strings.Repeat(",?", len(slugs)-1)+")", args...)
+	if err != nil {
+		return nil, fmt.Errorf("read post image sizes: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var name string
+		var size MediaSize
+		if err := rows.Scan(&name, &size.Width, &size.Height); err != nil {
+			return nil, err
+		}
+		sizes[name] = size
+	}
+	return sizes, rows.Err()
+}
+
 // replaceMediaUses keeps the historical substring match, including bare names
 // and links on an old origin. The upload trigger handles files added later.
 func replaceMediaUses(ctx context.Context, tx *sql.Tx, p *post.Post) error {
