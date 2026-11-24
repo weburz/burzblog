@@ -542,3 +542,26 @@ func TestListingUsesInstantsAndStandaloneOffset(t *testing.T) {
 		t.Fatalf("page = %+v, total %d, err %v", list, total, err)
 	}
 }
+
+func TestPanelListFiltersAndNaturalOrder(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+	for _, p := range []*post.Post{
+		{Slug: "ten", Title: "Report 10", Tags: []string{"group"}},
+		{Slug: "two", Title: "Report 2", Tags: []string{"group"}},
+		{Slug: "old", Title: "Report 1", Status: post.Archived, Tags: []string{"group"}},
+		{Slug: "other", Title: "Report 3"},
+	} {
+		if _, err := s.CreatePost(ctx, p, "u"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	list, c, err := s.ListPosts(ctx, Filter{Query: "report", Tag: "group", FilterCounts: true, Sort: SortTitle, Limit: 1})
+	if err != nil || len(list) != 1 || list[0].Slug != "two" || c.Draft != 2 || c.Archived != 1 || c.Matched != 2 {
+		t.Fatalf("active: %+v %+v %v", list, c, err)
+	}
+	list, c, err = s.ListPosts(ctx, Filter{Query: "report", Tag: "group", IncludeArchived: true, FilterCounts: true, Sort: SortTitle, Limit: 1})
+	if err != nil || len(list) != 1 || list[0].Slug != "old" || c.Matched != 3 {
+		t.Fatalf("all statuses: %+v %+v %v", list, c, err)
+	}
+}

@@ -7,11 +7,11 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	"github.com/weburz/burzblog/internal/post"
-	"github.com/weburz/burzblog/internal/render"
 	"github.com/weburz/burzblog/internal/store"
 )
 
@@ -124,6 +124,25 @@ func (s *Server) publishedPost(w http.ResponseWriter, r *http.Request) (*post.Po
 // best match first with a plain-text snippet, paged like /api/posts. Without
 // ?limit= every match is returned.
 func (s *Server) contentList(w http.ResponseWriter, r *http.Request) {
+	query, err := url.ParseQuery(r.URL.RawQuery)
+	if err != nil {
+		fail(w, http.StatusUnprocessableEntity, "validation", "Invalid query string.", "")
+		return
+	}
+	for name, values := range query {
+		switch name {
+		case "include":
+			continue
+		case "limit", "offset", "featured", "q", "tag":
+			if len(values) == 1 && !(name == "tag" && strings.Contains(values[0], ",")) {
+				continue
+			}
+			fail(w, http.StatusUnprocessableEntity, "validation", "Supply one value for "+name+".", "")
+		default:
+			fail(w, http.StatusUnprocessableEntity, "validation", "Unknown post list parameter: "+name+".", "")
+		}
+		return
+	}
 	limit, offset, ok := pageParams(w, r)
 	if !ok {
 		return
@@ -229,11 +248,21 @@ func (s *Server) contentHTML(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	tag := strings.TrimSuffix(etag(p.Version), `"`) + `-html"`
+	sizes, err := s.store.PostImageSizes(r.Context(), []string{p.Slug})
+	if err != nil {
+		s.internal(w, r, err)
+		return
+	}
+	siteURL := ""
+	if s.site != nil {
+		siteURL = s.site.url
+	}
+	dimensions, _ := json.Marshal(sizes)
+	tag := `"` + digest("published-html", s.cfg.Version, p.Slug, etag(p.Version), s.origin.String(), siteURL, string(dimensions)) + `"`
 	if notModified(w, r, tag) {
 		return
 	}
-	html, err := render.HTML(r.Context(), p.Body)
+	html, err := s.publishedHTML(r.Context(), p.Slug, p.Body, sizes)
 	if !s.renderError(w, r, err) {
 		return
 	}

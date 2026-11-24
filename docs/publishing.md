@@ -267,3 +267,26 @@ The panel's preview renders Markdown without raw HTML, like most static site
 generators' safe defaults, and loads images from their `https://` URLs. Your
 site's own renderer (for example Nuxt Content with MDC components) decides the
 final look; components the preview does not know appear as plain text there.
+
+### Links, images and feed addresses
+
+Published HTML preserves normal navigation for relative links, fragments and
+links to the configured website origin. External web links keep the renderer’s
+`nofollow` and new-tab behavior. Images referencing a local upload include its
+recorded pixel dimensions when available. The upload host sends
+`X-Robots-Tag: noindex, nofollow` because uploads can also belong to drafts.
+To let search engines index an image, copy it to your website and serve it there.
+
+Publish the default feeds at `/feed.xml`, `/feed.atom` and `/feed.json` under
+the configured site URL. Each identifies its own public address. Tag and
+custom-length feeds omit that address so readers do not subscribe to the wrong
+collection. Covers appear in RSS as Media RSS content, in Atom as enclosures
+and in JSON Feed as item images. Atom categories carry both the tag slug and
+its display label.
+
+Markdown supports GitHub-style tables, strikethrough and task lists, plus
+footnotes. Heading anchors use lowercase visible text and preserve Unicode
+letters and digits. Repeated headings receive numbered suffixes. Footnote
+anchors in published HTML include the post slug so different posts can share
+one page. The renderer drops raw HTML blocks, including embedded players and
+`details` blocks. Use Markdown links with HTTP, HTTPS or mailto destinations.

@@ -144,4 +144,9 @@ func TestScheduledPostsAndFilter(t *testing.T) {
 	if counts.Scheduled != 3 || counts.Draft != 4 {
 		t.Errorf("counts = %+v, want 3 scheduled within 4 drafts", counts)
 	}
+	page, _, err := s.ListPosts(ctx, Filter{Scheduled: true, Sort: SortScheduled, Limit: 2})
+	if err != nil || len(page) != 2 || page[0].Slug != "earliest" || page[1].Slug != "sooner" {
+		t.Fatalf("next scheduled: %+v, %v", page, err)
+	}
+
 }

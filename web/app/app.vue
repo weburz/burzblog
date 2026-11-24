@@ -62,6 +62,27 @@ const requestSignOut = () => {
   else void leave();
 };
 
+const nav = ref<HTMLElement | null>(null);
+const fadeStart = ref(false);
+const fadeEnd = ref(false);
+const updateNavFades = () => {
+  const el = nav.value;
+  fadeStart.value = Boolean(el && el.scrollLeft > 1);
+  fadeEnd.value = Boolean(el && el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
+};
+watch(
+  nav,
+  (el, _, cleanup) => {
+    updateNavFades();
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(updateNavFades);
+    observer.observe(el);
+    for (const tab of el.children) observer.observe(tab);
+    cleanup(() => observer.disconnect());
+  },
+  { flush: "post" },
+);
+
 const accountItems = computed(() => [
   [
     {
@@ -106,7 +127,14 @@ useHead({
               >BurzBlog</span
             >
           </NuxtLink>
-          <nav v-if="state.authenticated" aria-label="Main" class="nav-tabs">
+          <nav
+            v-if="state.authenticated"
+            ref="nav"
+            aria-label="Main"
+            class="nav-tabs"
+            :class="{ 'fade-start': fadeStart, 'fade-end': fadeEnd }"
+            @scroll.passive="updateNavFades"
+          >
             <NuxtLink to="/" class="nav-tab" exact-active-class="is-active"
               >Posts</NuxtLink
             >

@@ -518,3 +518,31 @@ func TestSessionPostURL(t *testing.T) {
 		}
 	})
 }
+
+func TestFeedSelfAndCover(t *testing.T) {
+	c := newFeedHarness(t, withSite)
+	if _, err := c.store.SetTagLabel(t.Context(), "go", "Go language", "ada"); err != nil {
+		t.Fatal(err)
+	}
+	_, atom := c.get(c.export, "/api/content/feed.atom")
+	if !strings.Contains(atom, `term="go" label="Go language"`) {
+		t.Errorf("atom lacks tag label: %s", atom)
+	}
+
+	for _, tc := range []struct{ file, cover string }{
+		{"feed.xml", `media:content url="https://example.com/c.png?a=1&amp;b=2"`},
+		{"feed.atom", `rel="enclosure" href="https://example.com/c.png?a=1&amp;b=2"`},
+		{"feed.json", `"image":"https://example.com/c.png`},
+	} {
+		path := "/api/content/" + tc.file
+		self := siteURL + "/" + tc.file
+		resp, raw := c.get(c.export, path)
+		if resp.StatusCode != 200 || !strings.Contains(raw, self) || !strings.Contains(raw, tc.cover) {
+			t.Errorf("%s lacks self or cover: %s", path, raw)
+		}
+		_, filtered := c.get(c.export, path+"?tag=go")
+		if strings.Contains(filtered, self) {
+			t.Errorf("%s has default self in filtered feed", path)
+		}
+	}
+}

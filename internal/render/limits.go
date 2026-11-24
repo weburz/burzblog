@@ -26,9 +26,7 @@ const (
 	// MaxLines is how many non-blank lines outside code blocks a post may
 	// have. Each one becomes several parser nodes, whatever its length.
 	MaxLines = 50000
-	// MaxHeadings is how many headings a post may have. Each heading id is
-	// made unique by trying suffixes until one is free, so repeated titles
-	// cost quadratic time.
+	// MaxHeadings bounds the per-document set of unique heading anchors.
 	MaxHeadings = 1000
 	// MaxMarkers is how many emphasis, strikethrough, code span and link openers one
 	// paragraph may hold; unmatched ones are re-scanned by the inline parser.

@@ -424,3 +424,20 @@ sits on the same disk.
 `burzblog upgrade` calls the GitHub API and downloads release files without
 credentials, so it works only while the releases are publicly downloadable. Its
 tests run against local test servers.
+
+### Moving the blog to a new domain
+
+Take a snapshot before changing the public address. Set `BURZBLOG_ORIGIN` on
+the new host and use the same data directory (or restore the snapshot there).
+Uploaded files keep their names. Update the old absolute URLs in post bodies
+and covers with the host command, first checking the count:
+
+```sh
+burzblog rewrite-origin https://old.example.org https://blog.example.org --data /var/lib/burzblog --dry-run
+burzblog rewrite-origin https://old.example.org https://blog.example.org --data /var/lib/burzblog
+```
+
+This updates matching upload URLs in drafts, published posts and archives. Each
+changed post gets a revision. Existing revisions retain their original text.
+Rebuild the website and update clients and build jobs that use the old server
+address. Run the command again if a concurrent edit caused a version conflict.
