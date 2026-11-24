@@ -199,13 +199,24 @@ func TestTerminalWorkflow(t *testing.T) {
 	exportDir := t.TempDir()
 	os.WriteFile(filepath.Join(exportDir, "stale.md"), []byte("old"), 0o644)
 	out = e.must("", "export", "--out", exportDir, "--clean")
-	if !strings.Contains(out, "Exported 1 published post to") || !strings.Contains(out, "removed 1") {
+	if !strings.Contains(out, "Exported 1 published post to") {
 		t.Errorf("export = %q", out)
 	}
 	if b, err := os.ReadFile(filepath.Join(exportDir, "fresh-idea.md")); err != nil || !strings.Contains(string(b), "status: published") {
 		t.Errorf("exported file: %q %v", b, err)
 	}
 
+	if b, err := os.ReadFile(filepath.Join(exportDir, "stale.md")); err != nil || string(b) != "old" {
+		t.Errorf("export removed unrelated Markdown: %q, %v", b, err)
+	}
+	e.must("", "unpublish", "fresh-idea")
+	e.must("", "export", "--out", exportDir)
+	if out := e.must("", "export", "--out", exportDir, "--clean"); !strings.Contains(out, "removed 1") {
+		t.Errorf("clean after unpublishing: %q", out)
+	}
+	if _, err := os.Stat(filepath.Join(exportDir, "fresh-idea.md")); !os.IsNotExist(err) {
+		t.Errorf("unpublished export still present: %v", err)
+	}
 	if out := e.must("", "logout"); !strings.Contains(out, "Signed out") {
 		t.Errorf("logout = %q", out)
 	}

@@ -84,6 +84,13 @@ func TestSnapshotCreateVerifyRestore(t *testing.T) {
 
 func TestSnapshotEncrypted(t *testing.T) {
 	e := snapshotEnv(t)
+	target := filepath.Join(t.TempDir(), "backup.tar.gz.enc")
+	if _, errOut, code := e.run("", "snapshot", "create", target); code != ExitUsage || !strings.Contains(errOut, "passphrase") {
+		t.Errorf("unencrypted .enc output: %d %q", code, errOut)
+	}
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatalf("unexpected .enc file: %v", err)
+	}
 	e.vars["BURZBLOG_SNAPSHOT_PASSPHRASE"] = "a long passphrase here"
 	var made snapshotLine
 	if err := json.Unmarshal([]byte(e.must("", "snapshot", "create", t.TempDir(), "--json")), &made); err != nil {

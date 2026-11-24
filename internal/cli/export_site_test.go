@@ -4,6 +4,8 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -38,5 +40,23 @@ func TestReadExportRefusesOtherFiles(t *testing.T) {
 		if _, _, err := readExport(archive(t, map[string]string{name: "x"})); err == nil || !strings.Contains(err.Error(), "unexpected entry") {
 			t.Errorf("%s: err = %v", name, err)
 		}
+	}
+}
+
+func TestCleanExportKeepsLocalEdits(t *testing.T) {
+	dir := t.TempDir()
+	posts := map[string][]byte{"old.md": []byte("published text")}
+	if _, err := writeExport(dir, posts, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "old.md")
+	if err := os.WriteFile(path, []byte("local content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if removed, err := writeExport(dir, nil, nil, true); err != nil || removed != 0 {
+		t.Fatalf("clean: removed %d, error %v", removed, err)
+	}
+	if data, err := os.ReadFile(path); err != nil || string(data) != "local content" {
+		t.Fatalf("local content: %q, %v", data, err)
 	}
 }

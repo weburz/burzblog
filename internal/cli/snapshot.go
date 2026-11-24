@@ -130,7 +130,8 @@ restored, by anyone.`,
 		Use:   "create [file | folder | - | s3://bucket/prefix]",
 		Short: "Write a snapshot of the whole blog, safely while it runs",
 		Long: `Writes a snapshot of the blog to a file. A target ending in .gz or .enc is
-the file to write. Anything else is a folder, made when missing; given one, or
+the file to write. An explicit .enc filename requires a passphrase.
+Anything else is a folder, made when missing; given one, or
 nothing (the snapshots folder in the data directory), it names the file
 burzblog-snapshot-<UTC time>.tar.gz, with .enc added when encrypted; - writes
 to standard output. --keep N then deletes all but the newest N snapshots in
@@ -181,7 +182,7 @@ systemd timer, then copy the file off the server.`,
 					return errors.New("the passphrases do not match")
 				}
 			}
-			if pass != "" && len(pass) < snapshot.MinPassphrase {
+			if (encrypt || pass != "") && len(pass) < snapshot.MinPassphrase {
 				return usagef("the passphrase must be at least %d characters", snapshot.MinPassphrase)
 			}
 			encrypted := pass != ""
@@ -206,6 +207,9 @@ systemd timer, then copy the file off the server.`,
 					path, inFolder = filepath.Join(target, snapshot.Name(now, encrypted)), true
 				} else {
 					path = target
+					if strings.HasSuffix(strings.ToLower(path), ".enc") && !encrypted {
+						return usagef("a .enc snapshot requires a passphrase: use --encrypt, --passphrase-file, or BURZBLOG_SNAPSHOT_PASSPHRASE")
+					}
 				}
 				if _, err := os.Stat(path); err == nil {
 					return conflictf("%s already exists; choose another name", path)
@@ -471,7 +475,8 @@ func interruptible() (context.Context, context.CancelFunc) {
 // it ends in .gz or .enc. Anything else is a folder, made when missing, so a
 // mistyped folder never becomes a file named like it.
 func snapshotFileName(target string) bool {
-	return strings.HasSuffix(target, ".gz") || strings.HasSuffix(target, ".enc")
+	name := strings.ToLower(target)
+	return strings.HasSuffix(name, ".gz") || strings.HasSuffix(name, ".enc")
 }
 
 func (a *App) printSnapshotSummary(w io.Writer, m *snapshot.Manifest, encrypted bool) {

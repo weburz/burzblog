@@ -786,27 +786,9 @@ Settings) instead of running burzblog login.`,
 			if err != nil {
 				return err
 			}
-			if err := os.MkdirAll(out, 0o755); err != nil {
+			removed, err := writeExport(out, files, site, clean)
+			if err != nil {
 				return err
-			}
-			removed := 0
-			if clean {
-				existing, _ := filepath.Glob(filepath.Join(out, "*.md"))
-				for _, f := range existing {
-					if _, keep := files[filepath.Base(f)]; !keep {
-						if err := os.Remove(f); err != nil {
-							return err
-						}
-						removed++
-					}
-				}
-			}
-			for _, set := range []map[string][]byte{files, site} {
-				for name, data := range set {
-					if err := writeFileAtomic(filepath.Join(out, name), data, 0o644); err != nil {
-						return err
-					}
-				}
 			}
 			fmt.Fprintf(a.Out, "%s Exported %s to %s", a.paint(green, "✓"), count(len(files), "published post", "published posts"), out)
 			if removed > 0 {
@@ -818,7 +800,7 @@ Settings) instead of running burzblog login.`,
 	}
 	cmd.Flags().StringVar(&out, "output", "", "alias for --out")
 	cmd.Flags().StringVarP(&out, "out", "o", "", "directory to write <slug>.md files into")
-	cmd.Flags().BoolVar(&clean, "clean", false, "delete other .md files in the directory (posts no longer published)")
+	cmd.Flags().BoolVar(&clean, "clean", false, "remove unchanged files from earlier exports of posts no longer published")
 	return cmd
 }
 
