@@ -16,9 +16,20 @@ they connect directly; behind a reverse proxy everyone shares the proxy's
 address and a flood is shed as a whole. It is load shedding, never a lockout:
 real sign-ins work again as soon as the flood stops. Unknown usernames take as
 long as known ones, and nothing is shed by whether an account exists. Failed
-sign-ins are limited per username, counted before the password is checked so
-parallel guesses cannot slip past (see [API](api.md)); expired counters are
-pruned as sign-ins arrive. There
+sign-ins are limited to ten per 15 minutes, counted before the password is
+checked so parallel guesses cannot slip past (see [API](api.md)); expired
+counters are pruned as sign-ins arrive. A browser that signed in to an account
+in the last 30 days holds a known-browser cookie (`HttpOnly`, `SameSite=Strict`,
+`__Host-burzblog_device` over HTTPS, `burzblog_device` over plain HTTP) and has
+its own counter for that account; every other client shares the username's
+counter. So guesses sent from anywhere else can block new browsers and
+`burzblog login` for that username for 15 minutes at a time, but not the
+browsers its owner already uses. The cookie is a random 256-bit value stored
+as a SHA-256 digest, is replaced at every sign-in, stays after sign-out, and
+grants no access: someone who steals it gets that browser's ten guesses, not
+a session. An account keeps its 20 most recent browsers. Empty passwords and
+passwords over 1 KiB are refused before any lookup, so they take the same
+time for every name and use no attempts. There
 is no self sign-up; accounts are created on the host with `burzblog user add`,
 or once, in the browser, by first-run setup (below). Every account is an
 `admin` or an `author` (next paragraph).
@@ -82,7 +93,8 @@ snapshots that worked (`snapshot.create`) or failed (`snapshot.fail`) as actor
 `scheduler`. Changes made on
 the host with `burzblog user` and `burzblog snapshot` are recorded as actor
 `host`. Failed sign-ins for names that do not exist are not recorded, so repeating them cannot grow the
-log; rate-limited attempts are not recorded either. A row is never updated or
+log; rate-limited attempts and passwords refused before checking (empty or
+over 1 KiB) are not recorded either. A row is never updated or
 deleted: database triggers refuse both and ids are never reused, so the log
 only grows (an entry is roughly 150 bytes). Anyone with the database file can of
 course rewrite it; the log guards against accounts, not against the host. A
@@ -117,7 +129,8 @@ create the first account, so treat the log as sensitive until you have.
 authenticator app after its password (RFC 6238: HMAC-SHA1, 6 digits, 30-second
 steps, one step either side accepted). It is off until someone turns it on in
 Settings, where enrolling needs the current password and then one valid code
-before it takes effect. For an account that uses it, a correct password creates
+before it takes effect; wrong codes there count against the same attempt
+limit as sign-in. For an account that uses it, a correct password creates
 no session: the server answers `{"second_factor": true, "challenge": ...}`, and
 only `POST /api/login/totp` with the challenge and a code starts one. The
 challenge is 256 random bits, valid for five minutes, usable once, tied to the
@@ -208,7 +221,9 @@ can preview anything they can save. The largest input these limits admit takes
 well under a second and allocates under 160 MiB in total (see
 `internal/render/limits_test.go`); a typical 2 MiB post takes about 0.15 s.
 
-**Input.** Request bodies are capped at 4 MiB and JSON rejects unknown fields.
+**Input.** Request bodies are capped at 4 MiB, and at 16 KiB on the routes
+open without sign-in (sign-in, the two-factor step, `POST /api/auth/token` and
+first-run setup). JSON rejects unknown fields.
 Frontmatter must be a plain mapping: YAML anchors, aliases, merge keys (`<<`,
 `!!merge`) and any tag outside the YAML core schema (`!!str`, `!!int`,
 `!!float`, `!!bool`, `!!null`, `!!timestamp`, `!!map`, `!!seq`, `!!binary`) are

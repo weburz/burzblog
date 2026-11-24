@@ -51,7 +51,7 @@ func (s *Server) twoFactorStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	user := who(r).user
-	secret, err := s.auth.StartTwoFactor(clientContext(r), user, body.Password)
+	secret, err := s.auth.StartTwoFactor(s.clientContext(r), user, body.Password)
 	switch {
 	case s.passwordFailed(w, r, err):
 	case errors.Is(err, auth.ErrTwoFactorOn):
@@ -73,8 +73,10 @@ func (s *Server) twoFactorConfirm(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	codes, err := s.auth.ConfirmTwoFactor(r.Context(), who(r).user, body.Code)
+	codes, err := s.auth.ConfirmTwoFactor(s.clientContext(r), who(r).user, body.Code)
 	switch {
+	case errors.Is(err, auth.ErrRateLimited):
+		fail(w, http.StatusTooManyRequests, "rate_limited", "Too many wrong codes. Wait 15 minutes, then try again.", "")
 	case errors.Is(err, auth.ErrCode):
 		fail(w, http.StatusBadRequest, "code", "That code is not right. Check the latest code in your authenticator app.", "")
 	case errors.Is(err, auth.ErrTwoFactorOff):
@@ -100,7 +102,7 @@ func (s *Server) twoFactorDisable(w http.ResponseWriter, r *http.Request) {
 	if id.session != nil {
 		keep = id.session.TokenHash
 	}
-	err := s.auth.DisableTwoFactor(clientContext(r), id.user, body.Password, body.Code, keep)
+	err := s.auth.DisableTwoFactor(s.clientContext(r), id.user, body.Password, body.Code, keep)
 	switch {
 	case s.passwordFailed(w, r, err):
 	case errors.Is(err, auth.ErrTwoFactorOff):

@@ -38,6 +38,14 @@ func (s *Server) cookieName() string {
 	return "burzblog_session"
 }
 
+// deviceCookieName names the known-browser cookie (see rememberDevice).
+func (s *Server) deviceCookieName() string {
+	if s.origin.Scheme == "https" {
+		return "__Host-burzblog_device"
+	}
+	return "burzblog_device"
+}
+
 // resolve finds the caller from a bearer token or a session cookie.
 func (s *Server) resolve(r *http.Request) (*identity, error) {
 	if h := r.Header.Get("Authorization"); h != "" {
@@ -156,11 +164,26 @@ func (s *Server) failOrigin(w http.ResponseWriter) {
 const maxBody = 4 << 20
 
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {
+	return decodeLimit(w, r, v, maxBody)
+}
+
+// maxCredentialBody bounds the routes anyone can call without signing in:
+// sign-in, the two-factor step, terminal sign-in and first-run setup. Their
+// fields fit in far less (a password is at most 1 KiB).
+const maxCredentialBody = 16 << 10
+
+// decodeCredentials is decode for the routes open without sign-in.
+func decodeCredentials(w http.ResponseWriter, r *http.Request, v any) bool {
+	return decodeLimit(w, r, v, maxCredentialBody)
+}
+
+// decodeLimit is decode with a body limit of limit bytes.
+func decodeLimit(w http.ResponseWriter, r *http.Request, v any, limit int64) bool {
 	if ct := r.Header.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
 		fail(w, http.StatusUnsupportedMediaType, "content_type", "Send JSON with Content-Type: application/json.", "")
 		return false
 	}
-	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBody))
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(v); err != nil {
 		var tooBig *http.MaxBytesError
