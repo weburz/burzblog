@@ -3,6 +3,8 @@ package server
 import (
 	"archive/tar"
 	"compress/gzip"
+	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/weburz/burzblog/internal/post"
 	"github.com/weburz/burzblog/internal/store"
 )
 
@@ -170,7 +173,7 @@ func TestContentHTMLIsSanitized(t *testing.T) {
 	if resp.StatusCode != 200 || !strings.Contains(raw, `\u003ch1`) || strings.Contains(raw, `\u003cscript`) {
 		t.Errorf("html = %d %s", resp.StatusCode, raw)
 	}
-	if resp.Header.Get("ETag") != `"2-html"` || resp.Header.Get("Cache-Control") != "private, max-age=60" {
+	if resp.Header.Get("ETag") == "" || resp.Header.Get("Cache-Control") != "private, max-age=60" {
 		t.Errorf("html headers = %v", resp.Header)
 	}
 }
@@ -352,5 +355,62 @@ func TestContentTagsAndMetadata(t *testing.T) {
 	}
 	if resp, _ := c.get("", "/api/content/tags"); resp.StatusCode != 401 {
 		t.Errorf("anonymous tags = %d, want 401", resp.StatusCode)
+	}
+}
+
+func TestReaderQueryAndMethodErrors(t *testing.T) {
+	c := newContentHarness(t)
+	for _, query := range []string{"sort=title", "tag=a&tag=b", "tag=a,b", "q=x;q=y"} {
+		if resp, _ := c.get(c.export, "/api/content/posts?"+query); resp.StatusCode != 422 {
+			t.Errorf("%s: %d", query, resp.StatusCode)
+		}
+	}
+	if resp, _ := c.do("POST", "/api/content/posts", nil); resp.StatusCode != 405 || resp.Header.Get("Allow") != "GET, HEAD" {
+		t.Errorf("method: %d %q", resp.StatusCode, resp.Header.Get("Allow"))
+	}
+	if resp, _ := c.get(c.export, "/api/no-such-endpoint"); resp.StatusCode != 404 {
+		t.Errorf("unknown route: %d", resp.StatusCode)
+	}
+}
+
+func TestPublishedInternalLinksAndUploadSize(t *testing.T) {
+	c := newContentHarnessWith(t, withSite)
+	ctx := context.Background()
+	name := strings.Repeat("4", 32) + ".png"
+	upload, _, err := c.store.AddMedia(ctx, store.Media{FileName: name, SHA256: strings.Repeat("4", 64), Size: 7, OriginalName: "cover.png", MIME: "image/png", Width: 80, Height: 100, UploadedBy: "ada"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	live, err := c.store.GetPost(ctx, "live")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = c.store.UpdatePost(ctx, "live", live.Version, "ada", func(p *post.Post) error {
+		p.Body = "[local](/elsewhere) [same](https://example.com/a) [external](https://other.example/x) ![cover](/media/" + name + ") note[^x] again[^x]\n\n[^x]: reference"
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := "/api/content/posts/live/html"
+	resp, raw := c.get(c.export, path)
+	var output struct{ HTML string }
+	if err = json.Unmarshal([]byte(raw), &output); err != nil || resp.StatusCode != 200 {
+		t.Fatalf("content HTML: %d %s %v", resp.StatusCode, raw, err)
+	}
+	for _, want := range []string{`href="/elsewhere" rel="noreferrer"`, `href="https://example.com/a"`, `href="https://other.example/x"`, `width="80" height="100"`, `id="live-fn:1"`, `href="#live-fn:1"`, `class="footnotes"`} {
+		if !strings.Contains(output.HTML, want) {
+			t.Errorf("missing %q in %s", want, output.HTML)
+		}
+	}
+	if strings.Count(output.HTML, `target="_blank"`) != 1 || strings.Count(output.HTML, "nofollow") != 1 {
+		t.Errorf("external link protection: %s", output.HTML)
+	}
+	if _, err = c.store.DeleteMedia(ctx, upload.ID); err != nil {
+		t.Fatal(err)
+	}
+	resp, raw = c.get(c.export, path, "If-None-Match", resp.Header.Get("ETag"))
+	if resp.StatusCode != 200 || strings.Contains(raw, "width=") {
+		t.Fatalf("deleted image still cached: %d %s", resp.StatusCode, raw)
 	}
 }

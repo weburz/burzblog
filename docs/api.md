@@ -362,14 +362,14 @@ accounts that saved it are not part of it.
 
 Responses carry `ETag` and `Cache-Control: private, max-age=60`, and
 `If-None-Match` (a tag, a list of tags or `*`) answers `304` without a body.
-The tag of a post is its `version` (`"3"`, `"3-md"` for Markdown, `"3-html"`
-for HTML), followed by a digest of the labels an admin set for its tags when
-there are any and by the cover size when it has one (`"3-9f2c41a7b0de"`,
-`"3-1200x630"`, `"3-9f2c41a7b0de-1200x630"`), so changing a label or the
-cover's upload changes it; the tag of the list and of the tags is a digest of
-the response. Publishing,
-unpublishing or editing a post changes them, so a cached copy is at most 60
-seconds old.
+Treat entity tags as opaque. Changing a referenced upload’s dimensions invalidates the HTML tag.
+Editing a tag label also invalidates feeds that carry tag metadata.
+
+The published post list accepts `q`, `tag`, `featured`, `include`, `limit`
+and `offset`. Unknown parameters, multiple values for a single filter and
+comma-separated tags return 422. Supply one tag per request. An offset can be
+used by itself. A known API path requested with an unsupported method returns
+405 and an `Allow` header.
 
 ### Stability and versioning
 
@@ -411,8 +411,9 @@ site_url_missing` with the flag to set, and the export leaves the files out.
   are listed and tag pages are dropped first, and the server logs a warning.
 - Like the other content routes they answer with an `ETag`, `304` for
   `If-None-Match` and `Cache-Control: private, max-age=60`. The tag is a digest
-  of the site settings, the request and each included post's slug and version,
-  so a `304` costs no rendering.
+  of the selected posts, site settings and feed metadata. An unchanged feed
+  or sitemap answers 304 before rendering. A feed that temporarily falls back
+  to summaries because the renderer is busy asks clients to retry without caching.
 
 ## Health
 

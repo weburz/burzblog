@@ -24,6 +24,7 @@ var languagePattern = regexp.MustCompile(`^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$`)
 // site is the validated description of the public website. Feeds and the
 // sitemap use it to build absolute URLs; it is nil when no site URL is set.
 type site struct {
+	origin      *url.URL
 	url         string // https://example.com, no trailing slash
 	title       string
 	description string
@@ -43,6 +44,7 @@ func newSite(cfg Config) (*site, error) {
 		return nil, fmt.Errorf("site URL must look like https://example.com, got %q", cfg.SiteURL)
 	}
 	st := &site{
+		origin:      base,
 		url:         base.String(),
 		title:       strings.TrimSpace(cfg.SiteTitle),
 		description: strings.TrimSpace(cfg.SiteDescription),

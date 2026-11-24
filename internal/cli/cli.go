@@ -157,7 +157,7 @@ Exit codes: 0 ok, 1 error, 2 usage, 3 conflict, 4 not found, 5 not signed in,
 		root.AddCommand(c)
 	}
 	root.AddCommand(a.healthCmd())
-	for _, c := range []*cobra.Command{a.serveCmd(), a.userCmd(), a.auditCmd(), a.snapshotCmd(), a.upgradeCmd()} {
+	for _, c := range []*cobra.Command{a.serveCmd(), a.userCmd(), a.auditCmd(), a.snapshotCmd(), a.upgradeCmd(), a.rewriteOriginCmd()} {
 		c.GroupID = "host"
 		root.AddCommand(c)
 	}

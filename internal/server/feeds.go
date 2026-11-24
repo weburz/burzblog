@@ -36,15 +36,16 @@ var maxSitemapURLs = 50000
 // feedEntry is a published post with its rendered body. HTML is empty when the
 // post could not be rendered; the feed then carries the description only.
 type feedEntry struct {
-	Post *post.Post
-	HTML string
+	Post   *post.Post
+	HTML   string
+	Labels map[string]string
 }
 
 // feedFormat is one syndication format of the same entries.
 type feedFormat struct {
 	file        string
 	contentType string
-	encode      func(*site, []feedEntry) ([]byte, error)
+	encode      func(*site, []feedEntry, string) ([]byte, error)
 }
 
 var feedFormats = []feedFormat{
@@ -117,31 +118,54 @@ func (s *Server) listingTag(kind, extra string, list []store.Listing) string {
 	return s.digest(kind, parts...)
 }
 
+type feedInputs struct {
+	Sizes  map[string]store.MediaSize
+	Labels map[string]string
+}
+
+func (s *Server) feedInputs(ctx context.Context, list []store.Listing) (feedInputs, error) {
+	slugs := make([]string, len(list))
+	for i, l := range list {
+		slugs[i] = l.Post.Slug
+	}
+	sizes, err := s.store.PostImageSizes(ctx, slugs)
+	if err != nil {
+		return feedInputs{}, err
+	}
+	labels, err := s.store.TagLabels(ctx)
+	return feedInputs{sizes, labels}, err
+}
+
 // feedEntries loads each listed post's body and renders it. A post the
 // renderer refuses (too large, too complex, no free render slot) keeps its
 // description only, so one bad post does not fail the feed.
-func (s *Server) feedEntries(ctx context.Context, list []store.Listing) ([]feedEntry, error) {
+func (s *Server) feedEntries(ctx context.Context, list []store.Listing, inputs feedInputs) ([]feedEntry, bool, error) {
+	stable := true
 	entries := make([]feedEntry, 0, len(list))
 	for _, l := range list {
 		p, err := s.store.GetPost(ctx, l.Post.Slug)
 		if errors.Is(err, store.ErrNotFound) || (err == nil && p.Status != post.Published) {
+			stable = false
 			continue // unpublished since the listing
 		}
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
-		html, err := render.HTML(ctx, p.Body)
+		html, err := s.publishedHTML(ctx, p.Slug, p.Body, inputs.Sizes)
+		if p.Version != l.Post.Version || errors.Is(err, render.ErrBusy) {
+			stable = false
+		}
 		var limit *render.LimitError
 		switch {
 		case errors.As(err, &limit) || errors.Is(err, render.ErrBusy):
 			s.log.Warn("feed entry falls back to its description", "slug", p.Slug, "err", err)
 			html = ""
 		case err != nil:
-			return nil, err
+			return nil, false, err
 		}
-		entries = append(entries, feedEntry{Post: p, HTML: html})
+		entries = append(entries, feedEntry{Post: p, HTML: html, Labels: inputs.Labels})
 	}
-	return entries, nil
+	return entries, stable, nil
 }
 
 // contentFeed serves one feed format: the newest published posts, optionally
@@ -161,19 +185,35 @@ func (s *Server) contentFeed(f feedFormat) http.HandlerFunc {
 			s.internal(w, r, err)
 			return
 		}
-		etag := s.listingTag(f.file, strconv.Itoa(limit)+"|"+tag, list)
+		inputs, err := s.feedInputs(r.Context(), list)
+		if err != nil {
+			s.internal(w, r, err)
+			return
+		}
+		metadata, _ := json.Marshal(inputs)
+		etag := s.listingTag(f.file, digest(strconv.Itoa(limit), tag, s.origin.String(), string(metadata)), list)
 		if notModified(w, r, etag) {
 			return
 		}
-		entries, err := s.feedEntries(r.Context(), list)
+		entries, stable, err := s.feedEntries(r.Context(), list, inputs)
+		if err != nil {
+			s.internal(w, r, err)
+			return
+		}
+		self := ""
+		if tag == "" && limit == defaultFeedItems {
+			self = s.site.url + "/" + f.file
+		}
+		out, err := f.encode(s.site, entries, self)
 		if err == nil {
-			var out []byte
-			if out, err = f.encode(s.site, entries); err == nil {
+			if stable {
 				cached(w, etag)
-				w.Header().Set("Content-Type", f.contentType)
-				_, _ = w.Write(out)
-				return
+			} else {
+				w.Header().Set("Cache-Control", "private, no-store")
 			}
+			w.Header().Set("Content-Type", f.contentType)
+			_, _ = w.Write(out)
+			return
 		}
 		s.internal(w, r, err)
 	}
@@ -238,12 +278,16 @@ func (s *Server) siteFiles(ctx context.Context) (map[string][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	entries, err := s.feedEntries(ctx, list)
+	inputs, err := s.feedInputs(ctx, list)
+	if err != nil {
+		return nil, err
+	}
+	entries, _, err := s.feedEntries(ctx, list, inputs)
 	if err != nil {
 		return nil, err
 	}
 	for _, f := range feedFormats {
-		if files[f.file], err = f.encode(s.site, entries); err != nil {
+		if files[f.file], err = f.encode(s.site, entries, s.site.url+"/"+f.file); err != nil {
 			return nil, err
 		}
 	}
@@ -273,10 +317,13 @@ type rssFeed struct {
 	Version string     `xml:"version,attr"`
 	Content string     `xml:"xmlns:content,attr"`
 	DC      string     `xml:"xmlns:dc,attr"`
+	Atom    string     `xml:"xmlns:atom,attr"`
+	Media   string     `xml:"xmlns:media,attr"`
 	Channel rssChannel `xml:"channel"`
 }
 
 type rssChannel struct {
+	Self          *atomLink `xml:"atom:link,omitempty"`
 	Title         string    `xml:"title"`
 	Link          string    `xml:"link"`
 	Description   string    `xml:"description"`
@@ -286,15 +333,20 @@ type rssChannel struct {
 	Items         []rssItem `xml:"item"`
 }
 
+type rssMedia struct {
+	URL string `xml:"url,attr"`
+}
+
 type rssItem struct {
-	Title       string   `xml:"title"`
-	Link        string   `xml:"link"`
-	GUID        rssGUID  `xml:"guid"`
-	PubDate     string   `xml:"pubDate"`
-	Description string   `xml:"description,omitempty"`
-	Content     string   `xml:"content:encoded,omitempty"`
-	Creator     string   `xml:"dc:creator,omitempty"`
-	Categories  []string `xml:"category"`
+	Cover       *rssMedia `xml:"media:content,omitempty"`
+	Title       string    `xml:"title"`
+	Link        string    `xml:"link"`
+	GUID        rssGUID   `xml:"guid"`
+	PubDate     string    `xml:"pubDate"`
+	Description string    `xml:"description,omitempty"`
+	Content     string    `xml:"content:encoded,omitempty"`
+	Creator     string    `xml:"dc:creator,omitempty"`
+	Categories  []string  `xml:"category"`
 }
 
 type rssGUID struct {
@@ -302,21 +354,28 @@ type rssGUID struct {
 	Value       string `xml:",chardata"`
 }
 
-func encodeRSS(st *site, entries []feedEntry) ([]byte, error) {
+func encodeRSS(st *site, entries []feedEntry, self string) ([]byte, error) {
 	feed := rssFeed{
-		Version: "2.0", Content: "http://purl.org/rss/1.0/modules/content/", DC: "http://purl.org/dc/elements/1.1/",
+		Atom: "http://www.w3.org/2005/Atom", Media: "http://search.yahoo.com/mrss/", Version: "2.0", Content: "http://purl.org/rss/1.0/modules/content/", DC: "http://purl.org/dc/elements/1.1/",
 		Channel: rssChannel{
 			Title: st.title, Link: st.url + "/", Description: st.description, Language: st.language,
 			LastBuildDate: feedUpdated(entries).Format(time.RFC1123Z), Generator: "BurzBlog",
 		},
 	}
+	if self != "" {
+		feed.Channel.Self = &atomLink{"self", self}
+	}
 	for _, e := range entries {
 		link := st.postURL(e.Post.Slug)
-		feed.Channel.Items = append(feed.Channel.Items, rssItem{
+		item := rssItem{
 			Title: e.Post.Title, Link: link, GUID: rssGUID{true, link},
 			PubDate: published(e.Post).Format(time.RFC1123Z), Description: e.Post.Description,
 			Content: e.HTML, Creator: e.Post.Author, Categories: e.Post.Tags,
-		})
+		}
+		if e.Post.CoverURL != "" {
+			item.Cover = &rssMedia{URL: e.Post.CoverURL}
+		}
+		feed.Channel.Items = append(feed.Channel.Items, item)
 	}
 	return marshalXML(feed)
 }
@@ -343,7 +402,7 @@ type atomFeed struct {
 	Subtitle string      `xml:"subtitle"`
 	ID       string      `xml:"id"`
 	Updated  string      `xml:"updated"`
-	Link     atomLink    `xml:"link"`
+	Links    []atomLink  `xml:"link"`
 	Author   atomAuthor  `xml:"author"`
 	Gen      string      `xml:"generator"`
 	Entries  []atomEntry `xml:"entry"`
@@ -361,7 +420,7 @@ type atomAuthor struct {
 type atomEntry struct {
 	Title      string       `xml:"title"`
 	ID         string       `xml:"id"`
-	Link       atomLink     `xml:"link"`
+	Links      []atomLink   `xml:"link"`
 	Published  string       `xml:"published"`
 	Updated    string       `xml:"updated"`
 	Author     *atomAuthor  `xml:"author"`
@@ -371,7 +430,8 @@ type atomEntry struct {
 }
 
 type atomTerm struct {
-	Term string `xml:"term,attr"`
+	Term  string `xml:"term,attr"`
+	Label string `xml:"label,attr"`
 }
 
 type atomContent struct {
@@ -379,24 +439,30 @@ type atomContent struct {
 	Value string `xml:",chardata"`
 }
 
-func encodeAtom(st *site, entries []feedEntry) ([]byte, error) {
+func encodeAtom(st *site, entries []feedEntry, self string) ([]byte, error) {
 	feed := atomFeed{
 		NS: "http://www.w3.org/2005/Atom", Lang: st.language, Title: st.title, Subtitle: st.description,
-		ID: st.url + "/", Updated: feedUpdated(entries).Format(time.RFC3339), Link: atomLink{"alternate", st.url + "/"},
+		ID: st.url + "/", Updated: feedUpdated(entries).Format(time.RFC3339), Links: []atomLink{{"alternate", st.url + "/"}},
 		Author: atomAuthor{st.title}, Gen: "BurzBlog",
+	}
+	if self != "" {
+		feed.Links = append(feed.Links, atomLink{"self", self})
 	}
 	for _, e := range entries {
 		link := st.postURL(e.Post.Slug)
 		entry := atomEntry{
-			Title: e.Post.Title, ID: link, Link: atomLink{"alternate", link},
+			Title: e.Post.Title, ID: link, Links: []atomLink{{"alternate", link}},
 			Published: published(e.Post).Format(time.RFC3339), Updated: modified(e.Post).Format(time.RFC3339),
 			Summary: e.Post.Description,
+		}
+		if e.Post.CoverURL != "" {
+			entry.Links = append([]atomLink{{"enclosure", e.Post.CoverURL}}, entry.Links...)
 		}
 		if e.Post.Author != "" {
 			entry.Author = &atomAuthor{e.Post.Author}
 		}
 		for _, t := range e.Post.Tags {
-			entry.Categories = append(entry.Categories, atomTerm{t})
+			entry.Categories = append(entry.Categories, atomTerm{t, tagLabel(e.Labels, t)})
 		}
 		if e.HTML != "" {
 			entry.Content = &atomContent{"html", e.HTML}
@@ -409,6 +475,7 @@ func encodeAtom(st *site, entries []feedEntry) ([]byte, error) {
 // JSON Feed 1.1.
 
 type jsonFeed struct {
+	FeedURL     string     `json:"feed_url,omitempty"`
 	Version     string     `json:"version"`
 	Title       string     `json:"title"`
 	HomePageURL string     `json:"home_page_url"`
@@ -435,9 +502,9 @@ type jsonAuthor struct {
 	Name string `json:"name"`
 }
 
-func encodeJSONFeed(st *site, entries []feedEntry) ([]byte, error) {
+func encodeJSONFeed(st *site, entries []feedEntry, self string) ([]byte, error) {
 	feed := jsonFeed{
-		Version: "https://jsonfeed.org/version/1.1", Title: st.title, HomePageURL: st.url + "/",
+		FeedURL: self, Version: "https://jsonfeed.org/version/1.1", Title: st.title, HomePageURL: st.url + "/",
 		Description: st.description, Language: st.language, Items: []jsonItem{},
 	}
 	for _, e := range entries {

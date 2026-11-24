@@ -197,6 +197,19 @@ func (s *Server) routes() {
 	m.HandleFunc("GET "+mediaPrefix+"{name}", s.serveMedia)
 
 	m.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
+		var allow []string
+		probe := r.Clone(r.Context())
+		for _, method := range []string{"DELETE", "GET", "HEAD", "PATCH", "POST", "PUT"} {
+			probe.Method = method
+			if _, pattern := m.Handler(probe); strings.HasPrefix(pattern, method+" ") || (method == "HEAD" && strings.HasPrefix(pattern, "GET ")) {
+				allow = append(allow, method)
+			}
+		}
+		if len(allow) > 0 {
+			w.Header().Set("Allow", strings.Join(allow, ", "))
+			fail(w, http.StatusMethodNotAllowed, "method_not_allowed", "This endpoint does not accept that HTTP method.", "")
+			return
+		}
 		fail(w, http.StatusNotFound, "not_found", "There is no such API endpoint.", "")
 	})
 	m.Handle("/", s.panel)
