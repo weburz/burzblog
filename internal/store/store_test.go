@@ -565,3 +565,63 @@ func TestPanelListFiltersAndNaturalOrder(t *testing.T) {
 		t.Fatalf("all statuses: %+v %+v %v", list, c, err)
 	}
 }
+
+func TestLoginDevices(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+	now := time.Unix(1_800_000_000, 0)
+	s.SetClock(func() time.Time { return now })
+	ada, err := s.CreateUser(ctx, "ada", "hash", RoleAdmin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	day := 24 * time.Hour
+	if err := s.AddLoginDevice(ctx, "first", ada.ID, now.Add(day), ""); err != nil {
+		t.Fatal(err)
+	}
+	if id, err := s.LoginDeviceUser(ctx, "first"); err != nil || id != ada.ID {
+		t.Fatalf("first = %d, %v", id, err)
+	}
+	if _, err := s.LoginDeviceUser(ctx, "unknown"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("unknown = %v, want ErrNotFound", err)
+	}
+
+	// Signing in again replaces the browser's token.
+	if err := s.AddLoginDevice(ctx, "second", ada.ID, now.Add(day), "first"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.LoginDeviceUser(ctx, "first"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("replaced token = %v, want ErrNotFound", err)
+	}
+
+	// An expired token is unknown.
+	now = now.Add(day)
+	if _, err := s.LoginDeviceUser(ctx, "second"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("expired token = %v, want ErrNotFound", err)
+	}
+
+	// One account keeps at most maxLoginDevices browsers; the oldest go.
+	for i := range maxLoginDevices + 5 {
+		if err := s.AddLoginDevice(ctx, fmt.Sprintf("b%d", i), ada.ID, now.Add(time.Duration(i+1)*time.Hour), ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var n int
+	if err := s.db.QueryRowContext(ctx, "SELECT count(*) FROM login_devices").Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != maxLoginDevices {
+		t.Errorf("kept %d browsers, want %d", n, maxLoginDevices)
+	}
+	if _, err := s.LoginDeviceUser(ctx, "b0"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("oldest browser = %v, want ErrNotFound", err)
+	}
+
+	// Deleting the account removes its browsers.
+	if _, err := s.db.ExecContext(ctx, "DELETE FROM users WHERE id = ?", ada.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.db.QueryRowContext(ctx, "SELECT count(*) FROM login_devices").Scan(&n); err != nil || n != 0 {
+		t.Errorf("browsers after deleting the account = %d, %v", n, err)
+	}
+}

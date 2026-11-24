@@ -31,7 +31,7 @@ func (s *Server) setup(w http.ResponseWriter, r *http.Request) {
 		Token string `json:"token"`
 		credentials
 	}
-	if !decode(w, r, &body) {
+	if !decodeCredentials(w, r, &body) {
 		return
 	}
 	// Same rules as `burzblog user add`. A bad name or password says nothing
@@ -44,7 +44,7 @@ func (s *Server) setup(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "validation", "The account could not be created.", err.Error()+".")
 		return
 	}
-	user, err := s.auth.Setup(clientContext(r), body.Token, body.Username, body.Password)
+	user, err := s.auth.Setup(s.clientContext(r), body.Token, body.Username, body.Password)
 	switch {
 	case errors.Is(err, auth.ErrBusy):
 		busy(w)

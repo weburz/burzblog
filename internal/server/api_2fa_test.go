@@ -52,7 +52,7 @@ func (h *harness) passwordStep() map[string]any {
 	if resp.StatusCode != 200 || out["second_factor"] != true || out["challenge"] == "" {
 		h.t.Fatalf("password step = %d %v", resp.StatusCode, out)
 	}
-	if len(h.client.Jar.Cookies(mustURL(h.ts.URL))) != 0 {
+	if h.cookie("burzblog_session") != "" {
 		h.t.Fatal("a session cookie was set before the code")
 	}
 	return out

@@ -221,6 +221,16 @@ func (a *Service) ConfirmTwoFactor(ctx context.Context, user *store.User, code s
 	if err != nil {
 		return nil, err
 	}
+	// Wrong codes count against the same limit as sign-in attempts.
+	key, err := a.limitKey(ctx, user.Username, user.ID)
+	if err != nil {
+		return nil, err
+	}
+	if ok, err := a.store.ReserveLoginAttempt(ctx, key, userLimit, window); err != nil {
+		return nil, err
+	} else if !ok {
+		return nil, ErrRateLimited
+	}
 	step, ok := matchTOTP(t.Secret, normalizeCode(code), a.now())
 	if !ok {
 		return nil, ErrCode
@@ -238,7 +248,7 @@ func (a *Service) ConfirmTwoFactor(ctx context.Context, user *store.User, code s
 	} else if err != nil {
 		return nil, err
 	}
-	return codes, nil
+	return codes, a.store.ClearLoginFailures(ctx, key)
 }
 
 // DisableTwoFactor needs the password and a current code (or recovery code),
@@ -305,7 +315,10 @@ func (a *Service) CompleteChallenge(ctx context.Context, challenge, code string)
 // guessing oracle. A TOTP step works once, and a recovery code is consumed.
 // A right code also clears the username's failures.
 func (a *Service) VerifySecondFactor(ctx context.Context, user *store.User, code string) error {
-	userKey := "user:" + strings.ToLower(user.Username)
+	userKey, err := a.limitKey(ctx, user.Username, user.ID)
+	if err != nil {
+		return err
+	}
 	ok, err := a.store.ReserveLoginAttempt(ctx, userKey, userLimit, window)
 	if err != nil {
 		return err

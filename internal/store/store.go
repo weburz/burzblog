@@ -402,6 +402,13 @@ var migrations = []string{
 	// Post writes now look up only the filenames that occur in their content.
 	`DROP TRIGGER media_uses_post_insert;
 	DROP TRIGGER media_uses_post_update;`,
+	// Browsers that signed in before get their own sign-in attempt counter.
+	`CREATE TABLE login_devices (
+		token_hash TEXT PRIMARY KEY,
+		user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+		expires_at INTEGER NOT NULL
+	);
+	CREATE INDEX login_devices_user ON login_devices (user_id, expires_at);`,
 }
 
 // migrationSteps run in the migration's transaction after its SQL, for work
