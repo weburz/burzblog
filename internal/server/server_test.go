@@ -138,9 +138,9 @@ func TestSessionLifecycle(t *testing.T) {
 		t.Errorf("bad login = %d %v", resp.StatusCode, out)
 	}
 	h.login()
-	cookie := h.client.Jar.Cookies(mustURL(h.ts.URL))
-	if len(cookie) != 1 || cookie[0].Name != "burzblog_session" {
-		t.Errorf("cookies = %v", cookie)
+	cookies := h.client.Jar.Cookies(mustURL(h.ts.URL))
+	if len(cookies) != 2 || h.cookie("burzblog_session") == "" || h.cookie("burzblog_device") == "" {
+		t.Errorf("cookies = %v, want a session and a known-browser cookie", cookies)
 	}
 	if _, out := h.do("GET", "/api/session", nil); out["authenticated"] != true || out["csrf"] != h.csrf || out["username"] != "ada" {
 		t.Errorf("session = %v", out)
@@ -149,6 +149,19 @@ func TestSessionLifecycle(t *testing.T) {
 	if resp, _ := h.do("GET", "/api/posts", nil); resp.StatusCode != 401 {
 		t.Errorf("after logout = %d", resp.StatusCode)
 	}
+	if h.cookie("burzblog_session") != "" || h.cookie("burzblog_device") == "" {
+		t.Errorf("cookies after logout = %v, want only the known-browser cookie", h.client.Jar.Cookies(mustURL(h.ts.URL)))
+	}
+}
+
+// cookie returns the value of the named cookie the test browser holds.
+func (h *harness) cookie(name string) string {
+	for _, c := range h.client.Jar.Cookies(mustURL(h.ts.URL)) {
+		if c.Name == name {
+			return c.Value
+		}
+	}
+	return ""
 }
 
 func TestBrowserMutationsNeedOriginAndCSRF(t *testing.T) {

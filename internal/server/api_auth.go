@@ -49,10 +49,15 @@ type credentials struct {
 	Password string `json:"password"`
 }
 
-// clientContext tags the request context with the connecting address. It is
-// RemoteAddr only: X-Forwarded-For is never trusted.
-func clientContext(r *http.Request) context.Context {
-	return auth.WithClient(r.Context(), remoteHost(r))
+// clientContext tags the request context with the connecting address and the
+// known-browser token, if the request has one. The address is RemoteAddr
+// only: X-Forwarded-For is never trusted.
+func (s *Server) clientContext(r *http.Request) context.Context {
+	ctx := auth.WithClient(r.Context(), remoteHost(r))
+	if c, err := r.Cookie(s.deviceCookieName()); err == nil {
+		ctx = auth.WithDevice(ctx, c.Value)
+	}
+	return ctx
 }
 
 func busy(w http.ResponseWriter) {
@@ -63,17 +68,19 @@ func busy(w http.ResponseWriter) {
 // authenticate checks the password step of a sign-in. It reports
 // secondFactor when the account also needs a code.
 func (s *Server) authenticate(w http.ResponseWriter, r *http.Request, c credentials) (user *store.User, secondFactor bool) {
-	user, secondFactor, err := s.auth.Login(clientContext(r), c.Username, c.Password)
+	user, secondFactor, err := s.auth.Login(s.clientContext(r), c.Username, c.Password)
 	switch {
 	case errors.Is(err, auth.ErrBusy):
 		busy(w)
 	case errors.Is(err, auth.ErrRateLimited):
 		rateLimited(w)
 	case errors.Is(err, auth.ErrCredentials):
-		// Only failures against a real account are kept: a made-up name
-		// costs nothing to repeat, and would let anyone grow the log.
-		if u, err := s.store.UserByName(r.Context(), store.NormalizeUsername(c.Username)); err == nil {
-			s.recordAs(r, u, "login.failure", "password")
+		// Only wrong passwords for a real account are kept, and only ones
+		// that were checked under the attempt limit: a made-up name or a
+		// refused input costs nothing to repeat, would let anyone grow the
+		// log, and would show by its timing which names exist.
+		if user != nil {
+			s.recordAs(r, user, "login.failure", "password")
 		}
 		fail(w, http.StatusUnauthorized, "credentials", "That username and password do not match.", "")
 	case err != nil:
@@ -122,8 +129,30 @@ func (s *Server) startSession(w http.ResponseWriter, r *http.Request, user *stor
 		MaxAge: int(auth.SessionTTL.Seconds()), HttpOnly: true, Secure: s.origin.Scheme == "https",
 		SameSite: http.SameSiteStrictMode,
 	})
+	s.rememberDevice(w, r, user)
 	s.recordAs(r, user, "login.success", "")
 	reply(w, status, s.signedIn(user, sess.CSRF))
+}
+
+// rememberDevice gives the browser that just signed in a known-browser
+// cookie, replacing the one it had. It outlives sign-out on purpose: it only
+// gives this browser its own sign-in attempt counter, never access. A failure
+// is logged and the sign-in goes on.
+func (s *Server) rememberDevice(w http.ResponseWriter, r *http.Request, user *store.User) {
+	previous := ""
+	if c, err := r.Cookie(s.deviceCookieName()); err == nil {
+		previous = c.Value
+	}
+	token, expires, err := s.auth.NewDevice(r.Context(), user, previous)
+	if err != nil {
+		s.log.Warn("remember the signed-in browser", "err", err)
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name: s.deviceCookieName(), Value: token, Path: "/", Expires: expires,
+		MaxAge: int(auth.DeviceTTL.Seconds()), HttpOnly: true, Secure: s.origin.Scheme == "https",
+		SameSite: http.SameSiteStrictMode,
+	})
 }
 
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
@@ -134,7 +163,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var c credentials
-	if !decode(w, r, &c) {
+	if !decodeCredentials(w, r, &c) {
 		return
 	}
 	user, secondFactor := s.authenticate(w, r, c)
@@ -165,10 +194,10 @@ func (s *Server) loginTOTP(w http.ResponseWriter, r *http.Request) {
 		Challenge string `json:"challenge"`
 		Code      string `json:"code"`
 	}
-	if !decode(w, r, &body) {
+	if !decodeCredentials(w, r, &body) {
 		return
 	}
-	user, err := s.auth.CompleteChallenge(clientContext(r), body.Challenge, body.Code)
+	user, err := s.auth.CompleteChallenge(s.clientContext(r), body.Challenge, body.Code)
 	if errors.Is(err, auth.ErrCode) {
 		if u, err := s.store.ChallengeUser(r.Context(), auth.Digest(body.Challenge)); err == nil {
 			s.recordAs(r, u, "login.failure", "second factor")
@@ -230,7 +259,7 @@ func (s *Server) issueCLIToken(w http.ResponseWriter, r *http.Request) {
 		// Code is the two-factor code, needed only for accounts that use one.
 		Code string `json:"code"`
 	}
-	if !decode(w, r, &body) {
+	if !decodeCredentials(w, r, &body) {
 		return
 	}
 	user, secondFactor := s.authenticate(w, r, body.credentials)
@@ -242,7 +271,7 @@ func (s *Server) issueCLIToken(w http.ResponseWriter, r *http.Request) {
 			fail(w, http.StatusUnauthorized, "second_factor_required", "This account uses two-factor sign-in. Enter the code from your authenticator app, or a recovery code.", "")
 			return
 		}
-		err := s.auth.VerifySecondFactor(clientContext(r), user, body.Code)
+		err := s.auth.VerifySecondFactor(s.clientContext(r), user, body.Code)
 		if errors.Is(err, auth.ErrCode) {
 			s.recordAs(r, user, "login.failure", "second factor")
 		}
@@ -356,7 +385,7 @@ func (s *Server) changePassword(w http.ResponseWriter, r *http.Request) {
 	if id.session != nil {
 		keep = id.session.TokenHash
 	}
-	err := s.auth.ChangePassword(clientContext(r), id.user, body.Current, body.Next, keep)
+	err := s.auth.ChangePassword(s.clientContext(r), id.user, body.Current, body.Next, keep)
 	switch {
 	case errors.Is(err, auth.ErrBusy):
 		busy(w)

@@ -22,6 +22,13 @@ All notable changes are recorded here, following
 ### Security
 
 - Build with Go 1.27.4 and check reachable Go vulnerabilities in CI.
+- Browsers that signed in before keep their own sign-in attempt limit, so
+  failed attempts from elsewhere no longer lock an author out of the browsers
+  they already use. Confirming two-factor enrolment counts wrong codes against
+  the same limit.
+- Sign-in, setup and terminal sign-in accept bodies up to 16 KiB. Empty and
+  over-long passwords are refused before any account lookup and no longer write
+  audit entries.
 
 ## [2.3.0] - 2026-11-06
 

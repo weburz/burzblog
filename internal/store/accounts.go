@@ -418,6 +418,49 @@ func (s *Store) ClearLoginFailures(ctx context.Context, key string) error {
 	return err
 }
 
+// maxLoginDevices is how many known browsers one account keeps; the ones
+// that expire soonest go first.
+const maxLoginDevices = 20
+
+// AddLoginDevice records a browser that signed in as userID. replaceHash, if
+// set, is the token that browser had before; it is removed.
+func (s *Store) AddLoginDevice(ctx context.Context, tokenHash string, userID int64, expires time.Time, replaceHash string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin known browser: %w", err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, "DELETE FROM login_devices WHERE expires_at <= ? OR token_hash = ?",
+		s.now().Unix(), replaceHash); err != nil {
+		return fmt.Errorf("drop old known browsers: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, "INSERT INTO login_devices (token_hash, user_id, expires_at) VALUES (?, ?, ?)",
+		tokenHash, userID, expires.Unix()); err != nil {
+		return fmt.Errorf("record known browser: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM login_devices WHERE user_id = ? AND token_hash NOT IN
+		(SELECT token_hash FROM login_devices WHERE user_id = ? ORDER BY expires_at DESC LIMIT ?)`,
+		userID, userID, maxLoginDevices); err != nil {
+		return fmt.Errorf("trim known browsers: %w", err)
+	}
+	return tx.Commit()
+}
+
+// LoginDeviceUser returns the account a known-browser token belongs to, or
+// ErrNotFound when it is unknown or expired.
+func (s *Store) LoginDeviceUser(ctx context.Context, tokenHash string) (int64, error) {
+	var id int64
+	err := s.db.QueryRowContext(ctx, "SELECT user_id FROM login_devices WHERE token_hash = ? AND expires_at > ?",
+		tokenHash, s.now().Unix()).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, ErrNotFound
+	}
+	if err != nil {
+		return 0, fmt.Errorf("read known browser: %w", err)
+	}
+	return id, nil
+}
+
 // NormalizeUsername is how usernames are compared and stored.
 func NormalizeUsername(username string) string {
 	return strings.TrimSpace(username)

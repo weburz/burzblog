@@ -115,13 +115,21 @@ owner. Routes only admins may use answer an author 403 <code>role</code> (see th
 owned by an author reads the content API but gets 403 <code>role</code> on
 <code>GET /api/export.tar.gz</code>; make the build's export token with an admin account.</p>
 <p>Sessions last 12 hours. Each username gets ten sign-in attempts per 15 minutes;
-a successful sign-in resets the count. A wrong two-factor code counts as a
-failed attempt for the same username, and an account with two-factor sign-in
-resets the count only when the code is right, not when the password is. When many sign-ins arrive at once and no
+a successful sign-in resets the count. A browser that signed in to the account
+before (it holds the known-browser cookie, <code>__Host-burzblog_device</code> over HTTPS
+or <code>burzblog_device</code> over plain HTTP, valid 30 days and renewed at every
+sign-in) has its own ten attempts for that account instead, so guesses from
+elsewhere cannot lock it out; new browsers and <code>POST /api/auth/token</code> share the
+username's count. A wrong two-factor code, at sign-in or when confirming
+enrolment, counts as a failed attempt on the same count, and an account with
+two-factor sign-in resets the count only when the code is right, not when the
+password is. When many sign-ins arrive at once and no
 password-checking slot frees within two seconds, or one client address already
 has four sign-ins in progress, the request is answered <code>503</code> <code>busy</code> with
-<code>Retry-After: 5</code>; it is not counted against the username. There is no instance-wide limit, so one
-attacker cannot lock every author out.</p>
+<code>Retry-After: 5</code>; it is not counted against the username. There is no
+instance-wide limit. Bodies sent to the routes open without sign-in
+(<code>POST /api/setup</code>, <code>/api/login</code>, <code>/api/login/totp</code> and <code>/api/auth/token</code>) are
+limited to 16 KiB (413 <code>too_large</code>).</p>
 <h2 id="errors">Errors</h2>
 <p>Every error has the same shape. <code>message</code> says what to do; <code>detail</code> names the
 specific cause when there is one.</p>
@@ -164,7 +172,7 @@ versions: <code>{ &quot;error&quot;: {...}, &quot;current&quot;: { ...post } }</
 </tr>
 <tr>
 <td><code>POST /api/login</code></td>
-<td><code>{username, password}</code> → session cookie and the same body as <code>GET /api/session</code>. When the account uses two-factor sign-in the answer is <code>200 {&quot;second_factor&quot;: true, &quot;challenge&quot;: &quot;...&quot;}</code> and <strong>no</strong> cookie is set</td>
+<td><code>{username, password}</code> → session cookie, known-browser cookie and the same body as <code>GET /api/session</code>. When the account uses two-factor sign-in the answer is <code>200 {&quot;second_factor&quot;: true, &quot;challenge&quot;: &quot;...&quot;}</code> and <strong>no</strong> cookie is set</td>
 </tr>
 <tr>
 <td><code>POST /api/login/totp</code></td>
@@ -204,7 +212,7 @@ versions: <code>{ &quot;error&quot;: {...}, &quot;current&quot;: { ...post } }</
 </tr>
 <tr>
 <td><code>POST /api/account/2fa/confirm</code></td>
-<td><code>{code}</code> → <code>{enabled: true, recoveryCodes: [10 codes]}</code>; the codes are shown only in this answer; 400 <code>code</code> if the code is wrong</td>
+<td><code>{code}</code> → <code>{enabled: true, recoveryCodes: [10 codes]}</code>; the codes are shown only in this answer; 400 <code>code</code> if the code is wrong; 429 <code>rate_limited</code> once wrong codes and sign-in failures use up the account's ten attempts per 15 minutes</td>
 </tr>
 <tr>
 <td><code>POST /api/account/2fa/disable</code></td>

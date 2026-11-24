@@ -150,6 +150,13 @@ func WithClient(ctx context.Context, addr string) context.Context {
 	return context.WithValue(ctx, clientKey{}, addr)
 }
 
+type deviceKey struct{}
+
+// WithDevice tags ctx with the known-browser token a sign-in carried, if any.
+func WithDevice(ctx context.Context, token string) context.Context {
+	return context.WithValue(ctx, deviceKey{}, token)
+}
+
 // Service signs people in against the store.
 type Service struct {
 	store *store.Store
@@ -196,8 +203,15 @@ func (a *Service) Authenticate(ctx context.Context, username, password string) (
 // two-factor sign-in on it reports secondFactor and keeps the failure count,
 // so guessing codes after learning the password stays limited; the second
 // step clears it.
+//
+// On ErrCredentials, user is the account whose password was wrong, so the
+// caller can record the failure. It is nil when no such account exists or the
+// input was refused without checking a password.
 func (a *Service) Login(ctx context.Context, username, password string) (user *store.User, secondFactor bool, err error) {
 	user, userKey, err := a.checkPassword(ctx, username, password)
+	if errors.Is(err, ErrCredentials) {
+		return user, false, err
+	}
 	if err != nil {
 		return nil, false, err
 	}
@@ -207,8 +221,9 @@ func (a *Service) Login(ctx context.Context, username, password string) (user *s
 	return user, false, a.store.ClearLoginFailures(ctx, userKey)
 }
 
-// checkPassword verifies a password under the per-username limit and returns
-// the limiter key. Failures are not cleared.
+// checkPassword verifies a password under the attempt limit and returns the
+// limiter key. Failures are not cleared. On ErrCredentials the user is
+// returned when the account exists and its password was checked.
 func (a *Service) checkPassword(ctx context.Context, username, password string) (*store.User, string, error) {
 	username = store.NormalizeUsername(username)
 	if username == "" || password == "" || len(password) > MaxPassword || len(username) > 64 {
@@ -219,32 +234,90 @@ func (a *Service) checkPassword(ctx context.Context, username, password string) 
 		return nil, "", err
 	}
 	defer release()
-	userKey := "user:" + strings.ToLower(username)
+	user, err := a.store.UserByName(ctx, username)
+	hash := a.dummy
+	var userID int64
+	switch {
+	case err == nil:
+		hash, userID = user.PasswordHash, user.ID
+	case errors.Is(err, store.ErrNotFound):
+		user = nil
+	default:
+		return nil, "", err
+	}
+	key, err := a.limitKey(ctx, username, userID)
+	if err != nil {
+		return nil, "", err
+	}
 	// Reserve the attempt before hashing so parallel guesses cannot all pass.
-	ok, err := a.store.ReserveLoginAttempt(ctx, userKey, userLimit, window)
+	ok, err := a.store.ReserveLoginAttempt(ctx, key, userLimit, window)
 	if err != nil {
 		return nil, "", err
 	}
 	if !ok {
 		return nil, "", ErrRateLimited
 	}
-	user, err := a.store.UserByName(ctx, username)
-	hash := a.dummy
-	if err == nil {
-		hash = user.PasswordHash
-	} else if !errors.Is(err, store.ErrNotFound) {
-		return nil, "", err
-	}
 	verified, stale := verifyPassword(hash, password)
-	if err != nil || !verified {
+	if user == nil {
 		return nil, "", ErrCredentials
+	}
+	if !verified {
+		return user, "", ErrCredentials
 	}
 	if stale {
 		if fresh, err := HashPassword(password); err == nil {
 			_ = a.store.RehashPassword(ctx, user.ID, fresh)
 		}
 	}
-	return user, userKey, nil
+	return user, key, nil
+}
+
+// limitKey names the attempt counter a sign-in counts against. A browser
+// that signed in to this account before carries a known-browser token and
+// gets its own counter, so guesses sent from elsewhere cannot lock its owner
+// out. Everything else shares the username's counter. userID is 0 for a name
+// with no account; the token is looked up either way, so the work does not
+// depend on whether the account exists.
+func (a *Service) limitKey(ctx context.Context, username string, userID int64) (string, error) {
+	key := "user:" + strings.ToLower(username)
+	token, _ := ctx.Value(deviceKey{}).(string)
+	if token == "" || len(token) > 128 {
+		return key, nil
+	}
+	digest := Digest(token)
+	owner, err := a.store.LoginDeviceUser(ctx, digest)
+	switch {
+	case errors.Is(err, store.ErrNotFound):
+		return key, nil
+	case err != nil:
+		return "", err
+	case userID == 0 || owner != userID:
+		return key, nil
+	}
+	return "device:" + digest, nil
+}
+
+// DeviceTTL is how long a known-browser token lasts. Every sign-in from that
+// browser replaces it with a fresh one.
+const DeviceTTL = 30 * 24 * time.Hour
+
+// NewDevice marks the browser that just signed in as user as known, and
+// returns the token for its cookie. previous is the token the browser
+// already had, if any; it is replaced.
+func (a *Service) NewDevice(ctx context.Context, user *store.User, previous string) (string, time.Time, error) {
+	token, err := randomToken("")
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	old := ""
+	if previous != "" && len(previous) <= 128 {
+		old = Digest(previous)
+	}
+	expires := a.now().Add(DeviceTTL)
+	if err := a.store.AddLoginDevice(ctx, Digest(token), user.ID, expires, old); err != nil {
+		return "", time.Time{}, err
+	}
+	return token, expires, nil
 }
 
 // acquire takes a hashing slot, waiting at most a.wait, and returns the
