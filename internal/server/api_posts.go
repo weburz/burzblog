@@ -137,16 +137,17 @@ func pageParams(w http.ResponseWriter, r *http.Request) (limit, offset int, ok b
 func (s *Server) listPosts(w http.ResponseWriter, r *http.Request) {
 	status := post.Status(r.URL.Query().Get("status"))
 	scheduled := status == "scheduled"
-	if scheduled {
+	includeArchived := status == "all"
+	if scheduled || includeArchived {
 		status = ""
 	}
 	if status != "" && !post.ValidStatus(status) {
-		fail(w, http.StatusBadRequest, "bad_request", "Status must be draft, published, scheduled or archived.", "")
+		fail(w, http.StatusBadRequest, "bad_request", "Status must be all, draft, published, scheduled or archived.", "")
 		return
 	}
 	sort := store.Sort(r.URL.Query().Get("sort"))
 	if sort != "" && !store.ValidSort(sort) {
-		fail(w, http.StatusUnprocessableEntity, "validation", "Sort must be updated, published, title or created.", "sort")
+		fail(w, http.StatusUnprocessableEntity, "validation", "Sort must be updated, published, title, created or scheduled.", "sort")
 		return
 	}
 	limit, offset, ok := pageParams(w, r)
@@ -157,7 +158,7 @@ func (s *Server) listPosts(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	list, counts, err := s.store.ListPosts(r.Context(), store.Filter{Status: status, Scheduled: scheduled,
+	list, counts, err := s.store.ListPosts(r.Context(), store.Filter{Status: status, Scheduled: scheduled, IncludeArchived: includeArchived, FilterCounts: r.URL.Query().Get("counts") == "filtered",
 		Query: r.URL.Query().Get("q"), Tag: r.URL.Query().Get("tag"), Featured: featured, Sort: sort, Limit: limit, Offset: offset})
 	if err != nil {
 		s.internal(w, r, err)

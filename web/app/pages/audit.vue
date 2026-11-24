@@ -3,7 +3,7 @@ import { onMounted, ref } from "vue";
 import type { AuditEntry, AuditList } from "../types";
 import { errorMessage, request } from "../utils/api";
 import { auditActor, auditLabel, auditNeedsAttention } from "../utils/audit";
-import { exactTime } from "../utils/time";
+import { auditTime } from "../utils/time";
 
 useHead({ title: "Audit log" });
 const { state, isAdmin } = useCurrentSession();
@@ -77,7 +77,7 @@ onMounted(() => {
               :data-attention="auditNeedsAttention(entry) || undefined"
             >
               <td>
-                <time :datetime="entry.at">{{ exactTime(entry.at) }}</time>
+                <time :datetime="entry.at">{{ auditTime(entry.at) }}</time>
               </td>
               <td>{{ auditActor(entry) }}</td>
               <td>{{ auditLabel(entry.action) }}</td>

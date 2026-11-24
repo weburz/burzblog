@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  auditTime,
   editedLabel,
   exactTime,
   fromLocalInput,
@@ -107,4 +108,15 @@ describe("scheduling helpers", () => {
   it("names the time zone", () => {
     expect(zoneLabel(now)).not.toBe("");
   });
+});
+
+it("distinguishes audit entries a second apart and identifies the local zone", () => {
+  const first = "2026-11-10T20:52:01Z";
+  const zone = new Intl.DateTimeFormat(undefined, { timeZoneName: "short" })
+    .formatToParts(new Date(first))
+    .find((part) => part.type === "timeZoneName")?.value;
+  expect(zone).toBeTruthy();
+  expect(auditTime(first)).toContain(zone);
+  expect(auditTime(first)).not.toEqual(auditTime("2026-11-10T20:52:02Z"));
+  expect(auditTime("invalid")).toBe("");
 });
