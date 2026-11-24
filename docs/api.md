@@ -112,7 +112,7 @@ Single-line fields reject control characters, tabs included, like `title`.
 
 | | |
 |---|---|
-| `GET /api/posts?status=&q=&tag=&featured=&sort=&limit=&offset=` | `{items, total, counts}`; items have no body, but carry `tags`, `author` and `featured`; `featured` is `true` or `false` and keeps only featured or only other posts (any other value is a 422 `validation`); `q` searches title, description, body, tags, author and slug (see below); `tag` keeps only posts with that tag (normalized like a post's tags, so `Machine Learning` finds `machine-learning`) and combines with the other filters, sorting and paging; `limit` (1 to 500) and `offset` page the result, and without `limit` every match is returned; `total` is the number of matches before paging, `counts` ignores the filter and paging; a bad `limit` or `offset` is a 422; without `status`, archived posts are left out; `status` is `draft`, `published`, `archived` or `scheduled` (drafts with a `publishAt`); `counts` has `draft`, `published`, `archived` and `scheduled`, and scheduled drafts are counted in `draft` too; `sort` is `updated` (default, newest first), `published` (newest first, unpublished last), `title` (A to Z, ignoring case) or `created` (newest first); any other value is a 422; items carry `publishAt` |
+| `GET /api/posts?status=&q=&tag=&featured=&sort=&limit=&offset=` | `{items, total, counts}`; items have no body, but carry `tags`, `author` and `featured`; `featured` is `true` or `false` and keeps only featured or only other posts (any other value is a 422 `validation`); `q` searches title, description, body, tags, author and slug (see below); `tag` keeps only posts with that tag (normalized like a post's tags, so `Machine Learning` finds `machine-learning`) and combines with the other filters, sorting and paging; `limit` (1 to 500) and `offset` page the result, and without `limit` every match is returned; `total` is the number of matches before paging, `counts` covers the whole blog by default. Pass `counts=filtered` to count search, tag and featured matches in each status before paging; a bad `limit` or `offset` is a 422; without `status`, archived posts are left out; `status=all` includes archived posts. Other statuses are `draft`, `published`, `archived` or `scheduled` (drafts with a `publishAt`); `counts` has `draft`, `published`, `archived` and `scheduled`, and scheduled drafts are counted in `draft` too; `sort` is `updated` (default, newest first), `published` (newest first, unpublished last), `title` (A to Z, case-insensitive with numeric ordering), `scheduled` (earliest scheduled time first) or `created` (newest first); any other value is a 422; items carry `publishAt` |
 | `POST /api/posts` | `{title, slug?, ...}` → new draft; the slug is made from the title when omitted. `{untitled: true}` instead makes an empty draft with no title under the first free slug of `untitled`, `untitled-2`, ...; it takes no `title` or `slug` (422 `validation`). The browser panel's New post uses it, and the CLI and `PUT .../markdown` still require a title |
 | `GET /api/posts/{slug}` | one post. A 404 for a draft that was never published and was renamed within the last day carries `error.renamedTo`, its new slug, so an editor that reloads under the old address can follow it (remembered in memory, so a restart forgets it) |
 | `PUT /api/posts/{slug}` | `{version, slug, title, description, body, coverUrl, coverAlt, extra, tags, author, seoTitle, seoDescription, canonicalUrl, featured, publishedOn, updatedOn}`; `version` must be current, a new `slug` renames. Like the other fields, a missing `tags` or `author` saves as empty |
@@ -123,6 +123,7 @@ Single-line fields reject control characters, tabs included, like `title`.
 | `POST /api/posts/{slug}/duplicate` | no body → 201 and a new draft copy; its slug is `{slug}-copy`, then `{slug}-copy-2`, `-3` and so on until one is free (the slug is shortened to fit the 120 character limit), its title is the original's with ` (copy)` added (` (copy 2)`, ` (copy 3)` when the original already ends in a copy mark; a long title is cut at a word boundary); description, body, cover, tags, author, SEO fields and `extra` are copied unchanged. Status, `publishedOn`, `updatedOn`, `publishAt` and `featured` are not: the copy is an unscheduled, unfeatured draft at version 1 with no dates. 404 `not_found` for an unknown slug; any signed-in role may duplicate |
 | `POST /api/posts/{slug}/schedule` | `{version, at}` → the draft with `publishAt` set; see below |
 | `POST /api/posts/{slug}/unschedule` | `{version}` → the draft without a `publishAt`; a no-op if it had none |
+| `POST /api/preview` | `{markdown}` → `{html}`, sanitized; see [preview limits](#preview-limits) |
 | `DELETE /api/posts/{slug}?version=N` | admins only (403 `role`), and only archived posts; removes its history and its redirects too. The one exception, open to authors as well: a draft that was never published and has every writable field blank after trimming (title, body, description, tags, cover, SEO fields, canonical URL, `extra`, author, featured), now and in every earlier revision, so nothing is lost; an author that is only the account that saved the draft counts as blank. An author asking to delete a draft that is not blank, or that once held content, gets 403 `role`, since only an admin can delete it after archiving it; an admin gets 409 `state` until the post is archived |
 | `GET /api/posts/{slug}/redirects` | `{items: ["old-slug", ...]}`: the old slugs that redirect to the post, by slug, whatever the post's status; see [slug redirects](#slug-redirects) |
 | `DELETE /api/posts/{slug}/redirects/{from}` | removes the redirect from one old slug of this post → `{deleted: true}`; 404 `not_found` if the post has no such redirect |
@@ -142,7 +143,6 @@ raises it like any save, but consecutive autosaves by the same account
 within 30 minutes of each other share one revision: each replaces the one
 the previous autosave left. A save without the flag always keeps its own
 revision, and is never folded. The browser panel autosaves drafts.
-| `POST /api/preview` | `{markdown}` → `{html}`, sanitized; see [preview limits](#preview-limits) |
 
 Each revision in the list carries `version`, `savedAt`, `savedBy` and a state:
 `slug`, `title`, `status`, `words` (the body's word count) and the digests
@@ -362,14 +362,14 @@ accounts that saved it are not part of it.
 
 Responses carry `ETag` and `Cache-Control: private, max-age=60`, and
 `If-None-Match` (a tag, a list of tags or `*`) answers `304` without a body.
-The tag of a post is its `version` (`"3"`, `"3-md"` for Markdown, `"3-html"`
-for HTML), followed by a digest of the labels an admin set for its tags when
-there are any and by the cover size when it has one (`"3-9f2c41a7b0de"`,
-`"3-1200x630"`, `"3-9f2c41a7b0de-1200x630"`), so changing a label or the
-cover's upload changes it; the tag of the list and of the tags is a digest of
-the response. Publishing,
-unpublishing or editing a post changes them, so a cached copy is at most 60
-seconds old.
+Treat entity tags as opaque. Changing a referenced upload’s dimensions invalidates the HTML tag.
+Editing a tag label also invalidates feeds that carry tag metadata.
+
+The published post list accepts `q`, `tag`, `featured`, `include`, `limit`
+and `offset`. Unknown parameters, multiple values for a single filter and
+comma-separated tags return 422. Supply one tag per request. An offset can be
+used by itself. A known API path requested with an unsupported method returns
+405 and an `Allow` header.
 
 ### Stability and versioning
 
@@ -411,8 +411,9 @@ site_url_missing` with the flag to set, and the export leaves the files out.
   are listed and tag pages are dropped first, and the server logs a warning.
 - Like the other content routes they answer with an `ETag`, `304` for
   `If-None-Match` and `Cache-Control: private, max-age=60`. The tag is a digest
-  of the site settings, the request and each included post's slug and version,
-  so a `304` costs no rendering.
+  of the selected posts, site settings and feed metadata. An unchanged feed
+  or sitemap answers 304 before rendering. A feed that temporarily falls back
+  to summaries because the renderer is busy asks clients to retry without caching.
 
 ## Health
 

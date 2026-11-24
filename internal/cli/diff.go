@@ -80,7 +80,7 @@ file is ./<slug>.md. It also says whether the file is based on the server's
 current version or an older one, using the version pull recorded.
 
 Exit code 0 means identical, 1 means different; other failures use the codes
-listed in docs/terminal.md. Text output is for reading: control characters from
+listed in https://burzblog.weburz.com/docs/terminal.html. Text output is for reading: control characters from
 the post are replaced, and --json carries the exact diff.`,
 		Example: `  burzblog diff my-post.md
   burzblog diff my-post                      # ./my-post.md

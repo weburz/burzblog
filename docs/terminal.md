@@ -276,7 +276,7 @@ burzblog backup ~/backups/blog
 ```
 
 Writes every post, drafts and archived ones too, to
-`<dir>/<status>/<slug>.md` with a `README.txt`. Restore a file with
+`<dir>/<status>/<slug>.md`, a `README.txt`, and uploaded files in `<dir>/media/`. Restore a file with
 `burzblog push <file>.md`. History is not included; for everything, earlier
 versions and accounts too, run `burzblog snapshot create` on the server (see
 [self-hosting](self-hosting.md#full-snapshots)). The panel offers
@@ -371,7 +371,7 @@ failures are still JSON. `new` never opens an editor with `--json`.
 | `pull` | `{"slug","version","path"}`; with `-o -` it is `{"slug","version","markdown"}` instead of the raw file |
 | `diff` | `{"slug","baseVersion","serverVersion","stale","identical","diff"}`; exit `1` when different |
 | `status` | `{"dir","files":[{"file","slug","state","baseVersion","serverVersion"}]}` |
-| `backup` | `{"dir","posts"}` |
+| `backup` | `{"dir","posts","media"}` |
 | `redirects` | `{"items":[{"from","to"}]}`; `items` is `[]` when there are none |
 | `upgrade` | `{"from","to","path","restart"}`; with `--check` or when already current `{"current","latest","updateAvailable"}` |
 | `snapshot list` | `{"items":[{"name","path","size"}]}`, oldest first |

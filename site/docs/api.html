@@ -287,7 +287,7 @@ the time a draft publishes itself (UTC, RFC 3339), or <code>null</code>; see
 <tbody>
 <tr>
 <td><code>GET /api/posts?status=&amp;q=&amp;tag=&amp;featured=&amp;sort=&amp;limit=&amp;offset=</code></td>
-<td><code>{items, total, counts}</code>; items have no body, but carry <code>tags</code>, <code>author</code> and <code>featured</code>; <code>featured</code> is <code>true</code> or <code>false</code> and keeps only featured or only other posts (any other value is a 422 <code>validation</code>); <code>q</code> searches title, description, body, tags, author and slug (see below); <code>tag</code> keeps only posts with that tag (normalized like a post's tags, so <code>Machine Learning</code> finds <code>machine-learning</code>) and combines with the other filters, sorting and paging; <code>limit</code> (1 to 500) and <code>offset</code> page the result, and without <code>limit</code> every match is returned; <code>total</code> is the number of matches before paging, <code>counts</code> ignores the filter and paging; a bad <code>limit</code> or <code>offset</code> is a 422; without <code>status</code>, archived posts are left out; <code>status</code> is <code>draft</code>, <code>published</code>, <code>archived</code> or <code>scheduled</code> (drafts with a <code>publishAt</code>); <code>counts</code> has <code>draft</code>, <code>published</code>, <code>archived</code> and <code>scheduled</code>, and scheduled drafts are counted in <code>draft</code> too; <code>sort</code> is <code>updated</code> (default, newest first), <code>published</code> (newest first, unpublished last), <code>title</code> (A to Z, ignoring case) or <code>created</code> (newest first); any other value is a 422; items carry <code>publishAt</code></td>
+<td><code>{items, total, counts}</code>; items have no body, but carry <code>tags</code>, <code>author</code> and <code>featured</code>; <code>featured</code> is <code>true</code> or <code>false</code> and keeps only featured or only other posts (any other value is a 422 <code>validation</code>); <code>q</code> searches title, description, body, tags, author and slug (see below); <code>tag</code> keeps only posts with that tag (normalized like a post's tags, so <code>Machine Learning</code> finds <code>machine-learning</code>) and combines with the other filters, sorting and paging; <code>limit</code> (1 to 500) and <code>offset</code> page the result, and without <code>limit</code> every match is returned; <code>total</code> is the number of matches before paging, <code>counts</code> covers the whole blog by default. Pass <code>counts=filtered</code> to count search, tag and featured matches in each status before paging; a bad <code>limit</code> or <code>offset</code> is a 422; without <code>status</code>, archived posts are left out; <code>status=all</code> includes archived posts. Other statuses are <code>draft</code>, <code>published</code>, <code>archived</code> or <code>scheduled</code> (drafts with a <code>publishAt</code>); <code>counts</code> has <code>draft</code>, <code>published</code>, <code>archived</code> and <code>scheduled</code>, and scheduled drafts are counted in <code>draft</code> too; <code>sort</code> is <code>updated</code> (default, newest first), <code>published</code> (newest first, unpublished last), <code>title</code> (A to Z, case-insensitive with numeric ordering), <code>scheduled</code> (earliest scheduled time first) or <code>created</code> (newest first); any other value is a 422; items carry <code>publishAt</code></td>
 </tr>
 <tr>
 <td><code>POST /api/posts</code></td>
@@ -330,6 +330,10 @@ the time a draft publishes itself (UTC, RFC 3339), or <code>null</code>; see
 <td><code>{version}</code> → the draft without a <code>publishAt</code>; a no-op if it had none</td>
 </tr>
 <tr>
+<td><code>POST /api/preview</code></td>
+<td><code>{markdown}</code> → <code>{html}</code>, sanitized; see <a href="#preview-limits">preview limits</a></td>
+</tr>
+<tr>
 <td><code>DELETE /api/posts/{slug}?version=N</code></td>
 <td>admins only (403 <code>role</code>), and only archived posts; removes its history and its redirects too. The one exception, open to authors as well: a draft that was never published and has every writable field blank after trimming (title, body, description, tags, cover, SEO fields, canonical URL, <code>extra</code>, author, featured), now and in every earlier revision, so nothing is lost; an author that is only the account that saved the draft counts as blank. An author asking to delete a draft that is not blank, or that once held content, gets 403 <code>role</code>, since only an admin can delete it after archiving it; an admin gets 409 <code>state</code> until the post is archived</td>
 </tr>
@@ -364,8 +368,7 @@ made on its own while the writer typed. It is checked against <code>version</cod
 raises it like any save, but consecutive autosaves by the same account
 within 30 minutes of each other share one revision: each replaces the one
 the previous autosave left. A save without the flag always keeps its own
-revision, and is never folded. The browser panel autosaves drafts.
-| <code>POST /api/preview</code> | <code>{markdown}</code> → <code>{html}</code>, sanitized; see <a href="#preview-limits">preview limits</a> |</p>
+revision, and is never folded. The browser panel autosaves drafts.</p>
 <p>Each revision in the list carries <code>version</code>, <code>savedAt</code>, <code>savedBy</code> and a state:
 <code>slug</code>, <code>title</code>, <code>status</code>, <code>words</code> (the body's word count) and the digests
 <code>descriptionDigest</code>, <code>coverDigest</code> and <code>settingsDigest</code> (extra, dates, tags,
@@ -631,14 +634,13 @@ the server logs a warning with the slug, so one bad post never fails a list.
 </ul>
 <p>Responses carry <code>ETag</code> and <code>Cache-Control: private, max-age=60</code>, and
 <code>If-None-Match</code> (a tag, a list of tags or <code>*</code>) answers <code>304</code> without a body.
-The tag of a post is its <code>version</code> (<code>&quot;3&quot;</code>, <code>&quot;3-md&quot;</code> for Markdown, <code>&quot;3-html&quot;</code>
-for HTML), followed by a digest of the labels an admin set for its tags when
-there are any and by the cover size when it has one (<code>&quot;3-9f2c41a7b0de&quot;</code>,
-<code>&quot;3-1200x630&quot;</code>, <code>&quot;3-9f2c41a7b0de-1200x630&quot;</code>), so changing a label or the
-cover's upload changes it; the tag of the list and of the tags is a digest of
-the response. Publishing,
-unpublishing or editing a post changes them, so a cached copy is at most 60
-seconds old.</p>
+Treat entity tags as opaque. Changing a referenced upload’s dimensions invalidates the HTML tag.
+Editing a tag label also invalidates feeds that carry tag metadata.</p>
+<p>The published post list accepts <code>q</code>, <code>tag</code>, <code>featured</code>, <code>include</code>, <code>limit</code>
+and <code>offset</code>. Unknown parameters, multiple values for a single filter and
+comma-separated tags return 422. Supply one tag per request. An offset can be
+used by itself. A known API path requested with an unsupported method returns
+405 and an <code>Allow</code> header.</p>
 <h3 id="stability-and-versioning">Stability and versioning</h3>
 <p>The content API follows the semantic version of the BurzBlog release, so a
 website can pin to a major version. Covered are every <code>/api/content/*</code> route,
@@ -675,8 +677,9 @@ page per tag at the tag path when <code>--tag-path</code> is set. A sitemap file
 are listed and tag pages are dropped first, and the server logs a warning.</li>
 <li>Like the other content routes they answer with an <code>ETag</code>, <code>304</code> for
 <code>If-None-Match</code> and <code>Cache-Control: private, max-age=60</code>. The tag is a digest
-of the site settings, the request and each included post's slug and version,
-so a <code>304</code> costs no rendering.</li>
+of the selected posts, site settings and feed metadata. An unchanged feed
+or sitemap answers 304 before rendering. A feed that temporarily falls back
+to summaries because the renderer is busy asks clients to retry without caching.</li>
 </ul>
 <h2 id="health">Health</h2>
 <p><code>GET /healthz</code> → <code>{&quot;status&quot;: &quot;ok&quot;, &quot;version&quot;: &quot;...&quot;}</code> when the database answers.</p>

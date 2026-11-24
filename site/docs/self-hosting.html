@@ -239,7 +239,7 @@ as a dot on the Settings tab; authors do not, and the content API never
 includes it.</p>
 <p>Each check is one <code>GET</code> to
 <code>https://api.github.com/repos/weburz/burzblog/releases/latest</code>. The only thing
-it carries is a <code>User-Agent</code> such as <code>burzblog/1.2.0</code>, which holds your BurzBlog
+it carries is a <code>User-Agent</code> such as <code>burzblog/&lt;version&gt;</code>, which holds your BurzBlog
 version. Nothing about your posts, accounts or the instance's address is sent,
 though GitHub sees your server's IP address as it would for any request. The
 check has a 10 second timeout, reads at most 1 MiB, is not retried before the
@@ -492,6 +492,18 @@ sits on the same disk.</p>
 <p><code>burzblog upgrade</code> calls the GitHub API and downloads release files without
 credentials, so it works only while the releases are publicly downloadable. Its
 tests run against local test servers.</p>
+<h3 id="moving-the-blog-to-a-new-domain">Moving the blog to a new domain</h3>
+<p>Take a snapshot before changing the public address. Set <code>BURZBLOG_ORIGIN</code> on
+the new host and use the same data directory (or restore the snapshot there).
+Uploaded files keep their names. Update the old absolute URLs in post bodies
+and covers with the host command, first checking the count:</p>
+<pre><code class="language-sh">burzblog rewrite-origin https://old.example.org https://blog.example.org --data /var/lib/burzblog --dry-run
+burzblog rewrite-origin https://old.example.org https://blog.example.org --data /var/lib/burzblog
+</code></pre>
+<p>This updates matching upload URLs in drafts, published posts and archives. Each
+changed post gets a revision. Existing revisions retain their original text.
+Rebuild the website and update clients and build jobs that use the old server
+address. Run the command again if a concurrent edit caused a version conflict.</p>
 
           <p class="doc-source"><a href="https://github.com/weburz/burzblog/blob/main/docs/self-hosting.md">Edit this page on GitHub</a></p>
         </article>

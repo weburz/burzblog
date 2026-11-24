@@ -20,7 +20,7 @@ import (
 var (
 	markdown = goldmark.New(
 		goldmark.WithExtensions(extension.GFM, extension.Footnote),
-		goldmark.WithParserOptions(parser.WithAutoHeadingID()),
+		goldmark.WithParserOptions(parser.WithASTTransformers(util.Prioritized(headingIDs{}, 90))),
 		// Raw HTML in Markdown is dropped; posts are text, not pages.
 	)
 	policy = newPolicy(false)
@@ -31,7 +31,7 @@ var (
 	markedMarkdown = goldmark.New(
 		goldmark.WithExtensions(extension.GFM, extension.Footnote),
 		goldmark.WithParserOptions(
-			parser.WithAutoHeadingID(),
+			parser.WithASTTransformers(util.Prioritized(headingIDs{}, 90)),
 			parser.WithASTTransformers(util.Prioritized(lineMarker{}, 100)),
 		),
 		goldmark.WithRendererOptions(renderer.WithNodeRenderers(
@@ -49,11 +49,12 @@ func newPolicy(lines bool) *bluemonday.Policy {
 	}
 	p.AllowElements("p", "br", "hr", "blockquote", "pre", "code", "em", "strong", "del", "sup", "sub",
 		"ul", "ol", "li", "table", "thead", "tbody", "tr", "th", "td", "section")
-	p.AllowAttrs("id").Matching(regexp.MustCompile(`^[A-Za-z0-9_:.-]{1,128}$`)).
+	p.AllowAttrs("id").Matching(regexp.MustCompile(`^[\p{L}\p{M}\p{N}_:.-]{1,128}$`)).
 		OnElements("h1", "h2", "h3", "h4", "h5", "h6", "li", "sup")
 	p.AllowElements("h1", "h2", "h3", "h4", "h5", "h6")
 	p.AllowAttrs("class").Matching(regexp.MustCompile(`^(language-[A-Za-z0-9_+-]{1,40}|footnotes|footnote-ref|footnote-backref)$`)).
 		OnElements("code", "a", "section")
+	p.AllowAttrs("class").Matching(regexp.MustCompile(`^footnotes$`)).OnElements("div")
 	p.AllowAttrs("align").Matching(regexp.MustCompile(`^(left|right|center)$`)).OnElements("th", "td")
 	p.AllowAttrs("style").Matching(regexp.MustCompile(`^text-align:(left|right|center)$`)).OnElements("th", "td")
 	p.AllowAttrs("start").Matching(bluemonday.Integer).OnElements("ol")

@@ -650,3 +650,20 @@ test("edits made during a save reach the server on the next save", async ({
   await expect(page.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
   await expect(body).toHaveValue("Second edit\n");
 });
+
+test("the navigation only fades the edges that can scroll", async ({ page }) => {
+  await signIn(page);
+  const nav = page.getByRole("navigation", { name: "Main", exact: true });
+  await expect(nav).toBeVisible();
+  await expect(nav).toHaveCSS("mask-image", "none");
+  await nav.evaluate((el) => (el.style.maxWidth = "85px"));
+  await expect(nav).toHaveClass(/fade-end/);
+  await expect(nav).not.toHaveClass(/fade-start/);
+  await nav.evaluate((el) => {
+    el.scrollLeft = el.scrollWidth;
+  });
+  await expect(nav).toHaveClass(/fade-start/);
+  await expect(nav).not.toHaveClass(/fade-end/);
+  await nav.evaluate((el) => el.style.removeProperty("max-width"));
+  await expect(nav).toHaveCSS("mask-image", "none");
+});

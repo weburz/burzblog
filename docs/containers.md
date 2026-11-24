@@ -84,9 +84,8 @@ Optional settings go in the environment variables of the resource:
 
 The database and uploads live in the `burzblog-data` named volume. Coolify's
 scheduled backups cover the databases it manages, not a Compose resource's
-volumes, so back the blog up yourself (see [Backups](#backups)). One instance
-idles at about 25 MB of memory, and the file limits it to 128 MB, which suits a
-personal blog; raise `mem_limit` for heavy imports.
+volumes, so back the blog up yourself (see [Backups](#backups)). The example sets a 128 MB memory limit. Watch actual usage during imports
+and raise `mem_limit` if your workload needs it.
 
 To update, set `BURZBLOG_VERSION` to the new `X.Y.Z` (or to `2` to follow the
 latest 2.x.y on every redeploy) and redeploy. The database is migrated when the

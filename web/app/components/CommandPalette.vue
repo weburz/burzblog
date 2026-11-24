@@ -42,7 +42,7 @@ const load = async () => {
   const search = query.value.trim();
   try {
     const result = await request<PostList>(
-      `/api/posts${search ? `?${new URLSearchParams({ q: search })}` : ""}`,
+      `/api/posts${search ? `?${new URLSearchParams({ q: search, status: "all" })}` : ""}`,
     );
     if (ticket === sequence) posts.value = result.items;
   } catch {

@@ -362,7 +362,7 @@ is <code>{&quot;code&quot;,&quot;message&quot;}</code> and only present on failu
 burzblog backup ~/backups/blog
 </code></pre>
 <p>Writes every post, drafts and archived ones too, to
-<code>&lt;dir&gt;/&lt;status&gt;/&lt;slug&gt;.md</code> with a <code>README.txt</code>. Restore a file with
+<code>&lt;dir&gt;/&lt;status&gt;/&lt;slug&gt;.md</code>, a <code>README.txt</code>, and uploaded files in <code>&lt;dir&gt;/media/</code>. Restore a file with
 <code>burzblog push &lt;file&gt;.md</code>. History is not included; for everything, earlier
 versions and accounts too, run <code>burzblog snapshot create</code> on the server (see
 <a href="self-hosting.html#full-snapshots">self-hosting</a>). The panel offers
@@ -463,7 +463,7 @@ failures are still JSON. <code>new</code> never opens an editor with <code>--jso
 </tr>
 <tr>
 <td><code>backup</code></td>
-<td><code>{&quot;dir&quot;,&quot;posts&quot;}</code></td>
+<td><code>{&quot;dir&quot;,&quot;posts&quot;,&quot;media&quot;}</code></td>
 </tr>
 <tr>
 <td><code>redirects</code></td>

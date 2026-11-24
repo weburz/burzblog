@@ -12,6 +12,7 @@ func TestHTML(t *testing.T) {
 		name, in   string
 		want, deny []string
 	}{
+		{"Unicode and linked heading ids", "## [日本語](https://example.com/path) Café\n\n## 日本語 Café", []string{`id="日本語-café"`, `id="日本語-café-1"`}, []string{"examplecompath"}},
 		{"heading ids", "## Hello World", []string{`<h2 id="hello-world">Hello World</h2>`}, nil},
 		{"table", "| a | b |\n|:-|-:|\n| 1 | 2 |", []string{"<table>", "<td"}, nil},
 		{"task list", "- [x] done", []string{`type="checkbox"`, "checked"}, nil},

@@ -36,6 +36,13 @@ for v in v1.0.0 v2.0.0 v3.0.0; do
   fi
 done
 
+d=$site/releases/download/v1.0.0
+for arch in arm arm64; do
+  file="burzblog-v1.0.0-linux-$arch"
+  printf '#!/bin/sh\necho "%s"\n' "$arch" >"$d/$file"
+  printf '%s  %s\n' "$(sum "$d/$file")" "$file" >>"$d/SHA256SUMS-v1.0.0"
+done
+
 cat >"$work/server.py" <<'PY'
 import http.server
 import sys
@@ -96,6 +103,18 @@ if run BURZBLOG_VERSION=v1.0.0 && [ -x "$work/bin/burzblog" ] && grep -q "burzbl
 else
   bad "explicit version installs"; cat "$work/out"
 fi
+
+printf '#!/bin/sh\necho "%s"\n' '${FAKE_BITS:-64}' >"$fakebin/getconf"
+chmod +x "$fakebin/getconf"
+for bits in 32 64; do
+  arch=arm64
+  if [ "$bits" = 32 ]; then arch=arm; fi
+  if run BURZBLOG_VERSION=v1.0.0 FAKE_ARCH=aarch64 "FAKE_BITS=$bits" && [ "$("$work/bin/burzblog")" = "$arch" ]; then
+    pass "aarch64 with $bits-bit userland installs $arch"
+  else
+    bad "aarch64 with $bits-bit userland installs $arch"; cat "$work/out"
+  fi
+done
 
 if run && grep -q "burzblog v2.0.0" "$work/out"; then
   pass "latest resolves via redirect"

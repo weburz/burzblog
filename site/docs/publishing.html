@@ -294,6 +294,25 @@ from a feed reader. <strong>Settings → Your website</strong> shows whether the
 generators' safe defaults, and loads images from their <code>https://</code> URLs. Your
 site's own renderer (for example Nuxt Content with MDC components) decides the
 final look; components the preview does not know appear as plain text there.</p>
+<h3 id="links-images-and-feed-addresses">Links, images and feed addresses</h3>
+<p>Published HTML preserves normal navigation for relative links, fragments and
+links to the configured website origin. External web links keep the renderer’s
+<code>nofollow</code> and new-tab behavior. Images referencing a local upload include its
+recorded pixel dimensions when available. The upload host sends
+<code>X-Robots-Tag: noindex, nofollow</code> because uploads can also belong to drafts.
+To let search engines index an image, copy it to your website and serve it there.</p>
+<p>Publish the default feeds at <code>/feed.xml</code>, <code>/feed.atom</code> and <code>/feed.json</code> under
+the configured site URL. Each identifies its own public address. Tag and
+custom-length feeds omit that address so readers do not subscribe to the wrong
+collection. Covers appear in RSS as Media RSS content, in Atom as enclosures
+and in JSON Feed as item images. Atom categories carry both the tag slug and
+its display label.</p>
+<p>Markdown supports GitHub-style tables, strikethrough and task lists, plus
+footnotes. Heading anchors use lowercase visible text and preserve Unicode
+letters and digits. Repeated headings receive numbered suffixes. Footnote
+anchors in published HTML include the post slug so different posts can share
+one page. The renderer drops raw HTML blocks, including embedded players and
+<code>details</code> blocks. Use Markdown links with HTTP, HTTPS or mailto destinations.</p>
 
           <p class="doc-source"><a href="https://github.com/weburz/burzblog/blob/main/docs/publishing.md">Edit this page on GitHub</a></p>
         </article>
