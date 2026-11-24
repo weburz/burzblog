@@ -6,7 +6,7 @@ All notable changes are recorded here, following
 
 ## [Unreleased]
 
-## [2.3.1] - 2026-11-23
+## [2.3.1] - 2026-11-24
 
 ### Fixed
 
