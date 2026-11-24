@@ -71,6 +71,21 @@ jobs:
         working-directory: web
 
   # Go vet and race tests, then the six binaries and their checksums.
+  windows-storage:
+    needs: version
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Verify native data directory and restore locks
+        run: go test ./internal/store ./internal/snapshot -run 'TestOpenSharedHoldsTheLock|TestRestore(RefusesWhileAServerRuns|FinishRunsUnderTheLock|IntoAnEmptyMediaFolder)' -count=1 -v
+
   binaries:
     needs: version
     runs-on: ubuntu-24.04
@@ -117,7 +132,7 @@ jobs:
           retention-days: 7
 
   image:
-    needs: [version, web, binaries]
+    needs: [version, web, binaries, windows-storage]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -145,6 +160,9 @@ jobs:
           context: .
           load: true
           push: false
+          labels: |
+            org.opencontainers.image.version=${{ env.VERSION }}
+            org.opencontainers.image.revision=${{ github.sha }}
           build-args: VERSION=${{ env.VERSION }}
           platforms: linux/amd64
           tags: burzblog:local
@@ -185,6 +203,9 @@ jobs:
           context: .
           push: true
           provenance: false
+          labels: |
+            org.opencontainers.image.version=${{ env.VERSION }}
+            org.opencontainers.image.revision=${{ github.sha }}
           build-args: VERSION=${{ env.VERSION }}
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.tags.outputs.list }}

@@ -27,13 +27,10 @@ import (
 // dataDir picks the data directory: the flag, BURZBLOG_DATA, systemd's
 // STATE_DIRECTORY, or ./burzblog-data.
 func (a *App) dataDir(flag string) string {
-	for _, v := range []string{flag, a.Getenv("BURZBLOG_DATA"), a.Getenv("STATE_DIRECTORY")} {
-		if v != "" {
-			// systemd may pass several directories separated by colons.
-			return strings.Split(v, ":")[0]
-		}
-	}
-	return "burzblog-data"
+	// Only systemd's STATE_DIRECTORY is a colon-separated list. An explicit
+	// path may contain a colon, including the drive letter on Windows.
+	state, _, _ := strings.Cut(a.Getenv("STATE_DIRECTORY"), ":")
+	return firstOf(flag, a.Getenv("BURZBLOG_DATA"), state, "burzblog-data")
 }
 
 // maxUploadMBLimit caps --max-upload-mb: uploads are held in memory.
@@ -75,6 +72,14 @@ public address:
 		RunE: func(cmd *cobra.Command, args []string) error {
 			addr = firstOf(addr, a.Getenv("BURZBLOG_ADDR"), "127.0.0.1:8080")
 			origin = firstOf(origin, a.Getenv("BURZBLOG_ORIGIN"), "http://"+addr)
+			public, err := server.ParseOrigin(origin)
+			if err != nil {
+				return err
+			}
+			host := public.Hostname()
+			if host == "" || net.ParseIP(host).IsUnspecified() {
+				return usagef("set --origin or BURZBLOG_ORIGIN to the public URL people open, such as https://blog.example.com")
+			}
 			hook = firstOf(hook, a.Getenv("BURZBLOG_DEPLOY_HOOK"))
 			cfg.SiteURL = firstOf(cfg.SiteURL, a.Getenv("BURZBLOG_SITE_URL"))
 			cfg.SiteTitle = firstOf(cfg.SiteTitle, a.Getenv("BURZBLOG_SITE_TITLE"))
@@ -116,6 +121,9 @@ public address:
 
 			// Holds the shared lock, so a restore cannot run under the server.
 			st, err := store.OpenShared(ctx, dir)
+			if errors.Is(err, os.ErrPermission) {
+				return fmt.Errorf("make %s writable by the service account (uid %d). For Compose, set BURZBLOG_UID and BURZBLOG_GID to match the directory owner: %w", dir, os.Getuid(), err)
+			}
 			if err != nil {
 				return err
 			}
@@ -139,7 +147,11 @@ public address:
 			if err != nil {
 				return err
 			}
-			if err := announceSetup(ctx, log, svc, origin, dir); err != nil {
+			hint := "burzblog user add <name> --data " + dir
+			if a.inContainer() {
+				hint = "docker compose run --rm burzblog user add <name>"
+			}
+			if err := announceSetup(ctx, log, svc, origin, hint); err != nil {
 				return err
 			}
 
@@ -216,7 +228,7 @@ public address:
 // one-time first-run token and logs the setup link, the only place the token
 // is ever written. The link keeps the token in the fragment so it never
 // reaches a proxy, an access log or a Referer header.
-func announceSetup(ctx context.Context, log *slog.Logger, svc *auth.Service, origin, dir string) error {
+func announceSetup(ctx context.Context, log *slog.Logger, svc *auth.Service, origin, hint string) error {
 	token, err := svc.IssueSetupToken(ctx, auth.SetupTTL)
 	if errors.Is(err, auth.ErrSetupDone) {
 		return nil
@@ -225,8 +237,8 @@ func announceSetup(ctx context.Context, log *slog.Logger, svc *auth.Service, ori
 		return fmt.Errorf("prepare first-run setup: %w", err)
 	}
 	log.Warn(fmt.Sprintf("no accounts yet; open %s/setup#token=%s to create the first one "+
-		"(valid for %d minutes; restart to get a new link), or run: burzblog user add <name> --data %s",
-		strings.TrimRight(origin, "/"), token, int(auth.SetupTTL.Minutes()), dir))
+		"(valid for %d minutes; restart to get a new link), or run: %s",
+		strings.TrimRight(origin, "/"), token, int(auth.SetupTTL.Minutes()), hint))
 	return nil
 }
 

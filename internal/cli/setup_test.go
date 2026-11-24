@@ -35,7 +35,7 @@ func TestAnnounceSetup(t *testing.T) {
 	}
 	ts.Config.Handler = srv.Handler()
 
-	if err := announceSetup(ctx, log, svc, ts.URL+"/", "/var/lib/burzblog"); err != nil {
+	if err := announceSetup(ctx, log, svc, ts.URL+"/", "burzblog user add <name> --data /var/lib/burzblog"); err != nil {
 		t.Fatal(err)
 	}
 	line := logs.String()

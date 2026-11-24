@@ -148,7 +148,7 @@ includes it.
 
 Each check is one `GET` to
 `https://api.github.com/repos/weburz/burzblog/releases/latest`. The only thing
-it carries is a `User-Agent` such as `burzblog/1.2.0`, which holds your BurzBlog
+it carries is a `User-Agent` such as `burzblog/<version>`, which holds your BurzBlog
 version. Nothing about your posts, accounts or the instance's address is sent,
 though GitHub sees your server's IP address as it would for any request. The
 check has a 10 second timeout, reads at most 1 MiB, is not retried before the

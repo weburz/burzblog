@@ -123,6 +123,7 @@ Single-line fields reject control characters, tabs included, like `title`.
 | `POST /api/posts/{slug}/duplicate` | no body → 201 and a new draft copy; its slug is `{slug}-copy`, then `{slug}-copy-2`, `-3` and so on until one is free (the slug is shortened to fit the 120 character limit), its title is the original's with ` (copy)` added (` (copy 2)`, ` (copy 3)` when the original already ends in a copy mark; a long title is cut at a word boundary); description, body, cover, tags, author, SEO fields and `extra` are copied unchanged. Status, `publishedOn`, `updatedOn`, `publishAt` and `featured` are not: the copy is an unscheduled, unfeatured draft at version 1 with no dates. 404 `not_found` for an unknown slug; any signed-in role may duplicate |
 | `POST /api/posts/{slug}/schedule` | `{version, at}` → the draft with `publishAt` set; see below |
 | `POST /api/posts/{slug}/unschedule` | `{version}` → the draft without a `publishAt`; a no-op if it had none |
+| `POST /api/preview` | `{markdown}` → `{html}`, sanitized; see [preview limits](#preview-limits) |
 | `DELETE /api/posts/{slug}?version=N` | admins only (403 `role`), and only archived posts; removes its history and its redirects too. The one exception, open to authors as well: a draft that was never published and has every writable field blank after trimming (title, body, description, tags, cover, SEO fields, canonical URL, `extra`, author, featured), now and in every earlier revision, so nothing is lost; an author that is only the account that saved the draft counts as blank. An author asking to delete a draft that is not blank, or that once held content, gets 403 `role`, since only an admin can delete it after archiving it; an admin gets 409 `state` until the post is archived |
 | `GET /api/posts/{slug}/redirects` | `{items: ["old-slug", ...]}`: the old slugs that redirect to the post, by slug, whatever the post's status; see [slug redirects](#slug-redirects) |
 | `DELETE /api/posts/{slug}/redirects/{from}` | removes the redirect from one old slug of this post → `{deleted: true}`; 404 `not_found` if the post has no such redirect |
@@ -142,7 +143,6 @@ raises it like any save, but consecutive autosaves by the same account
 within 30 minutes of each other share one revision: each replaces the one
 the previous autosave left. A save without the flag always keeps its own
 revision, and is never folded. The browser panel autosaves drafts.
-| `POST /api/preview` | `{markdown}` → `{html}`, sanitized; see [preview limits](#preview-limits) |
 
 Each revision in the list carries `version`, `savedAt`, `savedBy` and a state:
 `slug`, `title`, `status`, `words` (the body's word count) and the digests

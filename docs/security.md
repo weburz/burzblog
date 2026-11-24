@@ -383,5 +383,4 @@ storage's object lock or versioning, if that matters to you.
 
 ## Reporting a vulnerability
 
-Email the maintainers listed in the repository rather than opening a public
-issue.
+Choose **Report a vulnerability** on the [repository Security tab](https://github.com/weburz/burzblog/security) to reach the maintainers privately.

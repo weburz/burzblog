@@ -40,6 +40,7 @@ never commit or hand-edit it.
 - Short-lived feature branches; commit via Crisp; never push to main directly.
   GitHub Actions runs `check.yml` on pull requests and `site.yml` publishes the
   landing page; still run `task check` locally and record exact results in PRs.
+- The release workflow checks restore and data-directory locks on native Windows before publishing the image.
 - Docker: content and secrets stay outside the image; preserve host UID/GID.
 - The license is Apache-2.0 (`LICENSE`); keep it. The `admin-panel/` cache is
   unrelated and must not be incorporated.

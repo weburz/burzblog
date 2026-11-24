@@ -89,9 +89,9 @@ All notable changes are recorded here, following
 
 ### Added
 
-- Full snapshots: `burzblog snapshot create` writes the whole blog (its data
-  directory, nothing else on the machine) to one file while it runs (every post and earlier version, accounts, two-factor,
-  tokens, tag labels, the audit log and every upload), `snapshot verify`
+- Full snapshots: `burzblog snapshot create` writes one file while the blog is
+  running. It includes posts, revisions, accounts, two-factor settings, tokens,
+  tag labels, the audit log and uploads from the data directory. `snapshot verify`
   checks one without restoring it, and `snapshot restore` puts one into a data
   directory, for example on a new server. Snapshots can be encrypted with a
   passphrase (scrypt and ChaCha20-Poly1305), `--keep N` prunes old ones, and

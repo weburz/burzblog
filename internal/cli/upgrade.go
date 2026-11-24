@@ -43,18 +43,20 @@ func (a *App) defaultReleaseSource() releaseSource {
 		LatestURL: release.LatestURL, DownloadBase: release.DownloadBase,
 		Client: release.NewClient(10 * time.Minute),
 		GOOS:   runtime.GOOS, GOARCH: runtime.GOARCH,
-		Executable: os.Executable,
-		InContainer: func() bool {
-			// Docker and Podman mark their containers with a file; the
-			// official image also runs BurzBlog as PID 1 on /data.
-			for _, f := range []string{"/.dockerenv", "/run/.containerenv"} {
-				if _, err := os.Stat(f); err == nil {
-					return true
-				}
-			}
-			return a.Getenv("BURZBLOG_DATA") == "/data" && os.Getpid() == 1
-		},
+		Executable:  os.Executable,
+		InContainer: a.inContainer,
 	}
+}
+
+func (a *App) inContainer() bool {
+	// Docker and Podman mark their containers with a file; the
+	// official image also runs BurzBlog as PID 1 on /data.
+	for _, f := range []string{"/.dockerenv", "/run/.containerenv"} {
+		if _, err := os.Stat(f); err == nil {
+			return true
+		}
+	}
+	return a.Getenv("BURZBLOG_DATA") == "/data" && os.Getpid() == 1
 }
 
 func (a *App) upgradeCmd() *cobra.Command {
@@ -70,7 +72,7 @@ plain binary or a systemd service; in a container, pull the new image instead.
 It does not restart anything and never runs what it downloaded. Restart the
 service yourself (sudo systemctl restart burzblog). On the next start the
 database backs itself up to <data>/backups and migrates; see
-docs/self-hosting.md#upgrades.
+https://burzblog.weburz.com/docs/self-hosting.html#upgrades.
 
 --check only reports whether a newer release exists. It exits 0 when this
 binary is up to date and 7 when an update is available.
@@ -162,7 +164,7 @@ func (a *App) upgrade(parent context.Context, src releaseSource, want string, ch
 	case cmp < 0 && want == "":
 		return a.upToDate(a.Version)
 	case cmp < 0 && !force:
-		return usagef("%s is older than the running %s. Add --force to downgrade; the database may then be too new for it, see docs/self-hosting.md#upgrades", target, a.Version)
+		return usagef("%s is older than the running %s. Add --force to downgrade; the database may then be too new for it, see https://burzblog.weburz.com/docs/self-hosting.html#upgrades", target, a.Version)
 	}
 
 	path, err := src.Executable()

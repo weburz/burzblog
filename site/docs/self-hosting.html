@@ -239,7 +239,7 @@ as a dot on the Settings tab; authors do not, and the content API never
 includes it.</p>
 <p>Each check is one <code>GET</code> to
 <code>https://api.github.com/repos/weburz/burzblog/releases/latest</code>. The only thing
-it carries is a <code>User-Agent</code> such as <code>burzblog/1.2.0</code>, which holds your BurzBlog
+it carries is a <code>User-Agent</code> such as <code>burzblog/&lt;version&gt;</code>, which holds your BurzBlog
 version. Nothing about your posts, accounts or the instance's address is sent,
 though GitHub sees your server's IP address as it would for any request. The
 check has a 10 second timeout, reads at most 1 MiB, is not retried before the

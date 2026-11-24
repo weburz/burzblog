@@ -118,7 +118,7 @@ Write in the browser panel, or from here:
 
 Scripts and AI agents: set BURZBLOG_SERVER and BURZBLOG_TOKEN, add --json for
 machine-readable results and errors, and read the exit code. Nothing prompts or
-opens an editor without a terminal. See docs/terminal.md.`,
+opens an editor without a terminal. See https://burzblog.weburz.com/docs/terminal.html.`,
 		Example: `  export BURZBLOG_SERVER=https://blog.example.com BURZBLOG_TOKEN=bzb_...
   burzblog list --json --status draft
   burzblog new "Release notes" --body-file notes.md --json
@@ -136,6 +136,7 @@ Exit codes: 0 ok, 1 error, 2 usage, 3 conflict, 4 not found, 5 not signed in,
 	}
 	root.PersistentFlags().BoolVar(&a.asJSON, "json", false,
 		"print results (list, whoami, new, pull, push, diff, status, publish, unpublish, archive, restore, schedule, unschedule, backup, import, redirects, upgrade, snapshot) and errors as JSON")
+	root.AddCommand(&cobra.Command{Use: "version", Short: "Print the BurzBlog version", Args: cobra.NoArgs, Run: func(cmd *cobra.Command, _ []string) { fmt.Fprintf(a.Out, "%s version %s\n", root.Name(), root.Version) }})
 	root.AddGroup(
 		&cobra.Group{ID: "write", Title: "Writing:"},
 		&cobra.Group{ID: "account", Title: "Connecting:"},

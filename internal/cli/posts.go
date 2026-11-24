@@ -506,6 +506,7 @@ func (a *App) pullCmd() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().StringVar(&out, "out", "", "alias for --output")
 	cmd.Flags().StringVarP(&out, "output", "o", "", "file to write, named <slug>.md, or - for standard output")
 	cmd.Flags().BoolVarP(&force, "force", "f", false, "replace an existing file")
 	return cmd
@@ -815,6 +816,7 @@ Settings) instead of running burzblog login.`,
 			return nil
 		},
 	}
+	cmd.Flags().StringVar(&out, "output", "", "alias for --out")
 	cmd.Flags().StringVarP(&out, "out", "o", "", "directory to write <slug>.md files into")
 	cmd.Flags().BoolVar(&clean, "clean", false, "delete other .md files in the directory (posts no longer published)")
 	return cmd
@@ -882,12 +884,12 @@ func (a *App) backupCmd() *cobra.Command {
 is draft, published or archived, and every uploaded file to <dir>/media/. The
 directory defaults to burzblog-backup-<date> in the current folder.
 
-The backup holds current posts only. The database file with the media folder
-beside it is the complete backup, including history; see docs/self-hosting.md.
+Use burzblog snapshot create on the server for a complete backup with accounts,
+uploads and revision history. See https://burzblog.weburz.com/docs/self-hosting.html.
 Restore a post with burzblog push.`,
 		Example: `  burzblog backup
   burzblog backup ~/backups/blog
-  burzblog backup ~/backups/blog --json     # {"dir":"~/backups/blog","posts":12}`,
+  burzblog backup ~/backups/blog --json     # {"dir":"~/backups/blog","posts":12,"media":3}`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := "burzblog-backup-" + time.Now().UTC().Format("2006-01-02")
